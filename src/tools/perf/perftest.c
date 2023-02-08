@@ -13,6 +13,7 @@
 #endif
 
 #include "perftest.h"
+#include "perftest_mad.h"
 
 #include <ucs/sys/string.h>
 #include <ucs/sys/sys.h>
@@ -787,6 +788,12 @@ static ucs_status_t check_system(struct perftest_context *ctx)
     return UCS_OK;
 }
 
+static void ctx_free(struct perftest_context *ctx)
+{
+    free(ctx->params.super.msg_size_list);
+    free(ctx->ib.ca);
+}
+
 int main(int argc, char **argv)
 {
     struct perftest_context ctx;
@@ -844,7 +851,11 @@ int main(int argc, char **argv)
     }
 
     /* Create RTE */
-    status = (mpi_rte) ? setup_mpi_rte(&ctx) : setup_sock_rte(&ctx);
+    /* status = (mpi_rte) ? setup_mpi_rte(&ctx) : setup_sock_rte(&ctx);
+ * */
+    (void)setup_sock_rte;
+    (void)setup_mpi_rte;
+    status = setup_mad_rte(&ctx);
     if (status != UCS_OK) {
         ret = -1;
         goto out_msg_size_list;
@@ -862,7 +873,7 @@ int main(int argc, char **argv)
 out_cleanup_rte:
     (mpi_rte) ? cleanup_mpi_rte(&ctx) : cleanup_sock_rte(&ctx);
 out_msg_size_list:
-    free(ctx.params.super.msg_size_list);
+    ctx_free(&ctx);
 #if HAVE_MPI
 out:
 #endif

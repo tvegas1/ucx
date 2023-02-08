@@ -81,11 +81,12 @@ static void usage(const struct perftest_context *ctx, const char *program)
     printf("                    the line is command-line arguments for the test.\n");
     printf("     -R <rank>      percentile rank of the percentile data in latency tests (%.1f)\n",
                                 ctx->params.super.percentile_rank);
-    printf("     -p <port>      TCP port to use for data exchange (%d)\n", ctx->port);
+    printf("     -p <port>      Transport port to use for data exchange (%d)\n", ctx->port);
     printf("     -6             Use IPv6 address for in data exchange\n");
 #ifdef HAVE_MPI
     printf("     -P <0|1>       disable/enable MPI mode (%d)\n", ctx->mpi);
 #endif
+    printf("     -K <ca:port>   use Infiniband MAD local interface data exchange\n");
     printf("     -h             show this help message\n");
     printf("\n");
     printf("  Output format:\n");
@@ -533,6 +534,7 @@ ucs_status_t parse_opts(struct perftest_context *ctx, int mpi_initialized,
 {
     ucs_status_t status;
     int c;
+    char *str;
 
     ucs_trace_func("");
 
@@ -549,9 +551,10 @@ ucs_status_t parse_opts(struct perftest_context *ctx, int mpi_initialized,
     ctx->af              = AF_INET;
     ctx->flags           = 0;
     ctx->mpi             = mpi_initialized;
+    ctx->ib.ca           = NULL;
 
     optind = 1;
-    while ((c = getopt(argc, argv, "p:b:6NfvIc:P:h" TEST_PARAMS_ARGS)) != -1) {
+    while ((c = getopt(argc, argv, "p:b:6NfvIc:P:hK:" TEST_PARAMS_ARGS)) != -1) {
         switch (c) {
         case 'p':
             ctx->port = atoi(optarg);
@@ -582,6 +585,16 @@ ucs_status_t parse_opts(struct perftest_context *ctx, int mpi_initialized,
             if (status != UCS_OK) {
                 return status;
             }
+            break;
+        case 'K':
+            str = strtok(optarg, ":");
+            if (!str) {
+                ucs_error("Invalid IB source specified");
+                return UCS_ERR_INVALID_PARAM;
+            }
+            ctx->ib.ca = strdup(str);
+            str = strtok(str, ":");
+            ctx->ib.ca_port = str? atoi(str) : 0;
             break;
         case 'P':
 #ifdef HAVE_MPI

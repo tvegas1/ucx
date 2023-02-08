@@ -68,6 +68,11 @@ struct perftest_context {
     char                         *batch_files[MAX_BATCH_FILES];
     char                         *test_names[MAX_BATCH_FILES];
 
+    struct {
+        char *ca;
+        int ca_port;
+    } ib;
+
     sock_rte_group_t             sock_rte_group;
 };
 
