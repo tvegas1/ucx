@@ -26,6 +26,7 @@
 
 #include <infiniband/mad.h>
 #include <infiniband/umad.h>
+#include <infiniband/umad_types.h>
 
 /* TODO: Pick a good one to not interfere */
 #define PERFTEST_RTE_CLASS (IB_VENDOR_RANGE2_START_CLASS + 0x10)
@@ -143,6 +144,7 @@ perftest_mad_open(char *ca, int ca_port, int is_server)
     struct ibmad_port *port;
     int perftest_rte_class = PERFTEST_RTE_CLASS;
     int oui = PERFTEST_RTE_OPENIB_OUI;
+    int rmpp_version = UMAD_RMPP_VERSION;
 
 
     #if 0
@@ -162,7 +164,8 @@ perftest_mad_open(char *ca, int ca_port, int is_server)
 
     if (1 || is_server) {
         if (mad_register_server_via(perftest_rte_class,
-                                        0, NULL, oui, port) < 0) {
+                                    rmpp_version,
+                                    NULL, oui, port) < 0) {
             ucs_error("MAD: Cannot serve perftest RTE class 0x%02x on"
                       " '%s:%d'", perftest_rte_class, ca, ca_port);
             goto fail;
@@ -310,12 +313,15 @@ perftest_mad_get_portid(const char *ca,
 static void perftest_mad_accept(struct perftest_context *ctx)
 {
     perftest_mad_rte_group_t *mad = ctx->params.super.rte_group;
-    uint8_t buf[1024] = {};
+    uint8_t buf[8192 * 4] = {};
     int len = sizeof(buf);
     int timeout = 1000000;
     int fd;
     int status;
     unsigned magic;
+    int count = 0;
+    int i;
+    int c;
 
     void *data = umad_get_mad(buf);
     data = (uint8_t *)data + IB_VENDOR_RANGE2_DATA_OFFS;
@@ -337,7 +343,18 @@ static void perftest_mad_accept(struct perftest_context *ctx)
             ucs_error("MAD: accept() failed status:%d", status);
             return;
         }
-        break;
+        count++;
+        ucs_error("MAD: msg_num:%d got len:%d", count, len);
+
+        continue;
+        c = 0;
+        for (i = len - IB_VENDOR_RANGE2_DATA_OFFS - 1; i > -1; i--, c++) {
+            if (c && !(c % 16)) {
+                printf("\n");
+            }
+            printf("%02x ", ((uint8_t*)data)[i]);
+        }
+        printf("\n");
     }
 
     status = umad_status(buf);
@@ -358,7 +375,7 @@ static void perftest_mad_accept(struct perftest_context *ctx)
 static void perftest_mad_connect(struct perftest_context *ctx)
 {
     perftest_mad_rte_group_t *mad = ctx->params.super.rte_group;
-    uint8_t buf[2048] = {};
+    uint8_t buf[8192*10] = {};
     void *data = umad_get_mad(buf) + IB_VENDOR_RANGE2_DATA_OFFS;
     int len;
     int fd;
@@ -369,6 +386,9 @@ static void perftest_mad_connect(struct perftest_context *ctx)
     int ret;
     int timeout = 1000;
     ib_portid_t *portid;
+    ib_rmpp_hdr_t rmpp = {};
+    int data_size;
+    int i;
 
     memcpy(data, &magic, sizeof(magic));
 
@@ -378,15 +398,27 @@ static void perftest_mad_connect(struct perftest_context *ctx)
     rpc.attr.mod = 0;
     rpc.oui = oui;
     rpc.timeout = 0;
-    rpc.dataoffs = IB_VENDOR_RANGE2_DATA_OFFS;
-    rpc.datasz = IB_VENDOR_RANGE2_DATA_SIZE;
+    rpc.dataoffs = IB_VENDOR_RANGE2_DATA_OFFS; /* not used */
+    rpc.datasz = IB_VENDOR_RANGE2_DATA_SIZE; /* not used */
 
     portid = &mad->dst_port;
     portid->qp = 1;
     if (!portid->qkey)
         portid->qkey = IB_DEFAULT_QP1_QKEY;
 
-    len = mad_build_pkt(buf, &rpc, &mad->dst_port, NULL, NULL);
+    data_size = 8192 * 3; /* seems data_size == 8192 * 3 can be problematic on rx size */
+    data_size = 8192;
+    if (data_size > IB_VENDOR_RANGE2_DATA_SIZE) {
+        rmpp.flags = IB_RMPP_FLAG_ACTIVE;
+    }
+
+    for (i = 0; i < data_size; i++) {
+        if (data_size - 1 - i < 4) {
+            break;
+        }
+        ((char *)data)[data_size - 1 - i] = i & 0xff;
+    }
+    len = mad_build_pkt(buf, &rpc, &mad->dst_port, &rmpp, NULL);
     if (len < 0){ 
         ucs_error("MAD: cannot build connect packet");
         return;
@@ -395,13 +427,14 @@ static void perftest_mad_connect(struct perftest_context *ctx)
 
     fd = mad_rpc_portid(mad->mad_port);
 
+    len = IB_VENDOR_RANGE2_DATA_OFFS + data_size;
     ret = umad_send(fd, agent, buf, len, timeout, 0);
     if (ret < 0) {
         ucs_error("MAD: cannot send connect_packet");
         return;
     }
     ucs_error("MAD: connect sent packet");
-    
+
     //
     //fd = mad_rpc_portid(mad->mad_port);
     //agent = mad_rpc_class_agent(mad->mad_port, rpc.mgtclass);
@@ -450,6 +483,7 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
 {
     int ret;
     int is_server = !ctx->server_addr;
+    int i;
 
     perftest_mad_rte_group_t *rte_group = calloc(1, sizeof(*rte_group));
     if (!rte_group) {
@@ -486,7 +520,9 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
 
     if (!is_server) {
         /* client sends initial ping */
-        perftest_mad_connect(ctx);
+        for (i = 0; i < 1; i++) {
+            perftest_mad_connect(ctx);
+        }
     } else {
         perftest_mad_accept(ctx);
     }
