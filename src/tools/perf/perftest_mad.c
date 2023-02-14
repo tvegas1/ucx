@@ -371,7 +371,6 @@ static void perftest_mad_accept(struct perftest_context *ctx)
     }
 }
 
-#if 1
 static void perftest_mad_connect(struct perftest_context *ctx)
 {
     perftest_mad_rte_group_t *mad = ctx->params.super.rte_group;
@@ -434,50 +433,7 @@ static void perftest_mad_connect(struct perftest_context *ctx)
         return;
     }
     ucs_error("MAD: connect sent packet");
-
-    //
-    //fd = mad_rpc_portid(mad->mad_port);
-    //agent = mad_rpc_class_agent(mad->mad_port, rpc.mgtclass);
 }
-#else
-static void perftest_mad_connect(struct perftest_context *ctx)
-{
-    perftest_mad_rte_group_t *mad = ctx->params.super.rte_group;
-    int oui = PERFTEST_RTE_OPENIB_OUI;
-    ib_vendor_call_t call;
-    void *ptr;
-    unsigned magic;
-    uint8_t data[2048];
-
-#if 0
-    oui = IB_OPENIB_OUI;
-#endif
-
-
-    call.method = IB_MAD_METHOD_GET;
-#if 0
-    call.mgmt_class = IB_VENDOR_OPENIB_PING_CLASS;
-#else
-    call.mgmt_class = PERFTEST_RTE_CLASS;
-#endif
-    call.attrid = 0;
-    call.mod = 0;
-    call.oui = oui;
-    call.timeout = 0;
-    memset(&call.rmpp, 0, sizeof(call.rmpp));
-
-
-    magic = 0xdeadbeef;
-    memcpy(data, &magic, sizeof(magic));
-
-    ptr = ib_vendor_call_via(data, &mad->dst_port, &call, mad->mad_port);
-    if (!ptr) {
-        ucs_error("Failed!");
-        return;
-    }
-
-}
-#endif
 
 ucs_status_t setup_mad_rte(struct perftest_context *ctx)
 {
