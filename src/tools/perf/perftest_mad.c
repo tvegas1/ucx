@@ -275,28 +275,8 @@ perftest_mad_get_portid(const char *ca,
 {
     /* GUID needs SM port id for lookup but API also finds it */
     const char *orig_addr = addr;
-
-#if 1
-    int ret;
-    ret = perftest_mad_resolve_portid_str(ca, ca_port, addr, mad_port, dst_port);
-#else
-    enum MAD_DEST addr_type;
-
-    int ret;
-    /* Setup address and address type */
-    if (!strncmp(addr, "guid:", strlen("guid:"))) {
-        addr += strlen("guid:");
-        addr_type = IB_DEST_GUID;
-    } else if (!strncmp(addr, "lid:", strlen("lid:"))) {
-        addr += strlen("lid:");
-        addr_type = IB_DEST_LID;
-    } else {
-        ucs_error("MAC: Invalid remote address (guid:<>|lid:<>)");
-        return -1;
-    }
-
-    ret = ib_resolve_portid_str(dst_port, (char *)addr, addr_type, sm_id);
-#endif
+    int ret = perftest_mad_resolve_portid_str(ca, ca_port, addr, mad_port, dst_port);
+    ;
     if (ret < 0) {
         ucs_error("MAD: Failed to resolve address '%s'",
                   orig_addr);
@@ -481,6 +461,7 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
         for (i = 0; i < 1; i++) {
             perftest_mad_connect(ctx);
         }
+        for (;;);
     } else {
         perftest_mad_accept(ctx);
     }
