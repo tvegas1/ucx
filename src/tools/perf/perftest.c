@@ -794,12 +794,34 @@ static void ctx_free(struct perftest_context *ctx)
     free(ctx->ib.ca);
 }
 
+static ucs_status_t
+setup_rte(struct perftest_context *ctx)
+{
+    if (ctx->ib.ca) {
+        return setup_mad_rte(ctx);
+    } else if (ctx->mpi) {
+        return setup_mpi_rte(ctx);
+    }
+    return setup_sock_rte(ctx);
+}
+
+static void
+cleanup_rte(struct perftest_context *ctx)
+{
+    if (ctx->ib.ca) {
+        cleanup_mad_rte(ctx);
+    } else if (ctx->mpi) {
+        cleanup_mpi_rte(ctx);
+    } else {
+        cleanup_sock_rte(ctx);
+    }
+}
+
 int main(int argc, char **argv)
 {
     struct perftest_context ctx;
     ucs_status_t status;
     int mpi_initialized;
-    int mpi_rte;
     int ret;
 
 #ifdef HAVE_MPI
@@ -833,29 +855,13 @@ int main(int argc, char **argv)
         goto out_msg_size_list;
     }
 
-#ifdef __COVERITY__
-    /* coverity[dont_call] */
-    mpi_rte = rand(); /* Shut up deadcode error */
-#endif
-
-    if (ctx.mpi) {
-        mpi_rte = 1;
-    } else {
-        mpi_rte = 0;
-    }
-
     status = check_system(&ctx);
     if (status != UCS_OK) {
         ret = -1;
         goto out_msg_size_list;
     }
 
-    /* Create RTE */
-    /* status = (mpi_rte) ? setup_mpi_rte(&ctx) : setup_sock_rte(&ctx);
- * */
-    (void)setup_sock_rte;
-    (void)setup_mpi_rte;
-    status = setup_mad_rte(&ctx);
+    status = setup_rte(&ctx);
     if (status != UCS_OK) {
         ret = -1;
         goto out_msg_size_list;
@@ -871,7 +877,7 @@ int main(int argc, char **argv)
     ret = 0;
 
 out_cleanup_rte:
-    (mpi_rte) ? cleanup_mpi_rte(&ctx) : cleanup_sock_rte(&ctx);
+    cleanup_rte(&ctx);
 out_msg_size_list:
     ctx_free(&ctx);
 #if HAVE_MPI

@@ -81,12 +81,12 @@ static void usage(const struct perftest_context *ctx, const char *program)
     printf("                    the line is command-line arguments for the test.\n");
     printf("     -R <rank>      percentile rank of the percentile data in latency tests (%.1f)\n",
                                 ctx->params.super.percentile_rank);
-    printf("     -p <port>      Transport port to use for data exchange (%d)\n", ctx->port);
+    printf("     -p <port>      TCP port to use for data exchange (%d)\n", ctx->port);
     printf("     -6             Use IPv6 address for in data exchange\n");
 #ifdef HAVE_MPI
     printf("     -P <0|1>       disable/enable MPI mode (%d)\n", ctx->mpi);
 #endif
-    printf("     -K <ca:port>   use Infiniband MAD local interface data exchange\n");
+    printf("     -K <ca:port>   use MAD for test setup and synchronization\n");
     printf("     -h             show this help message\n");
     printf("\n");
     printf("  Output format:\n");
@@ -540,11 +540,6 @@ ucs_status_t parse_opts(struct perftest_context *ctx, int mpi_initialized,
 
     ucx_perf_global_init(); /* initialize memory types */
 
-    status = init_test_params(&ctx->params);
-    if (status != UCS_OK) {
-        return status;
-    }
-
     ctx->server_addr     = NULL;
     ctx->num_batch_files = 0;
     ctx->port            = 13337;
@@ -552,6 +547,11 @@ ucs_status_t parse_opts(struct perftest_context *ctx, int mpi_initialized,
     ctx->flags           = 0;
     ctx->mpi             = mpi_initialized;
     ctx->ib.ca           = NULL;
+
+    status = init_test_params(&ctx->params);
+    if (status != UCS_OK) {
+        return status;
+    }
 
     optind = 1;
     while ((c = getopt(argc, argv, "p:b:6NfvIc:P:hK:" TEST_PARAMS_ARGS)) != -1) {
@@ -589,12 +589,12 @@ ucs_status_t parse_opts(struct perftest_context *ctx, int mpi_initialized,
         case 'K':
             str = strtok(optarg, ":");
             if (!str) {
-                ucs_error("Invalid IB source specified");
+                ucs_error("Invalid source interface specified");
                 return UCS_ERR_INVALID_PARAM;
             }
             ctx->ib.ca = strdup(str);
-            str = strtok(str, ":");
-            ctx->ib.ca_port = str? atoi(str) : 0;
+            str = strtok(NULL, ":");
+            ctx->ib.ca_port = str? atoi(str) : 1;
             break;
         case 'P':
 #ifdef HAVE_MPI
