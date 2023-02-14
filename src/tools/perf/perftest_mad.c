@@ -177,6 +177,53 @@ void perftest_mad_close(struct ibmad_port *port)
     mad_rpc_close_port(port);
 }
 
+static ucs_status_t
+perftest_mad_sm_query(const char *ca,
+                      int ca_port,
+                      const struct ibmad_port *mad_port,
+                      uint64_t guid,
+                      ib_portid_t *dst_port)
+{
+    uint8_t buf[IB_SA_DATA_SIZE] = { 0 };
+    umad_port_t port = {};
+    __be64 prefix;
+    ibmad_gid_t selfgid;
+    uint64_t port_guid;
+    uint64_t gid_prefix;
+    int ret;
+    ib_portid_t sm_id; /* SM: the GUID to LID resolver */
+
+    if ((ret = umad_get_port(ca, ca_port, &port)) < 0) {
+        ucs_error("MAD: Could not get SM LID");
+        return ret;
+    }
+    memset(&sm_id, 0, sizeof(sm_id));
+    sm_id.lid = port.sm_lid;
+    sm_id.sl = port.sm_sl;
+
+    memset(selfgid, 0, sizeof(selfgid));
+    gid_prefix = be64toh(port.gid_prefix);
+    port_guid = be64toh(port.port_guid);
+    mad_encode_field(selfgid, IB_GID_PREFIX_F, &gid_prefix);
+    mad_encode_field(selfgid, IB_GID_GUID_F, &port_guid);
+
+    umad_release_port(&port);
+
+    memcpy(&prefix, selfgid, sizeof(prefix));
+    mad_set_field64(dst_port->gid, 0, IB_GID_PREFIX_F,
+                    prefix ? be64toh(prefix) : IB_DEFAULT_SUBN_PREFIX);
+    mad_set_field64(dst_port->gid, 0, IB_GID_GUID_F, guid);
+
+    if ((dst_port->lid =
+         ib_path_query_via(mad_port, selfgid, dst_port->gid, &sm_id, buf)) < 0) {
+        ucs_error("MAD: GUID Query failed");
+        return -1;
+    }
+
+    mad_decode_field(buf, IB_SA_PR_SL_F, &dst_port->sl);
+    return 0;
+}
+
 static int 
 perftest_mad_resolve_portid_str(const char *ca,
                                 int ca_port,
@@ -186,27 +233,22 @@ perftest_mad_resolve_portid_str(const char *ca,
 {
     int lid;
     uint64_t guid;
-    ib_portid_t sm_id; /* the GUID to LID resolver */
-    uint8_t buf[IB_SA_DATA_SIZE] = { 0 };
-    __be64 prefix;
-    ibmad_gid_t selfgid;
     enum MAD_DEST addr_type;
-    int ret;
-    umad_port_t port = {};
-    uint64_t port_guid;
-    uint64_t gid_prefix;
+    static const char guid_str[] = "guid:";
+    static const char lid_str[] = "lid:";
 
     memset(dst_port, 0, sizeof(*dst_port));
 
     /* Setup address and address type */
-    if (!strncmp(addr, "guid:", strlen("guid:"))) {
-        addr += strlen("guid:");
+    if (!strncmp(addr, guid_str, strlen(guid_str))) {
+        addr += strlen(guid_str);
         addr_type = IB_DEST_GUID;
-    } else if (!strncmp(addr, "lid:", strlen("lid:"))) {
-        addr += strlen("lid:");
+    } else if (!strncmp(addr, lid_str, strlen(lid_str))) {
+        addr += strlen(lid_str);
         addr_type = IB_DEST_LID;
     } else {
-        ucs_error("MAC: Invalid remote address (guid:<>|lid:<>)");
+        ucs_error("MAD: Invalid dst address, use '%s' or '%s' prefix",
+                  guid_str, lid_str);
         return -1;
     }
 
@@ -224,39 +266,12 @@ perftest_mad_resolve_portid_str(const char *ca,
             errno = EINVAL;
             return -1;
         }
+        return perftest_mad_sm_query(ca, ca_port, mad_port, guid, dst_port);
 
-        if ((ret = umad_get_port(ca, ca_port, &port)) < 0) {
-            ucs_error("MAD: Could not get SM LID");
-            return ret;
-        }
-        memset(&sm_id, 0, sizeof(sm_id));
-        sm_id.lid = port.sm_lid;
-        sm_id.sl = port.sm_sl;
-
-        memset(selfgid, 0, sizeof(selfgid));
-        gid_prefix = be64toh(port.gid_prefix);
-        port_guid = be64toh(port.port_guid);
-        mad_encode_field(selfgid, IB_GID_PREFIX_F, &gid_prefix);
-        mad_encode_field(selfgid, IB_GID_GUID_F, &port_guid);
-
-        umad_release_port(&port);
-
-        memcpy(&prefix, selfgid, sizeof(prefix));
-        mad_set_field64(dst_port->gid, 0, IB_GID_PREFIX_F,
-                        prefix ? be64toh(prefix) : IB_DEFAULT_SUBN_PREFIX);
-        mad_set_field64(dst_port->gid, 0, IB_GID_GUID_F, guid);
-
-        if ((dst_port->lid =
-             ib_path_query_via(mad_port, selfgid, dst_port->gid, &sm_id, buf)) < 0) {
-            ucs_error("MAD: GUID Query failed");
-            return -1;
-        }
-
-        mad_decode_field(buf, IB_SA_PR_SL_F, &dst_port->sl);
-        return 0;
     default:
-        return -1;
+        break;
     }
+    return -1;
 }
 
 int
