@@ -28,14 +28,14 @@
 #include <infiniband/umad.h>
 #include <infiniband/umad_types.h>
 
-/* TODO: Pick a good one to not interfere */
+/* TODO: How to pick a good one to not interfere? */
 #define PERFTEST_RTE_CLASS (IB_VENDOR_RANGE2_START_CLASS + 0x10)
 #define PERFTEST_RTE_OPENIB_OUI IB_OPENIB_OUI
 
 typedef struct perftest_mad_rte_group {
-    struct ibmad_port *mad_port;
-    ib_portid_t dst_port;
-    int is_server;
+    struct ibmad_port           *mad_port;
+    ib_portid_t                  dst_port;
+    int                          is_server;
 } perftest_mad_rte_group_t;
 
 static void perftest_mad_sendv(perftest_mad_rte_group_t *mad,
@@ -146,11 +146,6 @@ perftest_mad_open(char *ca, int ca_port, int is_server)
     int oui = PERFTEST_RTE_OPENIB_OUI;
     int rmpp_version = UMAD_RMPP_VERSION;
 
-
-    #if 0
-        oui = IB_OPENIB_OUI;
-        perftest_rte_class = IB_VENDOR_OPENIB_PING_CLASS;
-    #endif
     if (!ca || ca_port < 0) {
         ucs_error("MAD: Missing CA or CA Port");
         return NULL;
@@ -486,7 +481,6 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
 fail:
     free(rte_group);
     return UCS_ERR_NO_DEVICE;
-
 }
 
 ucs_status_t cleanup_mad_rte(struct perftest_context *ctx)
