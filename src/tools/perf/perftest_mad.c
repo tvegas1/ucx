@@ -430,6 +430,13 @@ static void perftest_mad_connect(struct perftest_context *ctx)
     ucs_error("MAD: connect sent packet");
 }
 
+static void
+perftest_mad_debug_enable(void)
+{
+    ibdebug = 10; /* extern variable from mad headers */
+    umad_debug(10);
+}
+
 ucs_status_t setup_mad_rte(struct perftest_context *ctx)
 {
     int ret;
@@ -440,8 +447,8 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
     if (!rte_group) {
         return UCS_ERR_NO_MEMORY;
     }
-    ibdebug = 10;
-    umad_debug(10);
+
+    perftest_mad_debug_enable();
 
     rte_group->mad_port = perftest_mad_open(ctx->ib.ca,
                                             ctx->ib.ca_port,
