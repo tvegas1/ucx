@@ -139,7 +139,7 @@ static ucx_perf_rte_t mad_rte = {
 static struct ibmad_port *
 perftest_mad_open(char *ca, int ca_port, int is_server)
 {
-    int mgmt_classes[] = { IB_SA_CLASS };
+    int mgmt_classes[] = { IB_SA_CLASS }; /* needed to activate RMPP */
     int mgmt_classes_size = 1;
     struct ibmad_port *port;
     int perftest_rte_class = PERFTEST_RTE_CLASS;
@@ -157,21 +157,14 @@ perftest_mad_open(char *ca, int ca_port, int is_server)
         return NULL;
     }
 
-    if (1 || is_server) {
-        if (mad_register_server_via(perftest_rte_class,
-                                    rmpp_version,
-                                    NULL, oui, port) < 0) {
-            ucs_error("MAD: Cannot serve perftest RTE class 0x%02x on"
-                      " '%s:%d'", perftest_rte_class, ca, ca_port);
-            goto fail;
-        }
-    } else {
-        if (mad_register_client_via(perftest_rte_class, 0, port) < 0) {
-            ucs_error("MAD: Cannot register client for perftest RTE class 0x%02x"
-                      " on '%s:%d'", perftest_rte_class, ca, ca_port);
-            goto fail;
-        }
-
+    if (mad_register_server_via(perftest_rte_class,
+                                rmpp_version,
+                                NULL,
+                                oui,
+                                port) < 0) {
+        ucs_error("MAD: Cannot serve perftest RTE class 0x%02x on"
+                  " '%s:%d'", perftest_rte_class, ca, ca_port);
+        goto fail;
     }
     return port;
 fail:
