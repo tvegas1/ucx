@@ -225,11 +225,11 @@ perftest_mad_sm_query(const char *ca,
 }
 
 static int 
-perftest_mad_resolve_portid_str(const char *ca,
-                                int ca_port,
-                                const char *addr,
-                                const struct ibmad_port *mad_port,
-                                ib_portid_t *dst_port)
+perftest_mad_get_portid(const char *ca,
+                        int ca_port,
+                        const char *addr,
+                        const struct ibmad_port *mad_port,
+                        ib_portid_t *dst_port)
 {
     int lid;
     uint64_t guid;
@@ -272,25 +272,6 @@ perftest_mad_resolve_portid_str(const char *ca,
         break;
     }
     return -1;
-}
-
-int
-perftest_mad_get_portid(const char *ca,
-                        int ca_port,
-                        const char *addr, 
-                        const struct ibmad_port *mad_port,
-                        ib_portid_t *dst_port)
-{
-    /* GUID needs SM port id for lookup but API also finds it */
-    const char *orig_addr = addr;
-    int ret = perftest_mad_resolve_portid_str(ca, ca_port, addr, mad_port, dst_port);
-    ;
-    if (ret < 0) {
-        ucs_error("MAD: Failed to resolve address '%s'",
-                  orig_addr);
-        return -1;
-    }
-    return 0;
 }
 
 static void perftest_mad_accept(struct perftest_context *ctx)
