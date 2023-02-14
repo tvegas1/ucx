@@ -38,6 +38,17 @@ typedef struct perftest_mad_rte_group {
     int                          is_server;
 } perftest_mad_rte_group_t;
 
+static int
+perftest_mad_get_remote_port(void *umad, ib_portid_t *remote_port)
+{
+    ib_mad_addr_t *mad_addr;
+
+    if (!(mad_addr = umad_get_mad_addr(umad))) {
+        return -1;
+    }
+    return ib_portid_set(remote_port, ntohs(mad_addr->lid), 0, 0)? -1 : 0;
+}
+
 static void perftest_mad_sendv(perftest_mad_rte_group_t *mad,
                                const struct iovec *iovec,
                                int iovcnt)
@@ -50,23 +61,81 @@ static void perftest_mad_sendv(perftest_mad_rte_group_t *mad,
     }
 }
 
-static void perftest_mad_send(perftest_mad_rte_group_t *mad,
-                              void *buffer,
-                              size_t size)
+static ucs_status_t perftest_mad_send(perftest_mad_rte_group_t *mad,
+                                      void *buffer,
+                                      size_t size)
 {
-    struct iovec iovec;
-    int iovcnt = 1;
-
-    iovec.iov_base = buffer;
-    iovec.iov_len  = size;
-
-    perftest_mad_sendv(mad, &iovec, iovcnt);
+#if 0
+    size_t umad_size = umad_size() + IB_VENDOR_RANGE2_DATA_OFFS + size;
+    void *umad = malloc(umad_size);
+    if (!umad) {
+        return UCS_ERR_NO_MEMORY;
+    }
+#endif
+    return UCS_OK;
 }
 
-static void perftest_mad_recv(perftest_mad_rte_group_t *mad,
-                              void *buffer,
-                              size_t size)
+static ucs_status_t
+perftest_mad_recv(perftest_mad_rte_group_t *rte_group,
+                  void *buffer,
+                  int *avail,
+                  ib_portid_t *remote_port)
 {
+    int ret;
+    void *umad;
+    uint8_t *data;
+
+    int timeout = 1000 * 1000;
+    int fd = mad_rpc_portid(rte_group->mad_port);
+    int len; /* cannot use 'size_t' here */
+
+    len = *avail + IB_VENDOR_RANGE2_DATA_OFFS;
+    umad = calloc(1, len + umad_size());
+    if (!umad) {
+        return UCS_ERR_NO_MEMORY;
+    }
+
+retry:
+    ret = umad_recv(fd, umad, &len, timeout);
+    if (ret < 0) {
+        if (errno == ENOSPC) {
+            umad = realloc(umad, umad_size() + len);
+            goto retry;
+        }
+        ucs_error("MAD: failed to receive umad len:%d, ret:%d", len, ret);
+        free(umad);
+        return UCS_ERR_IO_ERROR;
+    }
+
+    if (perftest_mad_get_remote_port(umad, remote_port) < 0) {
+        ucs_error("MAD: failed to get remote port from received MAD");
+        free(umad);
+        return UCS_ERR_IO_ERROR;
+    }
+
+    if (len <= 0) {
+        free(umad);
+        return UCS_ERR_OUT_OF_RANGE;
+    }
+
+    ret = umad_status(umad);
+    if (ret) {
+        ucs_error("MAD: umad received failure: %d", ret);
+        free(umad);
+        return UCS_ERR_REJECTED;
+    }
+    ret = UCS_OK;
+
+    data = (uint8_t *)umad_get_mad(umad) + IB_VENDOR_RANGE2_DATA_OFFS;
+    len -= IB_VENDOR_RANGE2_DATA_OFFS;
+    if (len > *avail) {
+        ret = UCS_ERR_MESSAGE_TRUNCATED;
+        len = *avail;
+    }
+    memcpy(buffer, data, len);
+    *avail = len;
+    free(umad);
+    return ret;
 }
 
 static unsigned mad_rte_group_size(void *rte_group)
@@ -95,7 +164,7 @@ static void mad_rte_barrier(void *rte_group, void (*progress)(void *arg),
 
     snc = 0;
 
-    perftest_mad_recv(mad_group, &snc, sizeof(snc));
+    /*perftest_mad_recv(mad_group, &snc, sizeof(snc)); */
     ucs_assert(snc == magic);
   }
 #pragma omp barrier
@@ -113,7 +182,7 @@ static void mad_rte_recv(void *rte_group, unsigned src, void *buffer,
 {
     perftest_mad_rte_group_t *mad_group = rte_group;
     ucs_assert(src != mad_group->is_server);
-    perftest_mad_recv(mad_group, buffer, max);
+    /*perftest_mad_recv(mad_group, buffer, max);*/
 }
 
 static void mad_rte_report(void *rte_group, const ucx_perf_result_t *result,
@@ -278,63 +347,28 @@ perftest_mad_get_portid(const char *ca,
 
 static void perftest_mad_accept(struct perftest_context *ctx)
 {
-    perftest_mad_rte_group_t *mad = ctx->params.super.rte_group;
-    uint8_t buf[8192 * 4] = {};
-    int len = sizeof(buf);
-    int timeout = 1000000;
-    int count = 0;
-    int fd;
-    int status;
-    unsigned magic;
+    perftest_mad_rte_group_t *rte_group = ctx->params.super.rte_group;
+    int need;
     int i;
-    int c;
+    int ret;
 
-    void *data = umad_get_mad(buf);
-    data = (uint8_t *)data + IB_VENDOR_RANGE2_DATA_OFFS;
+    do {
+        need = sizeof(ctx->params);
+        ret = perftest_mad_recv(rte_group,
+                                &ctx->params,
+                                &need,
+                                &rte_group->dst_port);
 
-    fd = mad_rpc_portid(mad->mad_port);
-
-    for (;;) {
-        status = umad_recv(fd, buf, &len, timeout);
-        if (status == -EAGAIN) {
-            ucs_error("MAD: accept eagain...");
-            continue;
-        }
-        if (status == -ETIMEDOUT) {
-            ucs_error("MAD: accept etimeout...");
-            continue;
-        }
- 
-        if (status < 0) {
-            ucs_error("MAD: accept() failed status:%d", status);
-            return;
-        }
-        count++;
-        ucs_error("MAD: msg_num:%d got len:%d", count, len);
-
-        continue;
-        c = 0;
-        for (i = len - IB_VENDOR_RANGE2_DATA_OFFS - 1; i > -1; i--, c++) {
-            if (c && !(c % 16)) {
+        for (i = 0; i < need; i++) {
+            if (i && !(i % 16)) {
                 printf("\n");
             }
-            printf("%02x ", ((uint8_t*)data)[i]);
+            printf("%02x ", ((uint8_t *)&ctx->params)[i]);
         }
         printf("\n");
-    }
-
-    status = umad_status(buf);
-    if (status) {
-        ucs_error("MAD: accept() got error status: %d", status);
-        return;
-    }
-
-    memcpy(&magic, data, sizeof(magic));
-    if (magic != 0xdeadbeef) {
-        ucs_error("MAD: Bad magic");
-    } else {
-        ucs_error("MAD: Good magic");
-    }
+        ucs_error("ACCEPT: got ret:%d, size:%d/%d",
+                  ret, need, (int)sizeof(ctx->params));
+    } while (ret != UCS_OK || need != (int)sizeof(ctx->params));
 }
 
 static void perftest_mad_connect(struct perftest_context *ctx)
@@ -413,7 +447,6 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
 {
     int ret;
     int is_server = !ctx->server_addr;
-    int i;
 
     perftest_mad_rte_group_t *rte_group = calloc(1, sizeof(*rte_group));
     if (!rte_group) {
@@ -448,14 +481,11 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
     ctx->params.super.rte        = &mad_rte;
     ctx->params.super.report_arg = ctx;
 
-    if (!is_server) {
-        /* client sends initial ping */
-        for (i = 0; i < 1; i++) {
-            perftest_mad_connect(ctx);
-        }
-        for (;;);
-    } else {
+    if (is_server) {
         perftest_mad_accept(ctx);
+    } else {
+        perftest_mad_connect(ctx);
+        for (;;);
     }
     return UCS_OK;
 fail:
