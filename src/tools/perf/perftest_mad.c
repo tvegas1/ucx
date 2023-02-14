@@ -174,7 +174,9 @@ fail:
 
 void perftest_mad_close(struct ibmad_port *port)
 {
-    mad_rpc_close_port(port);
+    if (port) {
+        mad_rpc_close_port(port);
+    }
 }
 
 static ucs_status_t
@@ -280,10 +282,10 @@ static void perftest_mad_accept(struct perftest_context *ctx)
     uint8_t buf[8192 * 4] = {};
     int len = sizeof(buf);
     int timeout = 1000000;
+    int count = 0;
     int fd;
     int status;
     unsigned magic;
-    int count = 0;
     int i;
     int c;
 
@@ -399,6 +401,7 @@ static void perftest_mad_connect(struct perftest_context *ctx)
     ucs_error("MAD: connect sent packet");
 }
 
+/* TODO: Make optional or from env */
 static void
 perftest_mad_debug_enable(void)
 {
@@ -435,7 +438,7 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
         if (ret < 0) {
             ucs_error("MAD: Client: Cannot get port as: '%s:%d' -> '%s'",
                       ctx->ib.ca, ctx->ib.ca_port, ctx->server_addr);
-            /* TODO: release dst port */
+            /* TODO: release dst port? apparently not needed */
             goto fail;
         }
     }
@@ -456,6 +459,7 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
     }
     return UCS_OK;
 fail:
+    perftest_mad_close(rte_group->mad_port);
     free(rte_group);
     return UCS_ERR_NO_DEVICE;
 }
