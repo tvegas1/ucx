@@ -49,30 +49,97 @@ perftest_mad_get_remote_port(void *umad, ib_portid_t *remote_port)
     return ib_portid_set(remote_port, ntohs(mad_addr->lid), 0, 0)? -1 : 0;
 }
 
-static void perftest_mad_sendv(perftest_mad_rte_group_t *mad,
-                               const struct iovec *iovec,
-                               int iovcnt)
+size_t perftest_mad_iov_size(const struct iovec *iovec, int iovcnt)
 {
-    if (mad->is_server) {
-        /* wait for a get */
-        /* respond */
-    } else {
-        /* send get */
+    size_t size = 0;
+    while (iovcnt-- > 0) {
+        size += iovec->iov_len;
+        iovec++;
     }
+    return size;
 }
 
-static ucs_status_t perftest_mad_send(perftest_mad_rte_group_t *mad,
-                                      void *buffer,
-                                      size_t size)
+static ucs_status_t
+perftest_mad_sendv(perftest_mad_rte_group_t *mad,
+                  const struct iovec *iovec,
+                  int iovcnt)
 {
-#if 0
+    int len;
+    int fd;
+    int agent;
+    int ret;
+    ib_rpc_t rpc = {};
+    int oui = PERFTEST_RTE_OPENIB_OUI;
+    int timeout = 1000;
+    ib_portid_t *portid;
+    ib_rmpp_hdr_t rmpp = {};
+    int i;
+    uint8_t *data;
+
+    size_t size = perftest_mad_iov_size(iovec, iovcnt);
     size_t umad_size = umad_size() + IB_VENDOR_RANGE2_DATA_OFFS + size;
     void *umad = malloc(umad_size);
+
     if (!umad) {
         return UCS_ERR_NO_MEMORY;
     }
-#endif
+
+    data = umad_get_mad(buf) + IB_VENDOR_RANGE2_DATA_OFFS;
+
+    for (i = 0; i < iovcnt; i++) {
+        memcpy(data, iovec[i].iov_base, iovec[i].iov_len);
+        data += iovec[i].iov_len;
+    }
+
+    rpc.mgtclass = PERFTEST_RTE_CLASS;
+    rpc.method = IB_MAD_METHOD_GET;
+    rpc.attr.id = 0;
+    rpc.attr.mod = 0;
+    rpc.oui = oui;
+    rpc.timeout = 0;
+    rpc.dataoffs = IB_VENDOR_RANGE2_DATA_OFFS; /* not used */
+    rpc.datasz = IB_VENDOR_RANGE2_DATA_SIZE; /* not used */
+
+    portid = &mad->dst_port;
+    portid->qp = 1;
+    if (!portid->qkey) {
+        portid->qkey = IB_DEFAULT_QP1_QKEY;
+    }
+
+    if (size > IB_VENDOR_RANGE2_DATA_SIZE) {
+        rmpp.flags = IB_RMPP_FLAG_ACTIVE;
+    }
+
+    len = mad_build_pkt(umad, &rpc, &mad->dst_port, &rmpp, NULL);
+    if (len < 0) { 
+        ucs_error("MAD: cannot build connect packet");
+        return;
+    }
+    agent = mad_rpc_class_agent(mad->mad_port, rpc.mgtclass);
+
+    fd = mad_rpc_portid(mad->mad_port);
+
+    len = IB_VENDOR_RANGE2_DATA_OFFS + size;
+    ret = umad_send(fd, agent, umad, len, timeout, 0);
+    if (ret < 0) {
+        ucs_error("MAD: cannot send connect_packet");
+        return UCS_ERR_IO_ERROR;
+    }
+    ucs_error("MAD: connect sent packet");
+
     return UCS_OK;
+}
+
+static ucs_status_t
+perftest_mad_send(perftest_mad_rte_group_t *rte_group,
+                  const void *buffer,
+                  size_t size)
+{
+    struct iovec iovec[] = {
+        .iov_base = buffer,
+        .iov_len = size,
+    }
+    return perftest_mad_sendv(rte_group, iovec, 1);
 }
 
 static ucs_status_t
