@@ -257,7 +257,7 @@ mad_rte_group_size(void *rte_group)
 static unsigned
 mad_rte_group_index(void *rte_group)
 {
-    return ((perftest_mad_rte_group_t *)rte_group)->is_server;
+    return !((perftest_mad_rte_group_t *)rte_group)->is_server;
 }
 
 static ucs_status_t
@@ -326,7 +326,7 @@ static void mad_rte_recv(void *rte_group, unsigned src, void *buffer,
     ucs_status_t status;
     int size = max;
 
-    if (src == group->is_server) {
+    if (src != group->is_server) {
         return;
     }
 
