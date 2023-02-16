@@ -21,14 +21,18 @@ bin_PROGRAMS = ucx_perftest
 ucx_perftest_SOURCES = \
 	perftest.c \
 	perftest_run.c \
-	perftest_params.c \
-	perftest_mad.c
+	perftest_params.c
 
-LDFLAGS_MAD = -libmad -libumad
+if HAVE_MAD
+ucx_perftest_SOURCES += \
+	perftest_mad.c
+endif
 
 ucx_perftest_CPPFLAGS = $(BASE_CPPFLAGS)
-ucx_perftest_CFLAGS   = $(BASE_CFLAGS) $(OPENMP_CFLAGS)
-ucx_perftest_LDFLAGS  = $(LDFLAGS_DYNAMIC_LIST_DATA) $(LDFLAGS_MAD)
+ucx_perftest_CFLAGS   = $(BASE_CFLAGS) $(OPENMP_CFLAGS) $(MAD_CFLAGS)
+ucx_perftest_LDFLAGS  = $(LDFLAGS_DYNAMIC_LIST_DATA) \
+	$(MAD_LDFLAGS) $(MAD_LIBS)
+
 ucx_perftest_LDADD    = \
 	$(abs_top_builddir)/src/uct/libuct.la \
 	$(abs_top_builddir)/src/ucp/libucp.la \
