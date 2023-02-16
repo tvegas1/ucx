@@ -571,8 +571,8 @@ perftest_mad_set_logging(void)
 ucs_status_t
 setup_mad_rte(struct perftest_context *ctx)
 {
-    int ret;
     int is_server = !ctx->server_addr;
+    int ret;
 
     perftest_mad_rte_group_t *rte_group = calloc(1, sizeof(*rte_group));
     if (!rte_group) {
@@ -585,6 +585,9 @@ setup_mad_rte(struct perftest_context *ctx)
                                             ctx->ib.ca_port,
                                             is_server);
     if (!rte_group->mad_port) {
+        ucs_error("MAD: %s: Cannot open port '%s:%d'",
+                  is_server? "Server" : "Client",
+                  ctx->ib.ca, ctx->ib.ca_port);
         goto fail;
     }
 
@@ -595,7 +598,7 @@ setup_mad_rte(struct perftest_context *ctx)
                                       rte_group->mad_port,
                                       &rte_group->dst_port);
         if (ret < 0) {
-            ucs_info("MAD: Client: Cannot get port as: '%s:%d' -> '%s'",
+            ucs_error("MAD: Client: Cannot get port as: '%s:%d' -> '%s'",
                       ctx->ib.ca, ctx->ib.ca_port, ctx->server_addr);
             goto fail;
         }
