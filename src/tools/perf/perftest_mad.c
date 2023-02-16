@@ -32,13 +32,6 @@
 #define PERFTEST_RTE_CLASS (IB_VENDOR_RANGE2_START_CLASS + 0x10)
 #define PERFTEST_RTE_OPENIB_OUI IB_OPENIB_OUI
 
-/*#define DEV_RTE_MAD*/
-#ifdef DEV_RTE_MAD
-#define rte_mad_debug ucs_error
-#else
-#define rte_mad_debug(...)
-#endif
-
 typedef struct perftest_mad_rte_group {
     struct ibmad_port           *mad_port;
     ib_portid_t                  dst_port;
@@ -120,7 +113,7 @@ perftest_mad_sendv(perftest_mad_rte_group_t *mad,
 
     len = mad_build_pkt(umad, &rpc, &mad->dst_port, &rmpp, NULL);
     if (len < 0) { 
-        rte_mad_debug("MAD: cannot build connect packet");
+        ucs_info("MAD: cannot build connect packet");
         free(umad);
         return UCS_ERR_IO_ERROR;
     }
@@ -129,14 +122,14 @@ perftest_mad_sendv(perftest_mad_rte_group_t *mad,
     fd = mad_rpc_portid(mad->mad_port);
 
     len = IB_VENDOR_RANGE2_DATA_OFFS + data_size;
-    rte_mad_debug("MAD: sent packet len size:%d", len);
+    ucs_info("MAD: sent packet len size:%d", len);
     ret = umad_send(fd, agent, umad, len, timeout, 0);
     if (ret < 0) {
-        rte_mad_debug("MAD: cannot packet size:%zu", data_size);
+        ucs_info("MAD: cannot packet size:%zu", data_size);
         free(umad);
         return UCS_ERR_IO_ERROR;
     }
-    rte_mad_debug("MAD: sent packet size:%zu", data_size);
+    ucs_info("MAD: sent packet size:%zu", data_size);
     free(umad);
     return UCS_OK;
 }
@@ -152,17 +145,6 @@ perftest_mad_send(perftest_mad_rte_group_t *rte_group,
     };
     return perftest_mad_sendv(rte_group, &iovec, 1);
 }
-
-#if 0
-static void
-perftest_mad_sendx(perftest_mad_rte_group_t *rte_group,
-                   void *buffer,
-                   size_t size)
-{
-    ucs_status_t status = perftest_mad_send(rte_group, buffer, size);
-    ucs_assert(status == UCS_OK);
-}
-#endif
 
 static ucs_status_t
 perftest_mad_recv(perftest_mad_rte_group_t *rte_group,
@@ -196,13 +178,13 @@ retry:
             umad = realloc(umad, umad_size() + len);
             goto retry;
         }
-        rte_mad_debug("MAD: failed to receive umad len:%d, ret:%d", len, ret);
+        ucs_info("MAD: failed to receive umad len:%d, ret:%d", len, ret);
         free(umad);
         return UCS_ERR_IO_ERROR;
     }
 
     if (perftest_mad_get_remote_port(umad, remote_port) < 0) {
-        rte_mad_debug("MAD: failed to get remote port from received MAD");
+        ucs_info("MAD: failed to get remote port from received MAD");
         free(umad);
         return UCS_ERR_IO_ERROR;
     }
@@ -221,7 +203,7 @@ retry:
 
     ret = umad_status(umad);
     if (ret) {
-        rte_mad_debug("MAD: umad received failure: %d", ret);
+        ucs_info("MAD: umad received failure: %d", ret);
         free(umad);
         return UCS_ERR_REJECTED;
     }
@@ -253,7 +235,7 @@ perftest_mad_recv_from_remote(perftest_mad_rte_group_t *rte_group,
         remote_port.lid = 0;
         ret = perftest_mad_recv(rte_group, buffer, &size, &remote_port);
     }
-    rte_mad_debug("MAD: recv packet size:%d/%d", size, *avail);
+    ucs_info("MAD: recv packet size:%d/%d", size, *avail);
     *avail = size;
     return ret;
 }
@@ -362,13 +344,13 @@ perftest_mad_open(char *ca, int ca_port, int is_server)
     int rmpp_version = UMAD_RMPP_VERSION;
 
     if (!ca || ca_port < 0) {
-        rte_mad_debug("MAD: Missing CA or CA Port");
+        ucs_info("MAD: Missing CA or CA Port");
         return NULL;
     }
 
     port = mad_rpc_open_port(ca, ca_port, mgmt_classes, mgmt_classes_size);
     if (!port) {
-        rte_mad_debug("MAD: Failed to open '%s:%d'", ca, ca_port);
+        ucs_info("MAD: Failed to open '%s:%d'", ca, ca_port);
         return NULL;
     }
 
@@ -377,7 +359,7 @@ perftest_mad_open(char *ca, int ca_port, int is_server)
                                 NULL,
                                 oui,
                                 port) < 0) {
-        rte_mad_debug("MAD: Cannot serve perftest RTE class 0x%02x on"
+        ucs_info("MAD: Cannot serve perftest RTE class 0x%02x on"
                   " '%s:%d'", perftest_rte_class, ca, ca_port);
         goto fail;
     }
@@ -411,7 +393,7 @@ perftest_mad_sm_query(const char *ca,
     ib_portid_t sm_id; /* SM: the GUID to LID resolver */
 
     if ((ret = umad_get_port(ca, ca_port, &port)) < 0) {
-        rte_mad_debug("MAD: Could not get SM LID");
+        ucs_info("MAD: Could not get SM LID");
         return ret;
     }
     memset(&sm_id, 0, sizeof(sm_id));
@@ -433,7 +415,7 @@ perftest_mad_sm_query(const char *ca,
 
     if ((dst_port->lid =
          ib_path_query_via(mad_port, selfgid, dst_port->gid, &sm_id, buf)) < 0) {
-        rte_mad_debug("MAD: GUID Query failed");
+        ucs_info("MAD: GUID Query failed");
         return -1;
     }
 
@@ -464,7 +446,7 @@ perftest_mad_get_portid(const char *ca,
         addr += strlen(lid_str);
         addr_type = IB_DEST_LID;
     } else {
-        rte_mad_debug("MAD: Invalid dst address, use '%s' or '%s' prefix",
+        ucs_info("MAD: Invalid dst address, use '%s' or '%s' prefix",
                   guid_str, lid_str);
         return -1;
     }
@@ -516,9 +498,7 @@ perftest_mad_accept(perftest_mad_rte_group_t *rte_group,
     ucs_status_t status;
     void *ptr;
     uint8_t buf[4096];
-
     int i;
-    (void)i;
 
     free(ctx->params.super.msg_size_list);
     ctx->params.super.msg_size_list = NULL;
@@ -530,21 +510,21 @@ perftest_mad_accept(perftest_mad_rte_group_t *rte_group,
                                    &size,
                                    &rte_group->dst_port);
 
-#ifdef DEV_RTE_MAD
-        for (i = 0; i < size; i++) {
-            if (i && !(i % 16)) {
-                printf("\n");
+        if (ucs_log_is_enabled(UCS_LOG_LEVEL_TRACE_POLL)) {
+            for (i = 0; i < size; i++) {
+                if (i && !(i % 16)) {
+                    printf("\n");
+                }
+                printf("%02x ", ((uint8_t *)&ctx->params)[i]);
             }
-            printf("%02x ", ((uint8_t *)&ctx->params)[i]);
+            printf("\n");
         }
-        printf("\n");
-#endif
-        rte_mad_debug("ACCEPT: got status:%d, size:%d/%d",
+        ucs_info("ACCEPT: got status:%d, size:%d/%d",
                   status, size, (int)sizeof(buf));
 
     } while (status != UCS_OK || !perftest_mad_accept_is_valid(buf, size));
 
-    rte_mad_debug("ACCEPT: okay");
+    ucs_info("ACCEPT: okay");
 
     size = sizeof(*ctx->params.super.msg_size_list) *
                     ctx->params.super.msg_size_cnt;
@@ -583,15 +563,13 @@ perftest_mad_connect(perftest_mad_rte_group_t *rte_group,
     return perftest_mad_sendv(rte_group, iov, iovcnt);
 }
 
-/* TODO: Make optional or from env */
-
 static void
-perftest_mad_debug_enable(void)
+perftest_mad_set_logging(void)
 {
-#ifdef DEV_RTE_MAD
-    ibdebug = 10; /* extern variable from mad headers */
-    umad_debug(10);
-#endif
+    if (ucs_log_is_enabled(UCS_LOG_LEVEL_DEBUG)) {
+        ibdebug = 10; /* extern variable from mad headers */
+        umad_debug(10);
+    }
 }
 
 ucs_status_t setup_mad_rte(struct perftest_context *ctx)
@@ -604,7 +582,7 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
         return UCS_ERR_NO_MEMORY;
     }
 
-    perftest_mad_debug_enable();
+    perftest_mad_set_logging();
 
     rte_group->mad_port = perftest_mad_open(ctx->ib.ca,
                                             ctx->ib.ca_port,
@@ -620,7 +598,7 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
                                       rte_group->mad_port,
                                       &rte_group->dst_port);
         if (ret < 0) {
-            rte_mad_debug("MAD: Client: Cannot get port as: '%s:%d' -> '%s'",
+            ucs_info("MAD: Client: Cannot get port as: '%s:%d' -> '%s'",
                       ctx->ib.ca, ctx->ib.ca_port, ctx->server_addr);
             /* TODO: release dst port? apparently not needed */
             goto fail;

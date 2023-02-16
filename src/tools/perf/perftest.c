@@ -797,8 +797,14 @@ static void ctx_free(struct perftest_context *ctx)
 static ucs_status_t
 setup_rte(struct perftest_context *ctx)
 {
+    ucs_status_t status;
+
     if (ctx->ib.ca) {
-        return setup_mad_rte(ctx);
+        status = setup_mad_rte(ctx);
+        if (status == UCS_ERR_UNSUPPORTED) {
+            ucs_error("Infiniband MAD RTE transport is not supported.");
+        }
+        return status;
     } else if (ctx->mpi) {
         return setup_mpi_rte(ctx);
     }

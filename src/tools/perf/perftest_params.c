@@ -589,7 +589,7 @@ ucs_status_t parse_opts(struct perftest_context *ctx, int mpi_initialized,
         case 'K':
             str = strtok(optarg, ":");
             if (!str) {
-                ucs_error("Invalid source interface specified");
+                ucs_error("Invalid Infiniband source interface specified");
                 return UCS_ERR_INVALID_PARAM;
             }
             ctx->ib.ca = strdup(str);
