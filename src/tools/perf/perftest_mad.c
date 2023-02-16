@@ -4,10 +4,6 @@
 * See file LICENSE for terms.
 */
 
-#ifdef HAVE_CONFIG_H
-#  include "config.h"
-#endif
-
 #include "perftest_mad.h"
 #include "perftest.h"
 
@@ -572,7 +568,8 @@ perftest_mad_set_logging(void)
     }
 }
 
-ucs_status_t setup_mad_rte(struct perftest_context *ctx)
+ucs_status_t
+setup_mad_rte(struct perftest_context *ctx)
 {
     int ret;
     int is_server = !ctx->server_addr;
@@ -600,7 +597,6 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
         if (ret < 0) {
             ucs_info("MAD: Client: Cannot get port as: '%s:%d' -> '%s'",
                       ctx->ib.ca, ctx->ib.ca_port, ctx->server_addr);
-            /* TODO: release dst port? apparently not needed */
             goto fail;
         }
     }
@@ -628,9 +624,14 @@ fail:
     return UCS_ERR_NO_DEVICE;
 }
 
-ucs_status_t cleanup_mad_rte(struct perftest_context *ctx)
+ucs_status_t
+cleanup_mad_rte(struct perftest_context *ctx)
 {
     perftest_mad_rte_group_t *group = ctx->params.super.rte_group;
-    perftest_mad_close(group->mad_port);
+    ctx->params.super.rte_group = NULL;
+    if (group) {
+        perftest_mad_close(group->mad_port);
+        free(group);
+    }
     return UCS_OK;
 }
