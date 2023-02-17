@@ -163,29 +163,44 @@ perftest_mad_recv(perftest_mad_rte_group_t *rte_group,
     void *umad;
     uint8_t *data;
     int len; /* cannot use 'size_t' here */
+    int ref_len;
     struct ib_user_mad *user_mad;
 
-    int timeout = 1000 * 1000;
+    int timeout = 3 * 1000;
     int fd      = mad_rpc_portid(rte_group->mad_port);
 
-    len = *avail + IB_VENDOR_RANGE2_DATA_OFFS;
-    umad = calloc(1, len + umad_size());
+    ref_len = *avail + IB_VENDOR_RANGE2_DATA_OFFS;
+    umad = calloc(1, ref_len + umad_size());
     if (!umad) {
         return UCS_ERR_NO_MEMORY;
     }
 
-    user_mad = umad;
+    ucs_info("MAD: umad recv FIRST len:%d", ref_len);
+
 retry:
+    user_mad = umad;
+    ucs_info("MAD: umad recv len:%d", len);
+    len = ref_len;
     ret = umad_recv(fd, umad, &len, timeout);
     if (ret < 0) {
-        if (errno == ETIMEDOUT) {
+        if (errno == ETIMEDOUT || errno == EAGAIN) {
             goto retry;
         }
-        if (errno == ENOSPC) {
-            umad = realloc_or_free(umad, umad_size() + len);
+        /* EINVAL: no length info, ENOSPC: needed length is set */
+        if (errno == EINVAL || errno == ENOSPC) {
+            if (errno == EINVAL) {
+                ref_len *= 2; /* 'len' has become invalid */
+            } else {
+                ref_len = len;
+            }
+            umad = realloc_or_free(umad, umad_size() + ref_len);
+            if (!umad) {
+                return UCS_ERR_NO_MEMORY;
+            }
             goto retry;
         }
-        ucs_info("MAD: failed to receive umad len:%d, ret:%d", len, ret);
+        ucs_info("MAD: failed to receive umad len:%d, ret:%d, errno:%d",
+                 len, ret, errno);
         free(umad);
         return UCS_ERR_IO_ERROR;
     }

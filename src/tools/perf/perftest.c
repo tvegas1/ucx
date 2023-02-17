@@ -869,6 +869,7 @@ int main(int argc, char **argv)
 
     status = setup_rte(&ctx);
     if (status != UCS_OK) {
+        ucs_error("Failed to setup RTE transport, got error: %d", status);
         ret = -1;
         goto out_msg_size_list;
     }
