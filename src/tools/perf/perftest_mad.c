@@ -35,14 +35,17 @@ typedef struct perftest_mad_rte_group {
 
 static unsigned mad_magic = 0xdeadbeef;
 
-static int perftest_mad_get_remote_port(void *umad, ib_portid_t *remote_port)
+static ucs_status_t perftest_mad_get_remote_port(void *umad, ib_portid_t *remote_port)
 {
     ib_mad_addr_t *mad_addr = umad_get_mad_addr(umad);
 
     if (!mad_addr) {
-        return -1;
+        return UCS_ERR_INVALID_PARAM;
     }
-    return ib_portid_set(remote_port, ntohs(mad_addr->lid), 0, 0) ? -1 : 0;
+    if (ib_portid_set(remote_port, ntohs(mad_addr->lid), 0, 0)) {
+        return UCS_ERR_NO_DEVICE;
+    }
+    return UCS_OK;
 }
 
 static size_t perftest_mad_iov_size(const struct iovec *iovec, int iovcnt)
@@ -198,7 +201,7 @@ retry:
         return UCS_ERR_IO_ERROR;
     }
 
-    if (perftest_mad_get_remote_port(umad, remote_port) < 0) {
+    if (perftest_mad_get_remote_port(umad, remote_port) != UCS_OK) {
         ucs_info("MAD: failed to get remote port from received MAD");
         free(umad);
         return UCS_ERR_IO_ERROR;
@@ -416,7 +419,7 @@ static ucs_status_t perftest_mad_sm_query(const char *ca, int ca_port,
 
     if ((ret = umad_get_port(ca, ca_port, &port)) < 0) {
         ucs_error("MAD: Could not get SM LID");
-        return ret;
+        return UCS_ERR_INVALID_PARAM;
     }
 
     memset(&sm_id, 0, sizeof(sm_id));
@@ -441,16 +444,16 @@ static ucs_status_t perftest_mad_sm_query(const char *ca, int ca_port,
                                       buf);
     if (dst_port->lid < 0) {
         ucs_error("MAD: GUID Query failed");
-        return -1;
+        return UCS_ERR_UNREACHABLE;
     }
     mad_decode_field(buf, IB_SA_PR_SL_F, &dst_port->sl);
-    return 0;
+    return UCS_OK;
 }
 
-static int perftest_mad_get_portid(const char *ca, int ca_port,
-                                   const char *addr,
-                                   const struct ibmad_port *mad_port,
-                                   ib_portid_t *dst_port)
+static ucs_status_t perftest_mad_get_portid(const char *ca, int ca_port,
+                                            const char *addr,
+                                            const struct ibmad_port *mad_port,
+                                            ib_portid_t *dst_port)
 {
     static const char guid_str[] = "guid:";
     static const char lid_str[]  = "lid:";
@@ -471,28 +474,28 @@ static int perftest_mad_get_portid(const char *ca, int ca_port,
     } else {
         ucs_error("MAD: Invalid dst address, use '%s' or '%s' prefix", guid_str,
                   lid_str);
-        return -1;
+        return UCS_ERR_INVALID_PARAM;
     }
 
     switch (addr_type) {
     case IB_DEST_LID:
         lid = strtol(addr, NULL, 0);
         if (!IB_LID_VALID(lid)) {
-            return -1;
+            return UCS_ERR_INVALID_PARAM;
         }
-        return ib_portid_set(dst_port, lid, 0, 0);
+        return ib_portid_set(dst_port, lid, 0, 0)? UCS_ERR_NO_DEVICE : UCS_OK;
 
     case IB_DEST_GUID:
         guid = strtoull(addr, NULL, 0);
         if (!guid) {
-            return -1;
+            return UCS_ERR_INVALID_PARAM;
         }
         return perftest_mad_sm_query(ca, ca_port, mad_port, guid, dst_port);
 
     default:
         break;
     }
-    return -1;
+    return UCS_ERR_INVALID_PARAM;
 }
 
 static int perftest_mad_accept_is_valid(void *buf, size_t size)
@@ -584,9 +587,10 @@ static ucs_status_t perftest_mad_connect(perftest_mad_rte_group_t *rte_group,
 
 static void perftest_mad_set_logging(void)
 {
+#define IB_DEBUG_LEVEL 10
     if (ucs_log_is_enabled(UCS_LOG_LEVEL_DEBUG)) {
-        ibdebug = 10; /* extern variable from mad headers */
-        umad_debug(10);
+        ibdebug = IB_DEBUG_LEVEL; /* extern variable from mad headers */
+        umad_debug(IB_DEBUG_LEVEL);
     }
 }
 
@@ -602,31 +606,32 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
 
     perftest_mad_set_logging();
 
-    rte_group->mad_port = perftest_mad_open(ctx->ib.ca, ctx->ib.ca_port,
-                                            is_server);
+    rte_group->is_server = is_server;
+    rte_group->mad_port  = perftest_mad_open(ctx->ib.ca, ctx->ib.ca_port,
+                                             is_server);
     if (!rte_group->mad_port) {
         ucs_error("MAD: %s: Cannot open port '%s:%d'",
                   is_server ? "Server" : "Client", ctx->ib.ca, ctx->ib.ca_port);
         goto fail;
     }
 
-    if (!is_server) {
+    if (is_server) {
+        ret = perftest_mad_accept(rte_group, ctx);
+    } else {
+        /* Lookup server if needed */
         ret = perftest_mad_get_portid(ctx->ib.ca, ctx->ib.ca_port,
                                       ctx->server_addr, rte_group->mad_port,
                                       &rte_group->dst_port);
-        if (ret < 0) {
+        if (ret != UCS_OK) {
             ucs_error("MAD: Client: Cannot get port as: '%s:%d' -> '%s'",
                       ctx->ib.ca, ctx->ib.ca_port, ctx->server_addr);
             goto fail;
         }
-    }
-    rte_group->is_server = is_server;
 
-    if (is_server) {
-        ret = perftest_mad_accept(rte_group, ctx);
-    } else {
+        /* Try to connect to it */
         ret = perftest_mad_connect(rte_group, ctx);
     }
+
     if (ret != UCS_OK) {
         goto fail;
     }
@@ -640,7 +645,7 @@ ucs_status_t setup_mad_rte(struct perftest_context *ctx)
     } else {
         ctx->flags |= TEST_FLAG_PRINT_RESULTS;
     }
-    return ret;
+    return UCS_OK;
 fail:
     perftest_mad_close(rte_group->mad_port);
     free(rte_group);
