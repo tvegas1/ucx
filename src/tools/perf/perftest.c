@@ -794,8 +794,7 @@ static void ctx_free(struct perftest_context *ctx)
     free(ctx->ib.ca);
 }
 
-static ucs_status_t
-setup_rte(struct perftest_context *ctx)
+static ucs_status_t setup_rte(struct perftest_context *ctx)
 {
     ucs_status_t status;
 
@@ -811,8 +810,7 @@ setup_rte(struct perftest_context *ctx)
     return setup_sock_rte(ctx);
 }
 
-static void
-cleanup_rte(struct perftest_context *ctx)
+static void cleanup_rte(struct perftest_context *ctx)
 {
     if (ctx->ib.ca) {
         cleanup_mad_rte(ctx);

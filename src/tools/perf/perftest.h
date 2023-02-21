@@ -70,7 +70,7 @@ struct perftest_context {
 
     struct {
         char *ca;
-        int ca_port;
+        int  ca_port;
     } ib;
 
     sock_rte_group_t             sock_rte_group;

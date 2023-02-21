@@ -554,7 +554,8 @@ ucs_status_t parse_opts(struct perftest_context *ctx, int mpi_initialized,
     }
 
     optind = 1;
-    while ((c = getopt(argc, argv, "p:b:6NfvIc:P:hK:" TEST_PARAMS_ARGS)) != -1) {
+    while ((c = getopt(argc, argv, "p:b:6NfvIc:P:hK:" TEST_PARAMS_ARGS)) !=
+           -1) {
         switch (c) {
         case 'p':
             ctx->port = atoi(optarg);
@@ -592,9 +593,9 @@ ucs_status_t parse_opts(struct perftest_context *ctx, int mpi_initialized,
                 ucs_error("Invalid Infiniband source interface specified");
                 return UCS_ERR_INVALID_PARAM;
             }
-            ctx->ib.ca = strdup(str);
-            str = strtok(NULL, ":");
-            ctx->ib.ca_port = str? atoi(str) : 1;
+            ctx->ib.ca      = strdup(str);
+            str             = strtok(NULL, ":");
+            ctx->ib.ca_port = str ? atoi(str) : 1;
             break;
         case 'P':
 #ifdef HAVE_MPI
