@@ -151,6 +151,26 @@ static void *realloc_or_free(void *old, size_t size)
     return ptr;
 }
 
+static const char ping_str[] = "ping";
+
+static ucs_status_t perftest_mad_ping(perftest_mad_rte_group_t *rte_group)
+{
+    const struct iovec iovec = {
+        .iov_base = (void *)ping_str,
+        .iov_len  = sizeof(ping_str),
+    };
+    return perftest_mad_sendv(rte_group, &iovec, 1);
+}
+
+static int perftest_mad_is_ping(void *buffer, size_t size)
+{
+    size_t ping_size = sizeof(ping_str);
+    if (size != ping_size) {
+        return 0;
+    }
+    return memcmp(buffer, ping_str, ping_size) == 0;
+}
+
 static ucs_status_t perftest_mad_recv(perftest_mad_rte_group_t *rte_group,
                                       void *buffer, size_t *avail,
                                       ib_portid_t *remote_port)
@@ -184,7 +204,8 @@ retry:
     ret = umad_recv(fd, umad, &len, timeout);
     if (ret < 0) {
         if (errno == ETIMEDOUT || errno == EAGAIN) {
-            goto retry;
+            free(umad);
+            return UCS_ERR_NO_PROGRESS;
         }
         if (errno != EINVAL && errno != ENOSPC) {
             ucs_error("MAD: receive: Failed, umad len:%d, ret:%d, errno:%d",
@@ -230,6 +251,11 @@ retry:
     ret = UCS_OK;
 
     data = (uint8_t*)umad_get_mad(umad) + IB_VENDOR_RANGE2_DATA_OFFS;
+    if (perftest_mad_is_ping(data, len)) {
+        ucs_debug("PONG");
+        goto retry;
+    }
+
     if (len > *avail) {
         ret = UCS_ERR_MESSAGE_TRUNCATED;
         len = *avail;
@@ -253,7 +279,19 @@ perftest_mad_recv_from_remote(perftest_mad_rte_group_t *rte_group, void *buffer,
     while (!remote_port.lid || remote_port.lid != target_port->lid) {
         size            = *avail;
         remote_port.lid = 0;
+
         ret = perftest_mad_recv(rte_group, buffer, &size, &remote_port);
+        if (ret == UCS_ERR_NO_PROGRESS) {
+            ucs_info("PING");
+            ret = perftest_mad_ping(rte_group);
+            ucs_assert(ret == UCS_OK);
+            remote_port.lid = 0;
+            continue;
+        }
+        if (ret == UCS_ERR_UNREACHABLE) {
+            ucs_error("MAD: recv: Remote unreachable");
+            exit(EXIT_FAILURE);
+        }
     }
     ucs_info("MAD: recv packet size:%zu/%zu", size, *avail);
     *avail = size;
@@ -280,6 +318,7 @@ perftest_mad_recv_magic(perftest_mad_rte_group_t *group, unsigned value)
     status = perftest_mad_recv_from_remote(group, &snc, &size,
                                            &group->dst_port);
 
+    ucs_debug("recv magic: snc 0x%08x, value 0x%08x", snc, value);
     if (status == UCS_OK && size == sizeof(snc) && snc == value) {
         return UCS_OK;
     }
