@@ -24,7 +24,6 @@
 #include <infiniband/umad.h>
 #include <infiniband/umad_types.h>
 
-/* TODO: How to pick a good one to not interfere? */
 #define PERFTEST_RTE_CLASS      (IB_VENDOR_RANGE2_START_CLASS + 0x10)
 #define PERFTEST_RTE_OPENIB_OUI IB_OPENIB_OUI
 
@@ -38,15 +37,15 @@ static unsigned mad_magic = 0xdeadbeef;
 
 static int perftest_mad_get_remote_port(void *umad, ib_portid_t *remote_port)
 {
-    ib_mad_addr_t *mad_addr;
+    ib_mad_addr_t *mad_addr = umad_get_mad_addr(umad);
 
-    if (!(mad_addr = umad_get_mad_addr(umad))) {
+    if (!mad_addr) {
         return -1;
     }
     return ib_portid_set(remote_port, ntohs(mad_addr->lid), 0, 0) ? -1 : 0;
 }
 
-size_t perftest_mad_iov_size(const struct iovec *iovec, int iovcnt)
+static size_t perftest_mad_iov_size(const struct iovec *iovec, int iovcnt)
 {
     size_t size = 0;
     while (iovcnt-- > 0) {
@@ -63,24 +62,32 @@ static ucs_status_t perftest_mad_sendv(perftest_mad_rte_group_t *mad,
     int fd;
     int agent;
     int ret;
-    ib_portid_t *portid;
     int i;
+    ib_portid_t *portid;
     uint8_t *data;
+
     int oui            = PERFTEST_RTE_OPENIB_OUI;
     int timeout        = 0;
-    ib_rmpp_hdr_t rmpp = {};
+    ib_rmpp_hdr_t rmpp = {
+        /* Always active, even when data_size <= IB_VENDOR_RANGE2_DATA_SIZE */
+        .flags = IB_RMPP_FLAG_ACTIVE,
+    };
     ib_rpc_t rpc       = {};
 
     size_t data_size = perftest_mad_iov_size(iovec, iovcnt);
     size_t size      = umad_size() + IB_VENDOR_RANGE2_DATA_OFFS + data_size;
-    void *umad       = calloc(1, size);
+    void *umad;
 
+    if (data_size > INT_MAX - IB_VENDOR_RANGE2_DATA_OFFS) {
+        return UCS_ERR_INVALID_PARAM;
+    }
+
+    umad = calloc(1, size);
     if (!umad) {
         return UCS_ERR_NO_MEMORY;
     }
 
     data = umad_get_mad(umad) + IB_VENDOR_RANGE2_DATA_OFFS;
-
     for (i = 0; i < iovcnt; i++) {
         memcpy(data, iovec[i].iov_base, iovec[i].iov_len);
         data += iovec[i].iov_len;
@@ -92,8 +99,8 @@ static ucs_status_t perftest_mad_sendv(perftest_mad_rte_group_t *mad,
     rpc.attr.mod = 0;
     rpc.oui      = oui;
     rpc.timeout  = 0;
-    rpc.dataoffs = 0; /* ok: mad_build_pkt() is passed NULL pointer */
-    rpc.datasz   = 0;
+    rpc.dataoffs = 0;
+    rpc.datasz   = 0; /* ok: mad_build_pkt() is passed NULL pointer */
 
     portid     = &mad->dst_port;
     portid->qp = 1;
@@ -101,15 +108,10 @@ static ucs_status_t perftest_mad_sendv(perftest_mad_rte_group_t *mad,
         portid->qkey = IB_DEFAULT_QP1_QKEY;
     }
 
-    if (1 || data_size > IB_VENDOR_RANGE2_DATA_SIZE) {
-        rmpp.flags = IB_RMPP_FLAG_ACTIVE;
-    }
-
     len = mad_build_pkt(umad, &rpc, &mad->dst_port, &rmpp, NULL);
     if (len < 0) {
-        ucs_info("MAD: cannot build connect packet");
         free(umad);
-        return UCS_ERR_IO_ERROR;
+        return UCS_ERR_INVALID_PARAM;
     }
 
     agent = mad_rpc_class_agent(mad->mad_port, rpc.mgtclass);
@@ -118,13 +120,13 @@ static ucs_status_t perftest_mad_sendv(perftest_mad_rte_group_t *mad,
 
     ret = umad_send(fd, agent, umad, len, timeout, 0);
     if (ret < 0) {
-        ucs_info("MAD: sent packet size:%zu failed", data_size);
-        free(umad);
-        return UCS_ERR_IO_ERROR;
+        goto failure;
     }
-    ucs_info("MAD: sent packet size:%zu sucess", data_size);
     free(umad);
     return UCS_OK;
+failure:
+    free(umad);
+    return UCS_ERR_IO_ERROR;
 }
 
 static ucs_status_t perftest_mad_send(perftest_mad_rte_group_t *rte_group,
