@@ -152,14 +152,14 @@ static void *realloc_or_free(void *old, size_t size)
 }
 
 static ucs_status_t perftest_mad_recv(perftest_mad_rte_group_t *rte_group,
-                                      void *buffer, int *avail,
+                                      void *buffer, size_t *avail,
                                       ib_portid_t *remote_port)
 {
     int ret;
     void *umad;
     uint8_t *data;
     int len; /* cannot use 'size_t' here */
-    int ref_len;
+    size_t ref_len;
     struct ib_user_mad *user_mad;
 
     int timeout = 3 * 1000;
@@ -171,48 +171,49 @@ static ucs_status_t perftest_mad_recv(perftest_mad_rte_group_t *rte_group,
         return UCS_ERR_NO_MEMORY;
     }
 
-    ucs_info("MAD: umad recv FIRST len:%d", ref_len);
-
+    ucs_debug("MAD: receive: Allocated len:%zu", ref_len);
 retry:
+    if (ref_len > INT_MAX - umad_size()) {
+        free(umad);
+        return UCS_ERR_INVALID_PARAM;
+    }
+
     user_mad = umad;
-    ucs_info("MAD: umad recv len:%d", len);
-    len = ref_len;
+    len      = ref_len;
+
     ret = umad_recv(fd, umad, &len, timeout);
     if (ret < 0) {
         if (errno == ETIMEDOUT || errno == EAGAIN) {
             goto retry;
         }
-        /* EINVAL: no length info, ENOSPC: needed length is set */
-        if (errno == EINVAL || errno == ENOSPC) {
-            if (errno == EINVAL) {
-                ref_len *= 2; /* 'len' has become invalid */
-            } else {
-                ref_len = len;
-            }
-            umad = realloc_or_free(umad, umad_size() + ref_len);
-            if (!umad) {
-                return UCS_ERR_NO_MEMORY;
-            }
-            goto retry;
+        if (errno != EINVAL && errno != ENOSPC) {
+            ucs_error("MAD: receive: Failed, umad len:%d, ret:%d, errno:%d",
+                      len, ret, errno);
+            free(umad);
+            return UCS_ERR_IO_ERROR;
         }
-        ucs_info("MAD: failed to receive umad len:%d, ret:%d, errno:%d", len,
-                 ret, errno);
-        free(umad);
-        return UCS_ERR_IO_ERROR;
+        /* EINVAL: no length info, ENOSPC: needed length is set */
+        if (errno == EINVAL) {
+            ref_len *= 2; /* 'len' has become invalid */
+        } else {
+            ref_len = len;
+        }
+        umad = realloc_or_free(umad, umad_size() + ref_len);
+        if (!umad) {
+            return UCS_ERR_NO_MEMORY;
+        }
+        goto retry;
     }
 
     if (perftest_mad_get_remote_port(umad, remote_port) != UCS_OK) {
-        ucs_info("MAD: failed to get remote port from received MAD");
         free(umad);
         return UCS_ERR_IO_ERROR;
     }
 
     len -= IB_VENDOR_RANGE2_DATA_OFFS;
     if (len <= 0) {
-        ucs_info("MAD: Returned send timeout or frame too small");
-
         if (user_mad->status == ETIMEDOUT) {
-            ucs_error("Remote unreachable");
+            ucs_info("MAD: receive: Remote unreachable");
             free(umad);
             return UCS_ERR_UNREACHABLE;
         }
@@ -222,7 +223,7 @@ retry:
 
     ret = umad_status(umad);
     if (ret) {
-        ucs_info("MAD: umad received failure: %d", ret);
+        ucs_info("MAD: receive: Status failure: %d", ret);
         free(umad);
         return UCS_ERR_REJECTED;
     }
@@ -241,20 +242,20 @@ retry:
 
 static ucs_status_t
 perftest_mad_recv_from_remote(perftest_mad_rte_group_t *rte_group, void *buffer,
-                              int *avail, const ib_portid_t *target_port)
+                              size_t *avail, const ib_portid_t *target_port)
 {
     ucs_status_t ret        = UCS_ERR_IO_ERROR;
     ib_portid_t remote_port = {
         .lid = 0
     };
-    int size; /* TODO: size_t */
+    size_t size;
 
     while (!remote_port.lid || remote_port.lid != target_port->lid) {
         size            = *avail;
         remote_port.lid = 0;
         ret = perftest_mad_recv(rte_group, buffer, &size, &remote_port);
     }
-    ucs_info("MAD: recv packet size:%d/%d", size, *avail);
+    ucs_info("MAD: recv packet size:%zu/%zu", size, *avail);
     *avail = size;
     return ret;
 }
@@ -273,7 +274,7 @@ static ucs_status_t
 perftest_mad_recv_magic(perftest_mad_rte_group_t *group, unsigned value)
 {
     unsigned snc;
-    int size = sizeof(snc);
+    size_t size = sizeof(snc);
     ucs_status_t status;
 
     status = perftest_mad_recv_from_remote(group, &snc, &size,
@@ -331,7 +332,7 @@ rte_mad_recv(void *rte_group, unsigned src, void *buffer, size_t max, void *req)
 {
     perftest_mad_rte_group_t *group = rte_group;
     ucs_status_t status;
-    int size = max;
+    size_t size = max;
 
     if (src != group->is_server) {
         return;
@@ -517,7 +518,7 @@ static int perftest_mad_accept_is_valid(void *buf, size_t size)
 static ucs_status_t perftest_mad_accept(perftest_mad_rte_group_t *rte_group,
                                         struct perftest_context *ctx)
 {
-    int size;
+    size_t size;
     ucs_status_t status;
     void *ptr;
     uint8_t buf[4096];
@@ -530,8 +531,8 @@ static ucs_status_t perftest_mad_accept(perftest_mad_rte_group_t *rte_group,
         size   = sizeof(buf);
         status = perftest_mad_recv(rte_group, buf, &size, &rte_group->dst_port);
 
-        ucs_debug("MAD: Accept: receive got status:%d, size:%d/%d", status, size,
-                  (int)sizeof(buf));
+        ucs_debug("MAD: Accept: receive got status:%d, size:%zu/%zu", status, size,
+                  sizeof(buf));
 
     } while (status != UCS_OK || !perftest_mad_accept_is_valid(buf, size));
 
