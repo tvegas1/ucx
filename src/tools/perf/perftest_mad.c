@@ -259,12 +259,12 @@ perftest_mad_recv_from_remote(perftest_mad_rte_group_t *rte_group, void *buffer,
     return ret;
 }
 
-static unsigned mad_rte_group_size(void *rte_group)
+static unsigned rte_mad_group_size(void *rte_group)
 {
     return 2;
 }
 
-static unsigned mad_rte_group_index(void *rte_group)
+static unsigned rte_mad_group_index(void *rte_group)
 {
     return !((perftest_mad_rte_group_t*)rte_group)->is_server;
 }
@@ -311,7 +311,7 @@ static ucs_status_t perftest_mad_barrier(perftest_mad_rte_group_t *group)
 }
 
 static void
-mad_rte_barrier(void *rte_group, void (*progress)(void *arg), void *arg)
+rte_mad_barrier(void *rte_group, void (*progress)(void *arg), void *arg)
 {
     ucs_status_t status;
 
@@ -319,7 +319,7 @@ mad_rte_barrier(void *rte_group, void (*progress)(void *arg), void *arg)
     ucs_assert(status == UCS_OK);
 }
 
-static void mad_rte_post_vec(void *rte_group, const struct iovec *iovec,
+static void rte_mad_post_vec(void *rte_group, const struct iovec *iovec,
                              int iovcnt, void **req)
 {
     ucs_status_t status = perftest_mad_sendv(rte_group, iovec, iovcnt);
@@ -327,7 +327,7 @@ static void mad_rte_post_vec(void *rte_group, const struct iovec *iovec,
 }
 
 static void
-mad_rte_recv(void *rte_group, unsigned src, void *buffer, size_t max, void *req)
+rte_mad_recv(void *rte_group, unsigned src, void *buffer, size_t max, void *req)
 {
     perftest_mad_rte_group_t *group = rte_group;
     ucs_status_t status;
@@ -342,7 +342,7 @@ mad_rte_recv(void *rte_group, unsigned src, void *buffer, size_t max, void *req)
     ucs_assert(status == UCS_OK);
 }
 
-static void mad_rte_report(void *rte_group, const ucx_perf_result_t *result,
+static void rte_mad_report(void *rte_group, const ucx_perf_result_t *result,
                            void *arg, const char *extra_info, int is_final,
                            int is_multi_thread)
 {
@@ -353,13 +353,13 @@ static void mad_rte_report(void *rte_group, const ucx_perf_result_t *result,
 }
 
 static ucx_perf_rte_t mad_rte = {
-    .group_size   = mad_rte_group_size,
-    .group_index  = mad_rte_group_index,
-    .barrier      = mad_rte_barrier,
-    .post_vec     = mad_rte_post_vec,
-    .recv         = mad_rte_recv,
+    .group_size   = rte_mad_group_size,
+    .group_index  = rte_mad_group_index,
+    .barrier      = rte_mad_barrier,
+    .post_vec     = rte_mad_post_vec,
+    .recv         = rte_mad_recv,
     .exchange_vec = (ucx_perf_rte_exchange_vec_func_t)ucs_empty_function,
-    .report       = mad_rte_report,
+    .report       = rte_mad_report,
 };
 
 static struct ibmad_port *
