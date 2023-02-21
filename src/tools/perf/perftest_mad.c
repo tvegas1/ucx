@@ -92,8 +92,8 @@ static ucs_status_t perftest_mad_sendv(perftest_mad_rte_group_t *mad,
     rpc.attr.mod = 0;
     rpc.oui      = oui;
     rpc.timeout  = 0;
-    rpc.dataoffs = IB_VENDOR_RANGE2_DATA_OFFS; /* not used */
-    rpc.datasz   = IB_VENDOR_RANGE2_DATA_SIZE; /* not used */
+    rpc.dataoffs = 0; /* ok: mad_build_pkt() is passed NULL pointer */
+    rpc.datasz   = 0;
 
     portid     = &mad->dst_port;
     portid->qp = 1;
