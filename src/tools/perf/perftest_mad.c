@@ -417,7 +417,8 @@ static ucs_status_t perftest_mad_sm_query(const char *ca, int ca_port,
     uint8_t buf[IB_SA_DATA_SIZE] = {};
     umad_port_t port             = {};
 
-    if ((ret = umad_get_port(ca, ca_port, &port)) < 0) {
+    ret = umad_get_port(ca, ca_port, &port);
+    if (ret < 0) {
         ucs_error("MAD: Could not get SM LID");
         return UCS_ERR_INVALID_PARAM;
     }
@@ -520,7 +521,7 @@ static ucs_status_t perftest_mad_accept(perftest_mad_rte_group_t *rte_group,
     ucs_status_t status;
     void *ptr;
     uint8_t buf[4096];
-    int i;
+    int lid;
 
     free(ctx->params.super.msg_size_list);
     ctx->params.super.msg_size_list = NULL;
@@ -529,22 +530,15 @@ static ucs_status_t perftest_mad_accept(perftest_mad_rte_group_t *rte_group,
         size   = sizeof(buf);
         status = perftest_mad_recv(rte_group, buf, &size, &rte_group->dst_port);
 
-        if (ucs_log_is_enabled(UCS_LOG_LEVEL_TRACE_POLL)) {
-            for (i = 0; i < size; i++) {
-                if (i && !(i % 16)) {
-                    printf("\n");
-                }
-                printf("%02x ", ((uint8_t*)&ctx->params)[i]);
-            }
-            printf("\n");
-        }
-        ucs_info("ACCEPT: got status:%d, size:%d/%d", status, size,
-                 (int)sizeof(buf));
+        ucs_debug("MAD: Accept: receive got status:%d, size:%d/%d", status, size,
+                  (int)sizeof(buf));
 
     } while (status != UCS_OK || !perftest_mad_accept_is_valid(buf, size));
 
-    ucs_info("ACCEPT: okay");
+    lid = rte_group->dst_port.lid;
+    ucs_debug("MAD: Accept: remote lid:%d/0x%02x", lid, lid);
 
+    /* Import received message size list */
     size = sizeof(*ctx->params.super.msg_size_list) *
            ctx->params.super.msg_size_cnt;
     ptr  = calloc(1, size);
