@@ -127,6 +127,10 @@ static int sock_io(int sock, ssize_t (*sock_call)(int, void *, size_t, int),
             ucs_assert(pfd.revents & poll_events);
 
             ret = sock_call(sock, (char*)data + total, size - total, 0);
+            if (!ret && poll_events == POLLIN) {
+                ucs_error("%s() remote closed connection", name);
+                exit(EXIT_FAILURE);
+            }
             if (ret < 0) {
                 ucs_error("%s() failed: %m", name);
                 return -1;
@@ -824,6 +828,7 @@ static void cleanup_rte(struct perftest_context *ctx)
 int main(int argc, char **argv)
 {
     struct perftest_context ctx;
+    unsigned needed_flags;
     ucs_status_t status;
     int mpi_initialized;
     int ret;
@@ -865,12 +870,16 @@ int main(int argc, char **argv)
         goto out_msg_size_list;
     }
 
+    needed_flags = ctx.params.super.flags & UCX_PERF_TEST_FLAG_ERR_HANDLING;
+
     status = setup_rte(&ctx);
     if (status != UCS_OK) {
         ucs_error("Failed to setup RTE transport, got error: %d", status);
         ret = -1;
         goto out_msg_size_list;
     }
+
+    ctx.params.super.flags |= needed_flags;
 
     /* Run the test */
     status = run_test(&ctx);
