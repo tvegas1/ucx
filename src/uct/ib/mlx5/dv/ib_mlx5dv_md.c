@@ -912,17 +912,12 @@ err:
     md->super.flush_rkey = uct_ib_mlx5_flush_rkey_make();
 }
 
-static int uct_ib_mlx5_is_xgvmi_alias_supported(struct ibv_context *ctx)
+static int uct_ib_mlx5_query_cap_2(struct ibv_context *ctx, void *out, size_t size)
 {
-#if HAVE_DECL_MLX5DV_DEVX_UMEM_REG_EX
-    char out[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_out)] = {};
-    char in[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_in)]   = {};
-    uint64_t object_for_other_vhca;
-    uint32_t object_to_object;
-    void *cap;
-    ucs_status_t status;
+    char in[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_in)] = {};
 
-    cap = UCT_IB_MLX5DV_ADDR_OF(query_hca_cap_out, out, capability);
+    ucs_assertv(size == UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_out),
+                "size=%zu", size);
 
     /* query HCA CAP 2 */
     UCT_IB_MLX5DV_SET(query_hca_cap_in, in, opcode,
@@ -930,9 +925,40 @@ static int uct_ib_mlx5_is_xgvmi_alias_supported(struct ibv_context *ctx)
     UCT_IB_MLX5DV_SET(query_hca_cap_in, in, op_mod,
                       UCT_IB_MLX5_HCA_CAP_OPMOD_GET_CUR |
                               (UCT_IB_MLX5_CAP_2_GENERAL << 1));
-    status = uct_ib_mlx5_devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out),
-                                          "QUERY_HCA_CAP", 1);
-    if (status != UCS_OK) {
+    return uct_ib_mlx5_devx_general_cmd(ctx, in, sizeof(in), out, size,
+                                        "QUERY_HCA_CAP, CAP_2", 1);
+}
+
+static int uct_ib_mlx5_mkey_by_name_set(uct_ib_mlx5_md_t *md, void *cap)
+{
+    uint32_t base = 0;
+    size_t size   = 0;
+    int log_size;
+    int mkey_by_name;
+
+    if (cap == NULL) {
+        return 0;
+    }
+    mkey_by_name = UCT_IB_MLX5DV_GET(cmd_hca_cap_2, cap, mkey_by_name_reserve);
+    if (mkey_by_name != 0) {
+        md->flags |= UCT_IB_MLX5_MD_FLAG_MKEY_BY_NAME;
+        log_size = UCT_IB_MLX5DV_GET(cmd_hca_cap_2, cap, mkey_by_name_reserve_log_size);
+        base = UCT_IB_MLX5DV_GET(cmd_hca_cap_2, cap, mkey_by_name_reserve_base);
+        size = UCS_BIT(log_size);
+    }
+
+    md->mkey_by_name.base = base;
+    md->mkey_by_name.size = size;
+    return mkey_by_name;
+}
+
+static int uct_ib_mlx5_is_xgvmi_alias_supported(void *cap)
+{
+#if HAVE_DECL_MLX5DV_DEVX_UMEM_REG_EX
+    uint64_t object_for_other_vhca;
+    uint32_t object_to_object;
+
+    if (cap == NULL) {
         return 0;
     }
 
@@ -980,9 +1006,11 @@ static ucs_status_t uct_ib_mlx5_devx_md_open(struct ibv_device *ibv_device,
 {
     char out[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_out)] = {};
     char in[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_in)]   = {};
+    char cap_2_out[UCT_IB_MLX5DV_ST_SZ_BYTES(query_hca_cap_out)] = {};
     ucs_status_t status                                    = UCS_OK;
     uint8_t lag_state                                      = 0;
     uint64_t cap_flags                                     = 0;
+    void *cap_2                                            = NULL;
     uint8_t log_max_qp;
     uct_ib_uint128_t vhca_id;
     struct ibv_context *ctx;
@@ -1148,10 +1176,12 @@ static ucs_status_t uct_ib_mlx5_devx_md_open(struct ibv_device *ibv_device,
         md->flags |= UCT_IB_MLX5_MD_FLAG_MP_XRQ_FIRST_MSG;
     }
 
-    memcpy(vhca_id, UCT_IB_MLX5DV_ADDR_OF(cmd_hca_cap, cap, vhca_id),
-           sizeof(vhca_id));
+    status = uct_ib_mlx5_query_cap_2(ctx, cap_2_out, sizeof(cap_2_out));
+    if (status == UCS_OK) {
+        cap_2 = UCT_IB_MLX5DV_ADDR_OF(query_hca_cap_out, cap_2_out, capability);
+    }
 
-    if (uct_ib_mlx5_is_xgvmi_alias_supported(ctx)) {
+    if (uct_ib_mlx5_is_xgvmi_alias_supported(cap_2)) {
         cap_flags |= UCT_MD_FLAG_EXPORTED_MKEY;
         ucs_debug("%s: cross gvmi alias mkey is supported",
                   uct_ib_device_name(dev));
@@ -1159,6 +1189,17 @@ static ucs_status_t uct_ib_mlx5_devx_md_open(struct ibv_device *ibv_device,
         ucs_debug("%s: crossing_vhca_mkey is not supported",
                   uct_ib_device_name(dev));
     }
+
+    if (uct_ib_mlx5_mkey_by_name_set(md, cap_2) != 0) {
+        ucs_debug("%s: mkey_by_name is supported (base:%u size:%zu)",
+                  uct_ib_device_name(dev), md->mkey_by_name.base, md->mkey_by_name.size);
+    } else {
+        ucs_debug("%s: mkey_by_name is not supported",
+                  uct_ib_device_name(dev));
+    }
+
+    memcpy(vhca_id, UCT_IB_MLX5DV_ADDR_OF(cmd_hca_cap, cap, vhca_id),
+           sizeof(vhca_id));
 
     status = uct_ib_mlx5_devx_check_odp(md, md_config, cap);
     if (status != UCS_OK) {

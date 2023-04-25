@@ -187,6 +187,8 @@ enum {
     UCT_IB_MLX5_MD_FLAG_CQE128_ZIP           = UCS_BIT(11),
     /* Device performance is optimized when RDMA_WRITE is not used */
     UCT_IB_MLX5_MD_FLAG_NO_RDMA_WR_OPTIMIZED = UCS_BIT(12),
+    /* Device supports Mkey-by-name */
+    UCT_IB_MLX5_MD_FLAG_MKEY_BY_NAME         = UCS_BIT(13),
 
     /* Object to be created by DevX */
     UCT_IB_MLX5_MD_FLAG_DEVX_OBJS_SHIFT  = 16,
@@ -298,6 +300,11 @@ typedef struct uct_ib_mlx5_md {
     /* The maximum number of outstanding RDMA Read/Atomic operations per DC QP. */
     uint8_t                  max_rd_atomic_dc;
     uint8_t                  log_max_dci_stream_channels;
+
+    struct {
+        uint32_t base;
+        size_t   size;
+    } mkey_by_name;
 } uct_ib_mlx5_md_t;
 
 
