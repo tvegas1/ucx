@@ -392,7 +392,10 @@ enum ucp_mem_map_params_field {
     UCP_MEM_MAP_PARAM_FIELD_MEMORY_TYPE          = UCS_BIT(4),
 
     /** Exported memory handle buffer. */
-    UCP_MEM_MAP_PARAM_FIELD_EXPORTED_MEMH_BUFFER = UCS_BIT(5)
+    UCP_MEM_MAP_PARAM_FIELD_EXPORTED_MEMH_BUFFER = UCS_BIT(5),
+
+    /** Request for an expected memory registration identifier */
+    UCP_MEM_MAP_PARAM_FIELD_MKEY_INDEX           = UCS_BIT(6)
 };
 
 /**
@@ -1651,6 +1654,15 @@ typedef struct ucp_mem_map_params {
       * set to NULL by default.
       */
     const void              *exported_memh_buffer;
+
+     /**
+      * Request for a registration using a specific memory identifier. This
+      * enables symmetric key schemes, where nodes do not need to exchange their
+      * respective memory keys. They are instead using a shared function that
+      * is generating matching memory key identifiers. With that they are able
+      * to recreate locally the peer rkey.
+      */
+     uint32_t               mkey_index;
 } ucp_mem_map_params_t;
 
 
