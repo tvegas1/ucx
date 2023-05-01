@@ -31,9 +31,10 @@ ucp_memh_rcache_print(ucp_mem_h memh, void *address, size_t length)
 }
 
 static UCS_F_ALWAYS_INLINE ucs_status_t
-ucp_memh_get(ucp_context_h context, void *address, size_t length,
-             ucs_memory_type_t mem_type, ucp_md_map_t reg_md_map,
-             unsigned uct_flags, ucp_mem_h *memh_p)
+ucp_memh_get_internal(ucp_context_h context, void *address, size_t length,
+                      ucs_memory_type_t mem_type, ucp_md_map_t reg_md_map,
+                      unsigned uct_flags, ucp_mem_h *memh_p,
+                      uint32_t mkey_index)
 {
     ucs_rcache_region_t *rregion;
     ucp_mem_h memh;
@@ -69,8 +70,19 @@ not_found:
     }
 
     return ucp_memh_get_slow(context, address, length, mem_type, reg_md_map,
-                             uct_flags, memh_p);
+                             uct_flags, memh_p, mkey_index);
 }
+
+static UCS_F_ALWAYS_INLINE ucs_status_t
+ucp_memh_get(ucp_context_h context, void *address, size_t length,
+             ucs_memory_type_t mem_type, ucp_md_map_t reg_md_map,
+             unsigned uct_flags, ucp_mem_h *memh_p)
+{
+    return ucp_memh_get_internal(context, address, length,
+                                 mem_type, reg_md_map,
+                                 uct_flags, memh_p, UCP_MKEY_INDEX_INVALID);
+}
+
 
 static UCS_F_ALWAYS_INLINE void
 ucp_memh_put(ucp_context_h context, ucp_mem_h memh)

@@ -372,6 +372,16 @@ void ucp_memh_cleanup(ucp_context_h context, ucp_mem_h memh)
     }
 }
 
+static uint32_t ucp_memh_get_mkey_index(const ucp_mem_h memh)
+{
+    uint32_t mkey_index = UCP_MKEY_INDEX_INVALID;
+
+    if (memh->flags & UCP_MEMH_FLAG_MKEY_INDEX) {
+        mkey_index = memh->mkey_index;
+    }
+    return mkey_index;
+}
+
 static ucs_status_t ucp_memh_register(ucp_context_h context, ucp_mem_h memh,
                                       ucp_md_map_t md_map, void *address,
                                       size_t length, ucs_memory_type_t mem_type,
@@ -385,6 +395,7 @@ static ucs_status_t ucp_memh_register(ucp_context_h context, ucp_mem_h memh,
     ucs_log_level_t err_level;
     ucp_md_index_t md_index;
     ucs_status_t status;
+    uint32_t mkey_index;
 
     if (md_map == 0) {
         return UCS_OK;
@@ -423,12 +434,20 @@ static ucs_status_t ucp_memh_register(ucp_context_h context, ucp_mem_h memh,
         }
     }
 
+    mkey_index = ucp_memh_get_mkey_index(memh);
+
     ucs_for_each_bit(md_index, md_map) {
         reg_params.field_mask = UCT_MD_MEM_REG_FIELD_FLAGS;
         if (dmabuf_md_map & UCS_BIT(md_index)) {
             /* If this MD can consume a dmabuf and we have it - provide it */
             reg_params.field_mask |= UCT_MD_MEM_REG_FIELD_DMABUF_FD |
                                      UCT_MD_MEM_REG_FIELD_DMABUF_OFFSET;
+        }
+
+        if (mkey_index != UCP_MKEY_INDEX_INVALID) {
+            /* Non supporting MD should ignore it */
+            reg_params.field_mask |= UCT_MD_MEM_REG_FIELD_MKEY_INDEX;
+            reg_params.mkey_index = mkey_index;
         }
 
         status = uct_md_mem_reg_v2(context->tl_mds[md_index].md, address,
@@ -468,6 +487,12 @@ out_close_dmabuf_fd:
 static size_t ucp_memh_size(ucp_context_h context)
 {
     return sizeof(ucp_mem_t) + (sizeof(uct_mem_h) * context->num_mds);
+}
+
+static void ucp_memh_set_mkey_index(ucp_mem_h memh, uint32_t mkey_index)
+{
+    memh->flags |= UCP_MEMH_FLAG_MKEY_INDEX;
+    memh->mkey_index = mkey_index;
 }
 
 static void ucp_memh_set(ucp_mem_h memh, ucp_context_h context, void* address,
@@ -588,6 +613,22 @@ ucp_memh_init_from_parent(ucp_mem_h memh, ucp_md_map_t parent_md_map)
     }
 }
 
+static int
+ucp_memh_mkey_index_matches(ucp_mem_h memh, ucp_mem_h other_memh)
+{
+    if (memh->flags & UCP_MEMH_FLAG_MKEY_INDEX) {
+        if (!(other_memh->flags & UCP_MEMH_FLAG_MKEY_INDEX)) {
+            return 0;
+        }
+        if (memh->mkey_index != other_memh->mkey_index) {
+            return 0;
+        }
+    } else if (other_memh->flags & UCP_MEMH_FLAG_MKEY_INDEX) {
+        return 0;
+    }
+    return 1;
+}
+
 static ucs_status_t
 ucp_memh_init_uct_reg(ucp_context_h context, ucp_mem_h memh, unsigned uct_flags)
 {
@@ -597,6 +638,7 @@ ucp_memh_init_uct_reg(ucp_context_h context, ucp_mem_h memh, unsigned uct_flags)
     void *address              = ucp_memh_address(memh);
     size_t length              = ucp_memh_length(memh);
     ucs_status_t status;
+    uint32_t mkey_index;
 
     if (context->rcache == NULL) {
         status = ucp_memh_register(context, memh, reg_md_map, address, length,
@@ -607,10 +649,16 @@ ucp_memh_init_uct_reg(ucp_context_h context, ucp_mem_h memh, unsigned uct_flags)
 
         memh->reg_id = context->next_memh_reg_id++;
     } else {
-        status = ucp_memh_get(context, address, length, mem_type, cache_md_map,
-                              uct_flags, &memh->parent);
+        mkey_index = ucp_memh_get_mkey_index(memh);
+
+        status = ucp_memh_get_internal(context, address, length, mem_type,
+                                       cache_md_map, uct_flags, &memh->parent,
+                                       mkey_index);
         if (status != UCS_OK) {
             goto err;
+        }
+        if (!ucp_memh_mkey_index_matches(memh, memh->parent)) {
+            goto err_put;
         }
 
         ucp_memh_init_from_parent(memh, cache_md_map);
@@ -634,7 +682,7 @@ err:
 ucs_status_t
 ucp_memh_get_slow(ucp_context_h context, void *address, size_t length,
                   ucs_memory_type_t mem_type, ucp_md_map_t reg_md_map,
-                  unsigned uct_flags, ucp_mem_h *memh_p)
+                  unsigned uct_flags, ucp_mem_h *memh_p, uint32_t mkey_index)
 {
     ucp_mem_h memh = NULL; /* To suppress compiler warning */
     void *reg_address;
@@ -670,6 +718,20 @@ ucp_memh_get_slow(ucp_context_h context, void *address, size_t length,
     reg_length  = ucp_memh_length(memh);
 
     ucs_assert(memh->mem_type == mem_type);
+
+    /* Requesting for a specific mkey_index */
+    if (mkey_index != UCP_MKEY_INDEX_INVALID) {
+        if (memh->md_map != 0) {
+            /* Memory handle already has registrations without mkey index? */
+            if (mkey_index != ucp_memh_get_mkey_index(memh)) {
+                status = UCS_ERR_INVALID_PARAM;
+                goto err_free_memh;
+            }
+        } else {
+            /* Make sure to use requested mkey index */
+            ucp_memh_set_mkey_index(memh, mkey_index);
+        }
+    }
 
     status = ucp_memh_register(context, memh, ~memh->md_map & reg_md_map,
                                reg_address, reg_length, mem_type, uct_flags);
@@ -777,6 +839,7 @@ ucs_status_t ucp_mem_map(ucp_context_h context, const ucp_mem_map_params_t *para
     void *address;
     const void *exported_memh_buffer;
     size_t length;
+    uint32_t mkey_index;
 
     if (!(params->field_mask &
           (UCP_MEM_MAP_PARAM_FIELD_LENGTH |
@@ -795,6 +858,8 @@ ucs_status_t ucp_mem_map(ucp_context_h context, const ucp_mem_map_params_t *para
                                            EXPORTED_MEMH_BUFFER, NULL);
     mem_type             = UCP_PARAM_VALUE(MEM_MAP, params, memory_type,
                                            MEMORY_TYPE, UCS_MEMORY_TYPE_LAST);
+    mkey_index           = UCP_PARAM_VALUE(MEM_MAP, params, mkey_index,
+                                           MKEY_INDEX, UCP_MKEY_INDEX_INVALID);
 
     if ((flags & UCP_MEM_MAP_FIXED) &&
         ((uintptr_t)address % ucs_get_page_size())) {
@@ -860,6 +925,9 @@ ucs_status_t ucp_mem_map(ucp_context_h context, const ucp_mem_map_params_t *para
             goto out;
         }
 
+        if (mkey_index != UCP_MKEY_INDEX_INVALID) {
+            ucp_memh_set_mkey_index(memh, mkey_index);
+        }
         status = ucp_memh_init_uct_reg(context, memh, uct_flags);
         if (status != UCS_OK) {
             ucp_memh_put(context, memh); /* TODO: Check code path for leak/corruption */

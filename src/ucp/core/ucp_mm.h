@@ -26,7 +26,8 @@ enum {
     /*
      * Memory handle was imported and points to some peer's memory buffer.
      */
-    UCP_MEMH_FLAG_IMPORTED  = UCS_BIT(0)
+    UCP_MEMH_FLAG_IMPORTED   = UCS_BIT(0),
+    UCP_MEMH_FLAG_MKEY_INDEX = UCS_BIT(1)
 };
 
 
@@ -37,6 +38,7 @@ enum {
     UCP_MEMH_BUFFER_FLAG_EXPORTED = UCS_BIT(0) 
 };
 
+#define UCP_MKEY_INDEX_INVALID UINT32_MAX
 
 /**
  * Memory handle.
@@ -58,6 +60,7 @@ typedef struct ucp_mem {
                                            - pointer to self if rcache disabled
                                            - pointer to rcache memh if entry is a user memh */
     uint64_t            reg_id;         /* Registration ID */
+    uint32_t            mkey_index;     /* Identifier used for symmetric key allocation */
     uct_mem_h           uct[0];         /* Sparse memory handles array num_mds in size */
 } ucp_mem_t;
 
@@ -156,7 +159,7 @@ void ucp_mem_type_unreg_buffers(ucp_worker_h worker, ucs_memory_type_t mem_type,
 ucs_status_t ucp_memh_get_slow(ucp_context_h context, void *address,
                                size_t length, ucs_memory_type_t mem_type,
                                ucp_md_map_t reg_md_map, unsigned uct_flags,
-                               ucp_mem_h *memh_p);
+                               ucp_mem_h *memh_p, uint32_t mkey_index);
 
 void ucp_memh_cleanup(ucp_context_h context, ucp_mem_h memh);
 
