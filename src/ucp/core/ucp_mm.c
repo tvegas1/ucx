@@ -699,9 +699,9 @@ err_free_memh:
 }
 
 static ucs_status_t
-ucp_memh_alloc(ucp_context_h context, void *address, size_t length,
-               ucs_memory_type_t mem_type, unsigned uct_flags,
-               const char *alloc_name, ucp_mem_h *memh_p)
+ucp_memh_alloc_from_addr(ucp_context_h context, void *address, size_t length,
+                          ucs_memory_type_t mem_type, unsigned uct_flags,
+                          const char *alloc_name, ucp_mem_h *memh_p)
 {
     uct_allocated_memory_t mem;
     ucs_status_t status;
@@ -710,28 +710,42 @@ ucp_memh_alloc(ucp_context_h context, void *address, size_t length,
     status = ucp_mem_do_alloc(context, address, length, uct_flags, mem_type,
                               alloc_name, &mem);
     if (status != UCS_OK) {
-        goto out;
+        return status;
     }
 
     status = ucp_memh_create_from_mem(context, &mem, &memh);
     if (status != UCS_OK) {
-        goto err_dealloc;
-    }
-
-    status = ucp_memh_init_uct_reg(context, memh, uct_flags);
-    if (status != UCS_OK) {
-        goto err_free_memh;
+        uct_mem_free(&mem);
+        return status;
     }
 
     *memh_p = memh;
     return UCS_OK;
+}
 
-err_free_memh:
-    ucs_free(memh);
-err_dealloc:
-    uct_mem_free(&mem);
-out:
-    return status;
+static ucs_status_t
+ucp_memh_alloc(ucp_context_h context, void *address, size_t length,
+               ucs_memory_type_t mem_type, unsigned uct_flags,
+               const char *alloc_name, ucp_mem_h *memh_p)
+{
+    ucp_mem_h memh;
+    ucs_status_t status;
+
+    status = ucp_memh_alloc_from_addr(
+        context, address, length, mem_type, uct_flags, alloc_name, &memh);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    status = ucp_memh_init_uct_reg(context, memh, uct_flags);
+    if (status != UCS_OK) {
+        ucp_memh_cleanup(context, memh); /* TODO: Check code path for leak/corruption */
+        ucs_free(memh);
+        return status;
+    }
+
+    *memh_p = memh;
+    return UCS_OK;
 }
 
 static ucs_status_t
@@ -834,19 +848,21 @@ ucs_status_t ucp_mem_map(ucp_context_h context, const ucp_mem_map_params_t *para
 
     if (memh_flags & UCP_MEMH_FLAG_IMPORTED) {
         status = ucp_memh_import(context, exported_memh_buffer, &memh);
-    } else if (flags & UCP_MEM_MAP_ALLOCATE) {
-        status = ucp_memh_alloc(context, address, length, mem_type,
-                                uct_flags, "user memory", &memh);
     } else {
-        status = ucp_memh_create(context, address, length, mem_type,
-                             UCT_ALLOC_METHOD_LAST, 0, &memh);
+        if (flags & UCP_MEM_MAP_ALLOCATE) {
+            status = ucp_memh_alloc_from_addr(context, address, length, mem_type,
+                                              uct_flags, "user memory", &memh);
+        } else {
+            status = ucp_memh_create(context, address, length, mem_type,
+                                     UCT_ALLOC_METHOD_LAST, 0, &memh);
+        }
         if (status != UCS_OK) {
             goto out;
         }
 
         status = ucp_memh_init_uct_reg(context, memh, uct_flags);
         if (status != UCS_OK) {
-            ucs_free(memh);
+            ucp_memh_put(context, memh); /* TODO: Check code path for leak/corruption */
             goto out;
         }
     }
