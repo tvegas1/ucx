@@ -1191,8 +1191,10 @@ static ucs_status_t uct_ib_mlx5_devx_md_open(struct ibv_device *ibv_device,
     }
 
     if (uct_ib_mlx5_mkey_by_name_set(md, cap_2) != 0) {
-        ucs_debug("%s: mkey_by_name is supported (base:%u size:%zu)",
+        ucs_debug("%s: mkey_by_name is supported (base:0x%08x size:%zu)",
                   uct_ib_device_name(dev), md->mkey_by_name.base, md->mkey_by_name.size);
+
+        cap_flags |= UCT_MD_FLAG_MKEY_INDEX;
     } else {
         ucs_debug("%s: mkey_by_name is not supported",
                   uct_ib_device_name(dev));

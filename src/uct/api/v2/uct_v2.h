@@ -843,7 +843,14 @@ typedef enum {
      * packed key by @ref uct_md_mkey_pack_v2 with
      * @ref UCT_MD_MKEY_PACK_FLAG_INVALIDATE flag.
      */
-    UCT_MD_FLAG_INVALIDATE_AMO = UCS_BIT(12)
+    UCT_MD_FLAG_INVALIDATE_AMO = UCS_BIT(12),
+
+    /**
+     * Memory domain suports memory registration with a specific index. Any
+     * other entity using the same memory index can rebuild the key matching
+     * such registration, without exchanging any data.
+     */
+    UCT_MD_FLAG_MKEY_INDEX     = UCS_BIT(13)
 } uct_md_flags_v2_t;
 
 
