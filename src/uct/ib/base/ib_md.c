@@ -46,6 +46,7 @@ typedef struct {
     unsigned flags;
     int      dmabuf_fd;
     size_t   dmabuf_offset;
+    uint32_t mkey_index; /* Memory registration with expected keys */
 } uct_ib_mem_reg_internal_params_t;
 
 static UCS_CONFIG_DEFINE_ARRAY(pci_bw,
@@ -671,11 +672,12 @@ uct_ib_mem_reg_internal(uct_md_h uct_md, void *address, size_t length,
     }
 
     ucs_trace("registered memory %p..%p on %s lkey 0x%x rkey 0x%x "
-              "access 0x%lx flags 0x%x dmabuf_fd %d dmabuf_offset %ld",
+              "access 0x%lx flags 0x%x dmabuf_fd %d dmabuf_offset %ld "
+              "mkey_index 0x%08x",
               address, UCS_PTR_BYTE_OFFSET(address, length),
               uct_ib_device_name(&md->dev), memh->lkey, memh->rkey,
               access_flags, params->flags, params->dmabuf_fd,
-              params->dmabuf_offset);
+              params->dmabuf_offset, params->mkey_index);
 
     if (md->config.odp.prefetch) {
         md->ops->mem_prefetch(md, memh, address, length);
@@ -701,6 +703,9 @@ uct_ib_mem_reg_params_to_internal(const uct_md_mem_reg_params_t *params,
     reg_params->dmabuf_offset = UCS_PARAM_VALUE(UCT_MD_MEM_REG_FIELD, params,
                                                 dmabuf_offset, DMABUF_OFFSET,
                                                 0);
+    reg_params->mkey_index    = UCS_PARAM_VALUE(UCT_MD_MEM_REG_FIELD, params,
+                                                mkey_index, MKEY_INDEX,
+                                                UCT_INVALID_MKEY_INDEX);
 }
 
 static ucs_status_t
