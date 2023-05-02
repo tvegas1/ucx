@@ -39,15 +39,144 @@ typedef struct uct_ib_mlx5_mem {
     struct mlx5dv_devx_obj     *indirect_dvmr;
     struct mlx5dv_devx_umem    *umem;
     struct mlx5dv_devx_obj     *cross_mr;
+    struct mlx5dv_devx_umem    *umem_reg; /* for devx MTT registrations */
+    struct mlx5dv_devx_obj     *umem_reg_mr; /* for devx MTT registrations */
 #endif
     uct_ib_mlx5_mr_t           mrs[];
 } uct_ib_mlx5_mem_t;
 
 
+#if HAVE_DECL_MLX5DV_DEVX_UMEM_REG_EX
+static struct mlx5dv_devx_umem *
+uct_ib_mlx5_devx_reg_umem(uct_ib_mlx5_md_t *md, void *address, size_t length,
+                          int access)
+{
+    struct mlx5dv_devx_umem_in umem_in;
+    void *aligned_address;
+
+    aligned_address     = ucs_align_down_pow2_ptr(address, ucs_get_page_size());
+    ucs_assertv(aligned_address == address,
+                "address %p aligned_address %p", address, aligned_address);
+
+    /* register umem */
+    umem_in.addr        = address;
+    umem_in.size        = length;
+    umem_in.access      = UCT_IB_MLX5_MD_UMEM_ACCESS | access;
+    umem_in.pgsz_bitmap = UCS_MASK(ucs_ffs64((uint64_t)aligned_address) + 1);
+    umem_in.comp_mask   = 0;
+    return mlx5dv_devx_umem_reg_ex(md->super.dev.ibv_context, &umem_in);
+}
+#endif
+
+static ucs_status_t
+uct_ib_mlx5_devx_reg_key_umem(
+                        uct_ib_md_t *ib_md, uct_ib_mem_t *ib_memh,
+                        void *address, size_t length,
+                        uct_ib_mr_t *mr, uct_ib_mr_type_t mr_type,
+                        uint32_t mkey_index)
+{
+#if HAVE_DECL_MLX5DV_DEVX_UMEM_REG_EX
+    uct_ib_mlx5_md_t *md    = ucs_derived_of(ib_md, uct_ib_mlx5_md_t);
+    uct_ib_mlx5_mem_t *memh = ucs_derived_of(ib_memh, uct_ib_mlx5_mem_t);
+    char in[UCT_IB_MLX5DV_ST_SZ_BYTES(create_mkey_in)]                = {0};
+    char out[UCT_IB_MLX5DV_ST_SZ_BYTES(create_mkey_out)]              = {0};
+    ucs_status_t status;
+    void *mkc;
+    uint32_t lkey;
+    uint32_t rkey;
+
+    ucs_assertv((memh->umem_reg == NULL) && (memh->umem_reg_mr == NULL),
+                "memh %p umem_reg %p umem_reg_mr %p",
+                memh, memh->umem_reg, memh->umem_reg_mr);
+
+    if (mkey_index >= (md->mkey_by_name.size + md->mkey_by_name.base)) {
+        uct_ib_md_log_mem_reg_error(ib_md, 0,
+                    "uct_ib_mlx5_devx_reg_key_umem: mkey_index %x > %zx",
+                    mkey_index, md->mkey_by_name.size);
+        return UCS_ERR_INVALID_PARAM;
+    }
+
+    mr->ib = ucs_calloc(1, sizeof(*mr->ib), "direct umem");
+    if (!mr->ib) {
+        return UCS_ERR_NO_MEMORY;
+    }
+
+    /* Create UMEM object: priviledged code does va -> pa resolution */
+    memh->umem_reg = uct_ib_mlx5_devx_reg_umem(md, address, length, 0);
+    if (memh->umem_reg == NULL) {
+        uct_ib_md_log_mem_reg_error(ib_md, 0,
+                        "uct_ib_mlx5_devx_reg_key_umem: umem reg failed: %m");
+        status = UCS_ERR_NO_MEMORY;
+        goto err_free;
+    }
+
+    /* Create direct mkey context */
+    mkc = UCT_IB_MLX5DV_ADDR_OF(create_mkey_in, in, memory_key_mkey_entry);
+    UCT_IB_MLX5DV_SET(create_mkey_in, in, opcode,
+                      UCT_IB_MLX5_CMD_OP_CREATE_MKEY);
+
+    UCT_IB_MLX5DV_SET(create_mkey_in, in, input_mkey_index, mkey_index);
+    UCT_IB_MLX5DV_SET(create_mkey_in, in, mkey_umem_valid, 1);
+    UCT_IB_MLX5DV_SET(create_mkey_in, in, mkey_umem_id, memh->umem_reg->umem_id);
+    UCT_IB_MLX5DV_SET64(create_mkey_in, in, mkey_umem_offset, 0);
+    UCT_IB_MLX5DV_SET(mkc, mkc, access_mode_1_0,
+                      UCT_IB_MLX5_MKC_ACCESS_MODE_MTT);
+    UCT_IB_MLX5DV_SET(mkc, mkc, a, 1);
+    UCT_IB_MLX5DV_SET(mkc, mkc, rw, 1);
+    UCT_IB_MLX5DV_SET(mkc, mkc, rr, 1);
+    UCT_IB_MLX5DV_SET(mkc, mkc, lw, 1);
+    UCT_IB_MLX5DV_SET(mkc, mkc, lr, 1);
+    UCT_IB_MLX5DV_SET(mkc, mkc, qpn, 0xffffff);
+    UCT_IB_MLX5DV_SET(mkc, mkc, pd, uct_ib_mlx5_devx_md_get_pdn(md));
+    UCT_IB_MLX5DV_SET(mkc, mkc, mkey_7_0, md->mkey_tag);
+    UCT_IB_MLX5DV_SET64(mkc, mkc, start_addr, (intptr_t)address);
+    UCT_IB_MLX5DV_SET64(mkc, mkc, len, length);
+
+    memh->umem_reg_mr = uct_ib_mlx5_devx_obj_create(
+                                                 md->super.dev.ibv_context, in,
+                                                 sizeof(in), out, sizeof(out),
+                                                 "MKEY_REG",
+                                                 uct_md_reg_log_lvl(0));
+    if (memh->umem_reg_mr == NULL) {
+        status = UCS_ERR_IO_ERROR;
+        goto err_umem_dereg;
+    }
+
+
+    lkey = UCT_IB_MLX5DV_GET(create_mkey_out, out, mkey_index) << 8;
+    rkey = lkey | md->mkey_tag;
+
+    mr->ib->lkey = lkey;
+    mr->ib->rkey = rkey;
+    mr->ib->addr = address;
+    mr->ib->length  = length;
+
+    if (mr_type == UCT_IB_MR_DEFAULT) {
+        uct_ib_memh_init_keys(ib_memh, lkey, rkey);
+    }
+
+    ucs_trace("devx_reg_key_umem(addr=%p len=%zu mr_type=%d mkey_index=%x) "
+              "=> lkey/rkey 0x%x/0x%x",
+              address, length, mr_type, mkey_index, lkey, rkey);
+    return UCS_OK;
+
+err_umem_dereg:
+    mlx5dv_devx_umem_dereg(memh->umem_reg);
+    memh->umem_reg = NULL;
+err_free:
+    ucs_free(mr->ib);
+    mr->ib = NULL;
+    return status;
+#else
+    return UCS_ERR_UNSUPPORTED;
+#endif
+}
+
 static ucs_status_t
 uct_ib_mlx5_reg_key(uct_ib_md_t *md, void *address, size_t length,
                     uint64_t access_flags, int dmabuf_fd, size_t dmabuf_offset,
-                    uct_ib_mem_t *ib_memh, uct_ib_mr_type_t mr_type, int silent)
+                    uct_ib_mem_t *ib_memh, uct_ib_mr_type_t mr_type,
+                    uint32_t mkey_index, int silent)
 {
     uct_ib_mlx5_mem_t *memh = ucs_derived_of(ib_memh, uct_ib_mlx5_mem_t);
 
@@ -468,6 +597,41 @@ static ucs_status_t uct_ib_mlx5_devx_reg_indirect_key(uct_ib_md_t *ibmd,
     return UCS_OK;
 }
 
+/* Translate from abstract index to IB DevX specific value */
+static inline uint32_t
+uct_ib_mlx5_mkey_index(uct_ib_mlx5_md_t *md, uint32_t mkey_index)
+{
+    uint32_t index = 0;
+
+    if (mkey_index != UCT_INVALID_MKEY_INDEX) {
+        if (md->flags & UCT_IB_MLX5_MD_FLAG_MKEY_BY_NAME) {
+            index = md->mkey_by_name.base + (mkey_index * 2);
+        }
+    }
+    return index;
+}
+
+static ucs_status_t
+uct_ib_mlx5_devx_reg_key(uct_ib_md_t *ib_md, void *address, size_t length,
+                         uint64_t access_flags, int dmabuf_fd, size_t dmabuf_offset,
+                         uct_ib_mem_t *ib_memh, uct_ib_mr_type_t mr_type,
+                         uint32_t mkey_index, int silent)
+{
+    uct_ib_mlx5_md_t *md    = ucs_derived_of(ib_md, uct_ib_mlx5_md_t);
+    uct_ib_mlx5_mem_t *memh = ucs_derived_of(ib_memh, uct_ib_mlx5_mem_t);
+    uint32_t index          = uct_ib_mlx5_mkey_index(md, mkey_index);
+
+    if ((index != 0) && (mr_type == UCT_IB_MR_DEFAULT)) {
+        return uct_ib_mlx5_devx_reg_key_umem(
+                                 ib_md, ib_memh, address, length,
+                                 &memh->mrs[mr_type].super,
+                                 mr_type, index);
+    }
+    return uct_ib_reg_key_impl(ib_md, address, length, access_flags, dmabuf_fd,
+                               dmabuf_offset, ib_memh,
+                               &memh->mrs[mr_type].super, mr_type, silent);
+}
+
 static ucs_status_t uct_ib_mlx5_devx_dereg_key(uct_ib_md_t *ibmd,
                                                uct_ib_mem_t *ib_memh,
                                                uct_ib_mr_type_t mr_type)
@@ -508,9 +672,29 @@ static ucs_status_t uct_ib_mlx5_devx_dereg_key(uct_ib_md_t *ibmd,
         memh->umem = NULL;
     }
 
-    status = uct_ib_mlx5_dereg_key(ibmd, ib_memh, mr_type);
-    if (ret_status == UCS_OK) {
-        ret_status = status;
+    if (memh->umem_reg_mr != NULL) {
+        ret = mlx5dv_devx_obj_destroy(memh->umem_reg_mr);
+        if (ret < 0) {
+            ucs_warn("mlx5dv_devx_obj_destroy(umem_reg_mr) failed: %m");
+            ret_status = UCS_ERR_IO_ERROR;
+        }
+        memh->umem_reg_mr = NULL;
+
+        if (memh->umem_reg != NULL) {
+            ret = mlx5dv_devx_umem_dereg(memh->umem_reg);
+            if (ret < 0) {
+                ucs_warn("mlx5dv_devx_umem_dereg(umem_reg) failed: %m");
+                ret_status = UCS_ERR_IO_ERROR;
+            }
+            memh->umem_reg = NULL;
+        }
+        ucs_free(memh->mrs[mr_type].super.ib);
+        memh->mrs[mr_type].super.ib = NULL;
+    } else {
+        status = uct_ib_mlx5_dereg_key(ibmd, ib_memh, mr_type);
+        if (ret_status == UCS_OK) {
+            ret_status = status;
+        }
     }
 
     return ret_status;
@@ -1465,24 +1649,6 @@ err:
     return 0;
 }
 
-#if HAVE_DECL_MLX5DV_DEVX_UMEM_REG_EX
-static struct mlx5dv_devx_umem *
-uct_ib_mlx5_devx_reg_umem(uct_ib_mlx5_md_t *md, void *address, size_t length)
-{
-    struct mlx5dv_devx_umem_in umem_in;
-    void *aligned_address;
-
-    /* register umem */
-    umem_in.addr        = address;
-    umem_in.size        = length;
-    umem_in.access      = UCT_IB_MLX5_MD_UMEM_ACCESS;
-    aligned_address     = ucs_align_down_pow2_ptr(address, ucs_get_page_size());
-    umem_in.pgsz_bitmap = UCS_MASK(ucs_ffs64((uint64_t)aligned_address) + 1);
-    umem_in.comp_mask   = 0;
-    return mlx5dv_devx_umem_reg_ex(md->super.dev.ibv_context, &umem_in);
-}
-#endif
-
 static ucs_status_t
 uct_ib_mlx5_devx_reg_exported_key(uct_ib_md_t *ib_md, uct_ib_mem_t *ib_memh)
 {
@@ -1503,7 +1669,7 @@ uct_ib_mlx5_devx_reg_exported_key(uct_ib_md_t *ib_md, uct_ib_mem_t *ib_memh)
     length  = memh->mrs[UCT_IB_MR_DEFAULT].super.ib->length;
 
     ucs_assertv(memh->umem == NULL, "memh %p umem %p", memh, memh->umem);
-    memh->umem = uct_ib_mlx5_devx_reg_umem(md, address, length);
+    memh->umem = uct_ib_mlx5_devx_reg_umem(md, address, length, 0);
     if (memh->umem == NULL) {
         uct_ib_md_log_mem_reg_error(ib_md, 0,
                                     "mlx5dv_devx_umem_reg_ex() failed: %m");
@@ -1653,7 +1819,7 @@ err_out:
 static uct_ib_md_ops_t uct_ib_mlx5_devx_md_ops = {
     .open                = uct_ib_mlx5_devx_md_open,
     .cleanup             = uct_ib_mlx5_devx_md_cleanup,
-    .reg_key             = uct_ib_mlx5_reg_key,
+    .reg_key             = uct_ib_mlx5_devx_reg_key,
     .reg_indirect_key    = uct_ib_mlx5_devx_reg_indirect_key,
     .dereg_key           = uct_ib_mlx5_devx_dereg_key,
     .reg_atomic_key      = uct_ib_mlx5_devx_reg_atomic_key,

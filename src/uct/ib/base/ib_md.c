@@ -450,11 +450,13 @@ uct_ib_md_handle_mr_list_multithreaded(uct_ib_md_t *md, void *address,
 static ucs_status_t
 uct_ib_md_reg_mr(uct_ib_md_t *md, void *address, size_t length,
                  uint64_t access_flags, int dmabuf_fd, size_t dmabuf_offset,
-                 int silent, uct_ib_mem_t *memh, uct_ib_mr_type_t mr_type)
+                 int silent, uct_ib_mem_t *memh, uct_ib_mr_type_t mr_type,
+                 uint32_t mkey_index)
 {
     ucs_status_t status;
 
-    if ((dmabuf_fd == UCT_DMABUF_FD_INVALID) &&
+    if ((mkey_index == UCT_INVALID_MKEY_INDEX) &&
+        (dmabuf_fd == UCT_DMABUF_FD_INVALID) &&
         (length >= md->config.min_mt_reg)) {
         status = UCS_PROFILE_NAMED_CALL_ALWAYS("reg_multithreaded",
                                                md->ops->reg_multithreaded, md,
@@ -471,7 +473,7 @@ uct_ib_md_reg_mr(uct_ib_md_t *md, void *address, size_t length,
     }
 
     return md->ops->reg_key(md, address, length, access_flags, dmabuf_fd,
-                            dmabuf_offset, memh, mr_type, silent);
+                            dmabuf_offset, memh, mr_type, mkey_index, silent);
 }
 
 ucs_status_t uct_ib_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
@@ -636,6 +638,7 @@ uct_ib_mem_reg_internal(uct_md_h uct_md, void *address, size_t length,
 {
     uct_ib_md_t *md       = ucs_derived_of(uct_md, uct_ib_md_t);
     uint64_t access_flags = uct_ib_md_access_flags(md, params->flags, length);
+    uint32_t mkey_index   = params->mkey_index;
     ucs_status_t status;
 
     /* coverity[dead_error_condition] */
@@ -654,7 +657,7 @@ uct_ib_mem_reg_internal(uct_md_h uct_md, void *address, size_t length,
 
     status = uct_ib_md_reg_mr(md, address, length, access_flags,
                               params->dmabuf_fd, params->dmabuf_offset, silent,
-                              memh, UCT_IB_MR_DEFAULT);
+                              memh, UCT_IB_MR_DEFAULT, mkey_index);
     if (status != UCS_OK) {
         return status;
     }
@@ -663,7 +666,8 @@ uct_ib_mem_reg_internal(uct_md_h uct_md, void *address, size_t length,
         status = uct_ib_md_reg_mr(md, address, length,
                                   access_flags & ~IBV_ACCESS_RELAXED_ORDERING,
                                   params->dmabuf_fd, params->dmabuf_offset,
-                                  silent, memh, UCT_IB_MR_STRICT_ORDER);
+                                  silent, memh, UCT_IB_MR_STRICT_ORDER,
+                                  mkey_index);
         if (status != UCS_OK) {
             goto err;
         }
@@ -799,7 +803,8 @@ static ucs_status_t uct_ib_verbs_reg_key(uct_ib_md_t *md, void *address,
                                          size_t length, uint64_t access_flags,
                                          int dmabuf_fd, size_t dmabuf_offset,
                                          uct_ib_mem_t *ib_memh,
-                                         uct_ib_mr_type_t mr_type, int silent)
+                                         uct_ib_mr_type_t mr_type,
+                                         uint32_t mkey_index, int silent)
 {
     uct_ib_verbs_mem_t *memh = ucs_derived_of(ib_memh, uct_ib_verbs_mem_t);
 

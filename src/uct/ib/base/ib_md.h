@@ -244,6 +244,8 @@ typedef void (*uct_ib_md_cleanup_func_t)(struct uct_ib_md *);
  * @param [in]  memh           Memory region handle.
  *                             The method must initialize lkey & rkey.
  *
+ * @param [in]  mkey_index     Request placement for mkey context
+ *
  * @return UCS_OK on success or error code in case of failure.
  */
 typedef ucs_status_t (*uct_ib_md_reg_key_func_t)(struct uct_ib_md *md,
@@ -252,6 +254,7 @@ typedef ucs_status_t (*uct_ib_md_reg_key_func_t)(struct uct_ib_md *md,
                                                  size_t dmabuf_offset,
                                                  uct_ib_mem_t *memh,
                                                  uct_ib_mr_type_t mr_type,
+                                                 uint32_t mkey_index,
                                                  int silent);
 
 /**
