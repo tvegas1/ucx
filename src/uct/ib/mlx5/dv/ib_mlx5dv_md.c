@@ -1465,6 +1465,24 @@ err:
     return 0;
 }
 
+#if HAVE_DECL_MLX5DV_DEVX_UMEM_REG_EX
+static struct mlx5dv_devx_umem *
+uct_ib_mlx5_devx_reg_umem(uct_ib_mlx5_md_t *md, void *address, size_t length)
+{
+    struct mlx5dv_devx_umem_in umem_in;
+    void *aligned_address;
+
+    /* register umem */
+    umem_in.addr        = address;
+    umem_in.size        = length;
+    umem_in.access      = UCT_IB_MLX5_MD_UMEM_ACCESS;
+    aligned_address     = ucs_align_down_pow2_ptr(address, ucs_get_page_size());
+    umem_in.pgsz_bitmap = UCS_MASK(ucs_ffs64((uint64_t)aligned_address) + 1);
+    umem_in.comp_mask   = 0;
+    return mlx5dv_devx_umem_reg_ex(md->super.dev.ibv_context, &umem_in);
+}
+#endif
+
 static ucs_status_t
 uct_ib_mlx5_devx_reg_exported_key(uct_ib_md_t *ib_md, uct_ib_mem_t *ib_memh)
 {
@@ -1475,26 +1493,17 @@ uct_ib_mlx5_devx_reg_exported_key(uct_ib_md_t *ib_md, uct_ib_mem_t *ib_memh)
     char out[UCT_IB_MLX5DV_ST_SZ_BYTES(create_mkey_out)]              = {0};
     char ein[UCT_IB_MLX5DV_ST_SZ_BYTES(allow_other_vhca_access_in)]   = {0};
     char eout[UCT_IB_MLX5DV_ST_SZ_BYTES(allow_other_vhca_access_out)] = {0};
-    struct mlx5dv_devx_umem_in umem_in;
     ucs_status_t status;
     void *access_key;
-    void *address, *aligned_address;
+    void *address;
     size_t length;
     void *mkc;
 
     address = memh->mrs[UCT_IB_MR_DEFAULT].super.ib->addr;
     length  = memh->mrs[UCT_IB_MR_DEFAULT].super.ib->length;
 
-    /* register umem */
-    umem_in.addr        = address;
-    umem_in.size        = length;
-    umem_in.access      = UCT_IB_MLX5_MD_UMEM_ACCESS;
-    aligned_address     = ucs_align_down_pow2_ptr(address, ucs_get_page_size());
-    umem_in.pgsz_bitmap = UCS_MASK(ucs_ffs64((uint64_t)aligned_address) + 1);
-    umem_in.comp_mask   = 0;
-
     ucs_assertv(memh->umem == NULL, "memh %p umem %p", memh, memh->umem);
-    memh->umem = mlx5dv_devx_umem_reg_ex(md->super.dev.ibv_context, &umem_in);
+    memh->umem = uct_ib_mlx5_devx_reg_umem(md, address, length);
     if (memh->umem == NULL) {
         uct_ib_md_log_mem_reg_error(ib_md, 0,
                                     "mlx5dv_devx_umem_reg_ex() failed: %m");
