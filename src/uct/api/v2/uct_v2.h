@@ -197,7 +197,8 @@ typedef struct {
 typedef enum {
     UCT_MD_MEM_REG_FIELD_FLAGS         = UCS_BIT(0),
     UCT_MD_MEM_REG_FIELD_DMABUF_FD     = UCS_BIT(1),
-    UCT_MD_MEM_REG_FIELD_DMABUF_OFFSET = UCS_BIT(2)
+    UCT_MD_MEM_REG_FIELD_DMABUF_OFFSET = UCS_BIT(2),
+    UCT_MD_MEM_REG_FIELD_MKEY_INDEX    = UCS_BIT(3)
 } uct_md_mem_reg_field_mask_t;
 
 
@@ -439,6 +440,15 @@ typedef struct uct_md_mem_reg_params {
      * dmabuf region, then this field must be omitted or set to 0.
      */
     size_t                       dmabuf_offset;
+
+    /**
+     * When @ref UCT_MD_MEM_REG_FIELD_MKEY_INDEX is set in the field_mask, the
+     * mkey_index is used as a parameter to the registration routine.
+     *
+     * This enables a remote node sharing the same index to recreate the remote
+     * key without the need to receive it.
+     */
+    uint32_t                     mkey_index;
 } uct_md_mem_reg_params_t;
 
 
