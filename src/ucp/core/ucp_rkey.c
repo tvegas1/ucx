@@ -220,6 +220,88 @@ UCS_PROFILE_FUNC(ssize_t, ucp_rkey_pack_memh,
                                 sys_dev_map, sys_distance, buffer, 1, 0);
 }
 
+UCS_PROFILE_FUNC(ucs_status_t, ucp_rkey_build,
+                 (context, memh, mkey_index, rkey_p),
+                ucp_context_h context, const ucp_mem_h memh,
+                uint32_t mkey_index, ucp_rkey_h *rkey_p)
+{
+    ucs_status_t status = UCS_OK;
+    ucp_md_map_t md_map = memh->md_map;
+    int md_count        = ucs_popcount(md_map);
+    uct_md_h md;
+    ucp_rkey_h rkey;
+    ucp_tl_rkey_t *tl_rkey;
+    ucp_rsc_index_t cmpt_index;
+    unsigned md_index;
+    unsigned tl_index;
+
+    *rkey_p = 0;
+
+    ucs_trace("context %p build rkey using memh %p md_map 0x%" PRIx64 " mkey_index %x",
+              context, memh, md_map, mkey_index);
+
+    if (mkey_index == UCP_MKEY_INDEX_INVALID) {
+        ucs_error("rkey_build: invalid mkey_index parameter");
+        return UCS_ERR_INVALID_PARAM;
+    }
+
+    rkey = ucs_malloc(sizeof(*rkey) + (sizeof(rkey->tl_rkey[0]) * md_count),
+                      "ucp_rkey");
+    if (rkey == NULL) {
+        ucs_error("rkey_build: failed to allocate remote key");
+        return UCS_ERR_NO_MEMORY;
+    }
+
+    rkey->md_map   = 0;
+    rkey->mem_type = memh->mem_type;
+    rkey->flags    = UCP_RKEY_DESC_FLAG_MULTI_EP;
+#if ENABLE_PARAMS_CHECK
+    rkey->ep       = NULL;
+#endif
+    rkey->cache.ep_cfg_index = UCP_WORKER_CFG_INDEX_NULL;
+
+    ucs_log_indent(1);
+    UCP_THREAD_CS_ENTER(&context->mt_lock);
+
+    tl_index  = 0;
+    ucs_for_each_bit(md_index, md_map) {
+        md = context->tl_mds[md_index].md;
+        tl_rkey = &rkey->tl_rkey[tl_index];
+
+        cmpt_index = context->tl_mds[md_index].cmpt_index;
+        tl_rkey->cmpt = context->tl_cmpts[cmpt_index].cmpt;
+
+        status = uct_md_rkey_build(md, mkey_index, &tl_rkey->rkey);
+        if (status == UCS_ERR_UNSUPPORTED) {
+            continue;
+        }
+        if (status != UCS_OK) {
+            ucs_error("failed to build rkey for md[%d]: %s", md_index,
+                      ucs_status_string(status));
+            goto err_destroy;
+        }
+
+        ucs_trace("rkey[%d] built for md %d is 0x%lx", tl_index, md_index,
+                  tl_rkey->rkey.rkey);
+        rkey->md_map |= UCS_BIT(md_index);
+        tl_index++;
+    }
+
+    ucs_trace("context %p: built rkey %p mkey_index %x md_map 0x%" PRIx64
+              " type %s", context, rkey, mkey_index, rkey->md_map,
+              ucs_memory_type_names[rkey->mem_type]);
+
+    *rkey_p = rkey;
+    status = UCS_OK;
+    goto out;
+err_destroy:
+    ucp_rkey_destroy(rkey);
+out:
+    UCP_THREAD_CS_EXIT(&context->mt_lock);
+    ucs_log_indent(-1);
+    return status;
+}
+
 static UCS_F_ALWAYS_INLINE ucp_md_map_t ucp_memh_export_md_map(ucp_mem_h memh)
 {
     return memh->context->export_md_map & memh->md_map;
@@ -1053,7 +1135,7 @@ ucp_lane_index_t ucp_rkey_find_rma_lane(ucp_context_h context,
                                         ucp_lane_map_t ignore,
                                         uct_rkey_t *uct_rkey_p)
 {
-    ucp_md_index_t dst_md_index;
+    ucp_md_index_t index;
     ucp_lane_index_t lane;
     ucp_md_index_t md_index;
     uct_md_attr_v2_t *md_attr;
@@ -1062,6 +1144,7 @@ ucp_lane_index_t ucp_rkey_find_rma_lane(ucp_context_h context,
     int prio;
 
     for (prio = 0; prio < UCP_MAX_LANES; ++prio) {
+
         lane = lanes[prio];
         if (lane == UCP_NULL_LANE) {
             return UCP_NULL_LANE; /* No more lanes */
@@ -1090,10 +1173,19 @@ ucp_lane_index_t ucp_rkey_find_rma_lane(ucp_context_h context,
             continue;
         }
 
-        dst_md_index = config->key.lanes[lane].dst_md_index;
-        if (rkey->md_map & UCS_BIT(dst_md_index)) {
+        if (ucs_unlikely(rkey->flags & UCP_RKEY_DESC_FLAG_MULTI_EP)) {
+            /* Symmetric Keys refer to local MD */
+            if (md_index == UCP_NULL_RESOURCE) {
+                continue;
+            }
+            index = md_index;
+        } else {
+            index = config->key.lanes[lane].dst_md_index;
+        }
+
+        if (rkey->md_map & UCS_BIT(index)) {
             /* Return first matching lane */
-            rkey_index  = ucs_bitmap2idx(rkey->md_map, dst_md_index);
+            rkey_index  = ucs_bitmap2idx(rkey->md_map, index);
             *uct_rkey_p = rkey->tl_rkey[rkey_index].rkey.rkey;
             return lane;
         }

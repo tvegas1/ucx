@@ -2127,6 +2127,26 @@ void ucp_context_print_info(const ucp_context_h context, FILE *stream);
 
 
 /**
+ * @ingroup UCP_CONTEXT
+ * @brief Locally build a remote key using a known generating index
+ *
+ * This routine is used in symmetric keys schemes where all peers coordinate
+ * to generate keys using a known shared identifier.
+ *
+ * @param [in]  context_p   Handle to @ref ucp_context_h
+ * @param [in]  memh        Local memory handle used as a reference to generate
+ *                          corresponding remote key
+ * @param [in]  mkey_index  Shared index used to generate expected rkey
+ *
+ * @param [out] rkey_p      Created remote key with symmetric parameter
+ *
+ * @return Error code as definede by @ref ucs_status_t
+ */
+ucs_status_t ucp_rkey_build(ucp_context_h context_p, const ucp_mem_h memh,
+                            uint32_t mkey_index, ucp_rkey_h *rkey_p);
+
+
+/**
  * @ingroup UCP_WORKER
  * @brief Create a worker object.
  *
