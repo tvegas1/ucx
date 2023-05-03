@@ -89,10 +89,11 @@ uct_ib_mlx5_devx_reg_key_umem(
                 "memh %p umem_reg %p umem_reg_mr %p",
                 memh, memh->umem_reg, memh->umem_reg_mr);
 
-    if (mkey_index >= (md->mkey_by_name.size + md->mkey_by_name.base)) {
+    if (mkey_index >=
+            (md->super.mkey_by_name.size + md->super.mkey_by_name.base)) {
         uct_ib_md_log_mem_reg_error(ib_md, 0,
                     "uct_ib_mlx5_devx_reg_key_umem: mkey_index %x > %zx",
-                    mkey_index, md->mkey_by_name.size);
+                    mkey_index, md->super.mkey_by_name.size);
         return UCS_ERR_INVALID_PARAM;
     }
 
@@ -606,7 +607,7 @@ uct_ib_mlx5_mkey_index(uct_ib_mlx5_md_t *md, uint32_t mkey_index)
 
     if (mkey_index != UCT_INVALID_MKEY_INDEX) {
         if (md->flags & UCT_IB_MLX5_MD_FLAG_MKEY_BY_NAME) {
-            index = md->mkey_by_name.base + (mkey_index * 2);
+            index = md->super.mkey_by_name.base + (mkey_index * 2);
         }
     }
     return index;
@@ -1139,8 +1140,8 @@ static int uct_ib_mlx5_mkey_by_name_set(uct_ib_mlx5_md_t *md, void *cap)
         size = UCS_BIT(log_size);
     }
 
-    md->mkey_by_name.base = base;
-    md->mkey_by_name.size = size;
+    md->super.mkey_by_name.base = base;
+    md->super.mkey_by_name.size = size;
     return mkey_by_name;
 }
 
@@ -1384,7 +1385,8 @@ static ucs_status_t uct_ib_mlx5_devx_md_open(struct ibv_device *ibv_device,
 
     if (uct_ib_mlx5_mkey_by_name_set(md, cap_2) != 0) {
         ucs_debug("%s: mkey_by_name is supported (base:0x%08x size:%zu)",
-                  uct_ib_device_name(dev), md->mkey_by_name.base, md->mkey_by_name.size);
+                  uct_ib_device_name(dev),
+                  md->super.mkey_by_name.base, md->super.mkey_by_name.size);
 
         cap_flags |= UCT_MD_FLAG_MKEY_INDEX;
     } else {

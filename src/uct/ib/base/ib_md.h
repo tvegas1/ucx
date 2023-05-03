@@ -165,6 +165,11 @@ typedef struct uct_ib_md {
      * be initiated.  */
     uint32_t                 flush_rkey;
     uct_ib_uint128_t         vhca_id;
+
+    struct {
+        uint32_t base;
+        size_t   size;
+    } mkey_by_name;
 } uct_ib_md_t;
 
 
