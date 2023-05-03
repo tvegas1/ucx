@@ -280,7 +280,8 @@ static uct_md_ops_t md_ops = {
     .mem_dereg              = uct_gdr_copy_mem_dereg,
     .mem_attach             = ucs_empty_function_return_unsupported,
     .is_sockaddr_accessible = ucs_empty_function_return_zero_int,
-    .detect_memory_type     = ucs_empty_function_return_unsupported
+    .detect_memory_type     = ucs_empty_function_return_unsupported,
+    .rkey_build             = ucs_empty_function_return_unsupported
 };
 
 static inline uct_gdr_copy_rcache_region_t*
@@ -335,6 +336,7 @@ static uct_md_ops_t md_rcache_ops = {
     .mem_reg             = uct_gdr_copy_mem_rcache_reg,
     .mem_dereg           = uct_gdr_copy_mem_rcache_dereg,
     .detect_memory_type  = ucs_empty_function_return_unsupported,
+    .rkey_build          = ucs_empty_function_return_unsupported
 };
 
 static ucs_status_t

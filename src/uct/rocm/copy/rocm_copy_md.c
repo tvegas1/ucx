@@ -285,6 +285,7 @@ static uct_md_ops_t md_ops = {
     .mem_attach             = ucs_empty_function_return_unsupported,
     .mem_query              = uct_rocm_base_mem_query,
     .detect_memory_type     = uct_rocm_base_detect_memory_type,
+    .rkey_build             = ucs_empty_function_return_unsupported,
     .is_sockaddr_accessible = ucs_empty_function_return_zero_int,
 };
 
@@ -343,6 +344,7 @@ static uct_md_ops_t md_rcache_ops = {
     .mem_attach             = ucs_empty_function_return_unsupported,
     .mem_query              = uct_rocm_base_mem_query,
     .detect_memory_type     = uct_rocm_base_detect_memory_type,
+    .rkey_build             = ucs_empty_function_return_unsupported,
     .is_sockaddr_accessible = ucs_empty_function_return_zero_int,
 };
 

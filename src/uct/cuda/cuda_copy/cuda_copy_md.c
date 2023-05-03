@@ -526,7 +526,8 @@ static uct_md_ops_t md_ops = {
     .mem_attach             = ucs_empty_function_return_unsupported,
     .mem_query              = uct_cuda_copy_md_mem_query,
     .is_sockaddr_accessible = ucs_empty_function_return_zero_int,
-    .detect_memory_type     = uct_cuda_copy_md_detect_memory_type
+    .detect_memory_type     = uct_cuda_copy_md_detect_memory_type,
+    .rkey_build             = ucs_empty_function_return_unsupported
 };
 
 static ucs_status_t

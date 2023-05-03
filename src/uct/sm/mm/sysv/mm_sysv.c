@@ -205,7 +205,8 @@ static uct_mm_md_mapper_ops_t uct_sysv_md_ops = {
         .mem_attach             = ucs_empty_function_return_unsupported,
         .mkey_pack              = uct_sysv_md_mkey_pack,
         .is_sockaddr_accessible = ucs_empty_function_return_zero_int,
-        .detect_memory_type     = ucs_empty_function_return_unsupported
+        .detect_memory_type     = ucs_empty_function_return_unsupported,
+        .rkey_build             = ucs_empty_function_return_unsupported
     },
     .query             = uct_sysv_query,
     .iface_addr_length = ucs_empty_function_return_zero_size_t,

@@ -2596,6 +2596,20 @@ ucs_status_t uct_md_detect_memory_type(uct_md_h md, const void *addr,
                                        ucs_memory_type_t *mem_type_p);
 
 
+/*
+ * @ingroup UCT_MD
+ * @brief Locally build a remote key using a common shared index
+ *
+ * @param [in]   md          Memory domain of the built rkey
+ * @param [in]   mkey_index  Common shared index to use as building parameter
+ * @param [out]  rkey_ob     Filled with memory type and build remote key
+ *
+ * @return Uses common @ref ucs_status_t error codes
+ */
+ucs_status_t uct_md_rkey_build(uct_md_h md, uint32_t mkey_index,
+                               uct_rkey_bundle_t *rkey_ob);
+
+
 /**
  * @ingroup UCT_MD
  * @brief Allocate memory for zero-copy communications and remote access.

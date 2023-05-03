@@ -271,6 +271,7 @@ static uct_md_ops_t md_ops = {
     .mem_dereg          = uct_knem_mem_dereg,
     .mem_attach         = ucs_empty_function_return_unsupported,
     .detect_memory_type = ucs_empty_function_return_unsupported,
+    .rkey_build         = ucs_empty_function_return_unsupported
 };
 
 static inline uct_knem_rcache_region_t* uct_knem_rcache_region_from_memh(uct_mem_h memh)
@@ -324,6 +325,7 @@ static uct_md_ops_t uct_knem_md_rcache_ops = {
     .mem_attach             = ucs_empty_function_return_unsupported,
     .is_sockaddr_accessible = ucs_empty_function_return_zero_int,
     .detect_memory_type     = ucs_empty_function_return_unsupported,
+    .rkey_build             = ucs_empty_function_return_unsupported
 };
 
 

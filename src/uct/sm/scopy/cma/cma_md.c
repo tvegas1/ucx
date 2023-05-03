@@ -194,6 +194,7 @@ uct_cma_md_open(uct_component_t *component, const char *md_name,
         .mem_attach             = ucs_empty_function_return_unsupported,
         .is_sockaddr_accessible = ucs_empty_function_return_zero_int,
         .detect_memory_type     = ucs_empty_function_return_unsupported,
+        .rkey_build             = ucs_empty_function_return_unsupported
     };
     uct_cma_md_t *cma_md;
 

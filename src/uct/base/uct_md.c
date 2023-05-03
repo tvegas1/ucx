@@ -611,6 +611,12 @@ ucs_status_t uct_md_detect_memory_type(uct_md_h md, const void *addr, size_t len
     return md->ops->detect_memory_type(md, addr, length, mem_type_p);
 }
 
+ucs_status_t uct_md_rkey_build(uct_md_h md, uint32_t mkey_index,
+                               uct_rkey_bundle_t *rkey_ob)
+{
+    return md->ops->rkey_build(md, mkey_index, &rkey_ob->rkey);
+}
+
 ucs_status_t uct_md_dummy_mem_reg(uct_md_h md, void *address, size_t length,
                                   const uct_md_mem_reg_params_t *params,
                                   uct_mem_h *memh_p)

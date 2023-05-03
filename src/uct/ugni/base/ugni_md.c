@@ -199,6 +199,7 @@ uct_ugni_md_open(uct_component_h component,const char *md_name,
     md_ops.mem_attach         = ucs_empty_function_return_unsupported;
     md_ops.mkey_pack          = uct_ugni_mkey_pack;
     md_ops.detect_memory_type = ucs_empty_function_return_unsupported;
+    md_ops.rkey_build         = ucs_empty_function_return_unsupported;
 
     md.super.ops              = &md_ops;
     md.super.component        = &uct_ugni_component;

@@ -136,6 +136,10 @@ typedef ucs_status_t (*uct_md_detect_memory_type_func_t)(uct_md_h md,
                                                          size_t length,
                                                          ucs_memory_type_t *mem_type_p);
 
+typedef ucs_status_t (*uct_md_rkey_build_func_t)(uct_md_h md,
+                                                 uint32_t mkey_index,
+                                                 uct_rkey_t *rkey);
+
 
 /**
  * Memory domain operations
@@ -153,6 +157,7 @@ struct uct_md_ops {
     uct_md_mem_attach_func_t             mem_attach;
     uct_md_is_sockaddr_accessible_func_t is_sockaddr_accessible;
     uct_md_detect_memory_type_func_t     detect_memory_type;
+    uct_md_rkey_build_func_t             rkey_build;
 };
 
 
