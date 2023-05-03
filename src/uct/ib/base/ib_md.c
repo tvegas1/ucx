@@ -991,6 +991,25 @@ uint32_t uct_ib_md_mkey_index(uct_ib_md_t *md, uint32_t mkey_index)
     return index;
 }
 
+static ucs_status_t uct_ib_rkey_build(uct_md_h uct_md,
+                                      uint32_t mkey_index, uct_rkey_t *rkey_p)
+{
+    uct_ib_md_t *md = ucs_derived_of(uct_md, uct_ib_md_t);
+    uint32_t rkey;
+    uint32_t atomic_rkey;
+
+    rkey        = uct_ib_md_mkey_index(md, mkey_index) << 8;
+    atomic_rkey = uct_ib_md_mkey_index_atomic(rkey) << 8;
+
+    ucs_trace("ib build rkey: mkey_index: %x rkey 0x%x atomic_rkey 0x%x",
+              mkey_index, rkey, atomic_rkey);
+    if (rkey == 0) {
+        return UCS_ERR_UNSUPPORTED;
+    }
+    uct_ib_md_pack_rkey(rkey, atomic_rkey, rkey_p);
+    return UCS_OK;
+}
+
 static uct_md_ops_t uct_ib_md_ops = {
     .close              = uct_ib_md_close,
     .query              = uct_ib_md_query,
@@ -1000,7 +1019,7 @@ static uct_md_ops_t uct_ib_md_ops = {
     .mem_advise         = uct_ib_mem_advise,
     .mkey_pack          = uct_ib_mkey_pack,
     .detect_memory_type = ucs_empty_function_return_unsupported,
-    .rkey_build         = ucs_empty_function_return_unsupported
+    .rkey_build         = uct_ib_rkey_build
 };
 
 static inline uct_ib_rcache_region_t* uct_ib_rcache_region_from_memh(uct_mem_h memh)
@@ -1082,7 +1101,7 @@ static uct_md_ops_t uct_ib_md_rcache_ops = {
     .mkey_pack              = uct_ib_mkey_pack,
     .is_sockaddr_accessible = ucs_empty_function_return_zero_int,
     .detect_memory_type     = ucs_empty_function_return_unsupported,
-    .rkey_build             = ucs_empty_function_return_unsupported
+    .rkey_build             = uct_ib_rkey_build
 };
 
 static ucs_status_t uct_ib_rcache_mem_reg_cb(void *context, ucs_rcache_t *rcache,
