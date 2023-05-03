@@ -605,10 +605,8 @@ uct_ib_mlx5_mkey_index(uct_ib_mlx5_md_t *md, uint32_t mkey_index)
 {
     uint32_t index = 0;
 
-    if (mkey_index != UCT_INVALID_MKEY_INDEX) {
-        if (md->flags & UCT_IB_MLX5_MD_FLAG_MKEY_BY_NAME) {
-            index = md->super.mkey_by_name.base + (mkey_index * 2);
-        }
+    if (md->flags & UCT_IB_MLX5_MD_FLAG_MKEY_BY_NAME) {
+        index = uct_ib_md_mkey_index(&md->super, mkey_index);
     }
     return index;
 }
@@ -720,7 +718,7 @@ static ucs_status_t uct_ib_mlx5_devx_reg_atomic_key(uct_ib_md_t *ibmd,
 
     if (memh->umem_reg_mr != NULL) {
         /* Assume mkey-by-name feature for now, we want adjacent keys */
-        index = (ib_memh->lkey >> 8) + 1;
+        index = uct_ib_md_mkey_index_atomic(ib_memh->lkey);
     }
 
 
@@ -1140,6 +1138,7 @@ static int uct_ib_mlx5_mkey_by_name_set(uct_ib_mlx5_md_t *md, void *cap)
         size = UCS_BIT(log_size);
     }
 
+    ucs_assert(md->super.mkey_by_name.base == 0);
     md->super.mkey_by_name.base = base;
     md->super.mkey_by_name.size = size;
     return mkey_by_name;

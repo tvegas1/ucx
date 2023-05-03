@@ -656,6 +656,11 @@ void uct_ib_md_close(uct_md_h uct_md);
 
 void uct_ib_md_cleanup(uct_ib_md_t *md);
 
+
+uint32_t uct_ib_md_mkey_index_atomic(uint32_t lkey);
+
+uint32_t uct_ib_md_mkey_index(uct_ib_md_t *md, uint32_t mkey_index);
+
 ucs_status_t uct_ib_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
                            uint64_t access, int dmabuf_fd, size_t dmabuf_offset,
                            struct ibv_mr **mr_p, int silent);

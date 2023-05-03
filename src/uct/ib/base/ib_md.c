@@ -975,6 +975,22 @@ static ucs_status_t uct_ib_rkey_unpack(uct_component_t *component,
     return UCS_OK;
 }
 
+uint32_t uct_ib_md_mkey_index_atomic(uint32_t lkey)
+{
+    return (lkey >> 8) + 1;
+}
+
+uint32_t uct_ib_md_mkey_index(uct_ib_md_t *md, uint32_t mkey_index)
+{
+    uint32_t index = 0;
+    uint32_t base = md->mkey_by_name.base;
+
+    if ((base != 0) && (mkey_index != UCT_INVALID_MKEY_INDEX)) {
+        index = base + (mkey_index * 2);
+    }
+    return index;
+}
+
 static uct_md_ops_t uct_ib_md_ops = {
     .close              = uct_ib_md_close,
     .query              = uct_ib_md_query,
