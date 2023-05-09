@@ -852,8 +852,9 @@ ucp_rkey_unpack_lanes_distance(const ucp_ep_config_key_t *ep_config_key,
 }
 
 UCS_PROFILE_FUNC(ucs_status_t, ucp_rkey_proto_resolve,
-                 (rkey, ep, buffer, buffer_end), ucp_rkey_h rkey, ucp_ep_h ep,
-                 const void *buffer, const void *buffer_end)
+                 (rkey, md_map, ep, buffer, buffer_end), ucp_rkey_h rkey,
+                 ucp_md_map_t md_map, ucp_ep_h ep, const void *buffer,
+                 const void *buffer_end)
 {
     ucp_worker_h worker = ep->worker;
     const void *p       = buffer;
@@ -869,7 +870,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_rkey_proto_resolve,
 
     /* Look up remote key's configration */
     rkey_config_key.ep_cfg_index = ep->cfg_index;
-    rkey_config_key.md_map       = rkey->md_map;
+    rkey_config_key.md_map       = md_map;
     rkey_config_key.mem_type     = rkey->mem_type;
 
     if (buffer < buffer_end) {
@@ -891,6 +892,17 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_rkey_proto_resolve,
                                    buffer_end);
     return ucp_worker_add_rkey_config(worker, &rkey_config_key, lanes_distance,
                                       &rkey->cfg_index);
+}
+
+ucs_status_t
+ucp_rkey_build_proto_resolve(ucp_rkey_h rkey, ucp_ep_h ep)
+{
+    ucp_md_map_t md_map = ucp_ep_dst_md_map(ep, rkey->md_map);
+
+    ucs_assert(ep->worker->context->config.ext.proto_enable);
+    ucs_assert(rkey->flags & UCP_RKEY_DESC_FLAG_MULTI_EP);
+
+    return ucp_rkey_proto_resolve(rkey, md_map, ep, NULL, NULL);
 }
 
 UCS_PROFILE_FUNC(ucs_status_t, ucp_ep_rkey_unpack_internal,
@@ -1005,7 +1017,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_ep_rkey_unpack_internal,
     }
 
     if (worker->context->config.ext.proto_enable) {
-        status = ucp_rkey_proto_resolve(rkey, ep, p,
+        status = ucp_rkey_proto_resolve(rkey, rkey->md_map, ep, p,
                                         UCS_PTR_BYTE_OFFSET(buffer, length));
         if (status != UCS_OK) {
             goto err_destroy;

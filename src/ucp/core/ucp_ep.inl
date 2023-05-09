@@ -42,6 +42,36 @@ ucp_ep_get_lane(ucp_ep_h ep, ucp_lane_index_t lane_index)
     }
 }
 
+static UCS_F_ALWAYS_INLINE ucp_md_map_t
+ucp_ep_config_dst_md_map(const ucp_context_h context,
+                         const ucp_ep_config_t *ep_config, ucp_md_map_t md_map)
+{
+    ucp_md_map_t dst_md_map               = 0;
+    const ucp_ep_config_key_lane_t *lanes = ep_config->key.lanes;
+    ucp_lane_index_t num_lanes            = ep_config->key.num_lanes;
+    const ucp_ep_config_key_lane_t *config;
+    ucp_tl_resource_desc_t *resource;
+
+    ucs_carray_for_each(config, lanes, num_lanes) {
+        if (config->rsc_index == UCP_NULL_RESOURCE) {
+            continue;
+        }
+
+        resource = &context->tl_rscs[config->rsc_index];
+        if (md_map & UCS_BIT(resource->md_index)) {
+            dst_md_map |= UCS_BIT(config->dst_md_index);
+        }
+    }
+    return dst_md_map;
+}
+
+static UCS_F_ALWAYS_INLINE ucp_md_map_t ucp_ep_dst_md_map(ucp_ep_h ep,
+                                                          ucp_md_map_t md_map)
+{
+    return ucp_ep_config_dst_md_map(ep->worker->context, ucp_ep_config(ep),
+                                    md_map);
+}
+
 static UCS_F_ALWAYS_INLINE void ucp_ep_set_lane(ucp_ep_h ep, size_t lane_index,
                                                 uct_ep_h uct_ep)
 {

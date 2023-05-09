@@ -143,6 +143,13 @@ typedef struct ucp_unpacked_exported_memh {
 #define UCP_RKEY_RMA_PROTO(_rma_proto_index) ucp_rma_proto_list[_rma_proto_index]
 
 
+#define UCP_RKEY_RESOLVE_MULTI_EP(_rkey, _ep) \
+    ({ \
+        if (ucs_unlikely((_rkey)->flags & UCP_RKEY_DESC_FLAG_MULTI_EP)) { \
+            ucp_rkey_build_proto_resolve(_rkey, _ep); \
+        } \
+    })
+
 /* TODO rkey->cache is per EP: on the fly resolution, external caching, one smkey per thread anyways */
 #define UCP_RKEY_RESOLVE_NOCHECK(_rkey, _ep, _op_type) \
     ({ \
@@ -239,4 +246,5 @@ void ucp_rkey_proto_select_dump(ucp_worker_h worker,
                                 ucp_worker_cfg_index_t rkey_cfg_index,
                                 ucs_string_buffer_t *strb);
 
+ucs_status_t ucp_rkey_build_proto_resolve(ucp_rkey_h rkey, ucp_ep_h ep);
 #endif

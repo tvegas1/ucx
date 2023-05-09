@@ -264,6 +264,8 @@ ucs_status_ptr_t ucp_put_nbx(ucp_ep_h ep, const void *buffer, size_t count,
                 (UCP_OP_ATTR_FIELD_DATATYPE | UCP_OP_ATTR_FLAG_NO_IMM_CMPL);
 
     if (worker->context->config.ext.proto_enable) {
+        UCP_RKEY_RESOLVE_MULTI_EP(rkey, ep);
+
         status = ucp_put_send_short(ep, buffer, count, remote_addr, rkey, param);
         if (ucs_likely(status != UCS_ERR_NO_RESOURCE)) {
             ret = UCS_STATUS_PTR(status);
@@ -379,6 +381,8 @@ ucs_status_ptr_t ucp_get_nbx(ucp_ep_h ep, void *buffer, size_t count,
                   ucp_request_param_send_callback(param));
 
     if (worker->context->config.ext.proto_enable) {
+        UCP_RKEY_RESOLVE_MULTI_EP(rkey, ep);
+
         datatype = ucp_request_param_datatype(param);
         req = ucp_request_get_param(worker, param,
                                     {ret = UCS_STATUS_PTR(UCS_ERR_NO_MEMORY);

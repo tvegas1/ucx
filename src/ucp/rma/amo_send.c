@@ -213,6 +213,8 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_atomic_op_nbx,
                                  goto out;});
 
     if (context->config.ext.proto_enable) {
+        UCP_RKEY_RESOLVE_MULTI_EP(rkey, ep);
+
         ucp_amo_init_proto(req, ucp_uct_atomic_op_table[opcode], remote_addr,
                            rkey);
         if (param->op_attr_mask & UCP_OP_ATTR_FIELD_REPLY_BUFFER) {

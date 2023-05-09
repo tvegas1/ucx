@@ -100,27 +100,11 @@ ucp_proto_rndv_md_map_to_remote(const ucp_proto_rndv_ctrl_init_params_t *params,
                                 ucp_md_map_t md_map)
 {
     ucp_worker_h worker   = params->super.super.worker;
-    ucp_context_h context = worker->context;
-    const ucp_ep_config_key_lane_t *lane_cfg;
     const ucp_ep_config_t *ep_config;
-    uint64_t remote_md_map;
 
-    ep_config     = &ucs_array_elem(&worker->ep_config,
-                                    params->super.super.ep_cfg_index);
-    remote_md_map = 0;
-
-    ucs_carray_for_each(lane_cfg, ep_config->key.lanes,
-                        ep_config->key.num_lanes) {
-        if (lane_cfg->rsc_index == UCP_NULL_RESOURCE) {
-            continue;
-        }
-
-        if (md_map & UCS_BIT(context->tl_rscs[lane_cfg->rsc_index].md_index)) {
-            remote_md_map |= UCS_BIT(lane_cfg->dst_md_index);
-        }
-    }
-
-    return remote_md_map;
+    ep_config = &ucs_array_elem(&worker->ep_config,
+                                params->super.super.ep_cfg_index);
+    return ucp_ep_config_dst_md_map(worker->context, ep_config, md_map);
 }
 
 /*
