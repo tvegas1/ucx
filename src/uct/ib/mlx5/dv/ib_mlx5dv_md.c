@@ -39,7 +39,7 @@ typedef struct uct_ib_mlx5_mem {
     struct mlx5dv_devx_obj     *indirect_dvmr;
     struct mlx5dv_devx_umem    *umem;
     struct mlx5dv_devx_obj     *cross_mr;
-    struct mlx5dv_devx_obj     *umem_reg_mr; /* for devx MTT registrations */
+    struct mlx5dv_devx_obj     *mkey_mr; /* for devx MTT registrations */
 #endif
     uct_ib_mlx5_mr_t           mrs[];
 } uct_ib_mlx5_mem_t;
@@ -304,7 +304,7 @@ uct_ib_mlx5_devx_reg_ksm_mkey_index(uct_ib_mlx5_md_t *md,
                                     void *address, size_t length,
                                     uct_ib_mr_t *mr, uint32_t index)
 {
-    struct mlx5dv_devx_obj **mr_p = &memh->umem_reg_mr;
+    struct mlx5dv_devx_obj **mr_p = &memh->mkey_mr;
     uintptr_t addr                = (uintptr_t)address;
     int list_size;
     uint32_t mkey;
@@ -318,7 +318,7 @@ uct_ib_mlx5_devx_reg_ksm_mkey_index(uct_ib_mlx5_md_t *md,
                                                 addr, 0, list_size, mr_p, &mkey,
                                                 index);
     if (status == UCS_OK) {
-        ucs_assert(memh->umem_reg_mr != NULL);
+        ucs_assert(memh->mkey_mr != NULL);
 
         lkey = mkey & ~0xff;
         rkey = mkey;
@@ -610,13 +610,13 @@ static ucs_status_t uct_ib_mlx5_devx_dereg_key(uct_ib_md_t *ibmd,
         memh->umem = NULL;
     }
 
-    if (memh->umem_reg_mr != NULL) {
-        ret = mlx5dv_devx_obj_destroy(memh->umem_reg_mr);
+    if (memh->mkey_mr != NULL) {
+        ret = mlx5dv_devx_obj_destroy(memh->mkey_mr);
         if (ret < 0) {
-            ucs_warn("mlx5dv_devx_obj_destroy(umem_reg_mr) failed: %m");
+            ucs_warn("mlx5dv_devx_obj_destroy(mkey_mr) failed: %m");
             ret_status = UCS_ERR_IO_ERROR;
         }
-        memh->umem_reg_mr = NULL;
+        memh->mkey_mr = NULL;
     }
 
     status = uct_ib_mlx5_dereg_key(ibmd, ib_memh, mr_type);
@@ -643,11 +643,10 @@ static ucs_status_t uct_ib_mlx5_devx_reg_atomic_key(uct_ib_md_t *ibmd,
         return uct_ib_mlx5_reg_atomic_key(ibmd, ib_memh);
     }
 
-    if (memh->umem_reg_mr != NULL) {
-        /* Assume mkey-by-name feature for now, we want adjacent keys */
+    if (memh->mkey_mr != NULL) {
+        /* Mkey-by-name used, atomic mkey context needs adjacent placement */
         index = uct_ib_md_mkey_index_atomic(ib_memh->lkey);
     }
-
 
     status = uct_ib_mlx5_md_get_atomic_mr_id(ibmd, &mr_id);
     if (status != UCS_OK) {

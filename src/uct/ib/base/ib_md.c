@@ -982,9 +982,10 @@ uint32_t uct_ib_md_mkey_index_atomic(uint32_t lkey)
 
 uint32_t uct_ib_md_mkey_index(uct_ib_md_t *md, uint32_t mkey_index)
 {
-    uint32_t index = 0;
+    uint32_t index = 0; /* IB FW: zero means no mkey-by-name requested */
     uint32_t base = md->mkey_by_name.base;
 
+    /* Check if Mkey-by-name is enabled and mkey_index is requested */
     if ((base != 0) && (mkey_index != UCT_INVALID_MKEY_INDEX)) {
         index = base + (mkey_index * 2);
     }
