@@ -143,6 +143,11 @@ typedef struct ucp_unpacked_exported_memh {
 #define UCP_RKEY_RMA_PROTO(_rma_proto_index) ucp_rma_proto_list[_rma_proto_index]
 
 
+/*
+ * Flag UCP_RKEY_DESC_FLAG_MULTI_EP:
+ * - In that case, we rely on the fact that rkey cache and lanes are not
+ *   populated and used by multiple threads in parallel.
+ */
 #define UCP_RKEY_RESOLVE_MULTI_EP(_rkey, _ep) \
     ({ \
         if (ucs_unlikely((_rkey)->flags & UCP_RKEY_DESC_FLAG_MULTI_EP)) { \
@@ -150,11 +155,10 @@ typedef struct ucp_unpacked_exported_memh {
         } \
     })
 
-/* TODO rkey->cache is per EP: on the fly resolution, external caching, one smkey per thread anyways */
 #define UCP_RKEY_RESOLVE_NOCHECK(_rkey, _ep, _op_type) \
     ({ \
         ucs_status_t _status_nc = UCS_OK; \
-        if ((((_rkey)->flags & UCP_RKEY_DESC_FLAG_MULTI_EP) != 0) || ucs_unlikely((_ep)->cfg_index != (_rkey)->cache.ep_cfg_index)) { \
+        if (ucs_unlikely(((_rkey)->flags & UCP_RKEY_DESC_FLAG_MULTI_EP) != 0) || ucs_unlikely((_ep)->cfg_index != (_rkey)->cache.ep_cfg_index)) { \
             ucp_rkey_resolve_inner(_rkey, _ep); \
         } \
         if (ucs_unlikely((_rkey)->cache._op_type##_lane == UCP_NULL_LANE)) { \
