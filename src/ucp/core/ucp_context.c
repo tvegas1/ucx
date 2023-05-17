@@ -2427,7 +2427,6 @@ const char* ucp_context_cm_name(ucp_context_h context, ucp_rsc_index_t cm_idx)
     return context->tl_cmpts[context->config.cm_cmpt_idxs[cm_idx]].attr.name;
 }
 
-
 UCS_F_CTOR void ucp_global_init(void)
 {
     UCS_CONFIG_ADD_TABLE(ucp_config_table, &ucs_config_global_list);

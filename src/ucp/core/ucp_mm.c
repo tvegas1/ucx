@@ -616,15 +616,13 @@ ucp_memh_init_from_parent(ucp_mem_h memh, ucp_md_map_t parent_md_map)
 static int
 ucp_memh_mkey_index_matches(ucp_mem_h memh, ucp_mem_h other_memh)
 {
-    if (memh->flags & UCP_MEMH_FLAG_MKEY_INDEX) {
-        if (!(other_memh->flags & UCP_MEMH_FLAG_MKEY_INDEX)) {
-            return 0;
-        }
-        if (memh->mkey_index != other_memh->mkey_index) {
-            return 0;
-        }
-    } else if (other_memh->flags & UCP_MEMH_FLAG_MKEY_INDEX) {
+    int memh_en = memh->flags & UCP_MEMH_FLAG_MKEY_INDEX;
+
+    if (memh_en != (other_memh->flags & UCP_MEMH_FLAG_MKEY_INDEX)) {
         return 0;
+    }
+    if (memh_en) {
+        return (memh->mkey_index == other_memh->mkey_index);
     }
     return 1;
 }
