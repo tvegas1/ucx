@@ -27,6 +27,9 @@ protected:
                                 uct_rkey_t *rkey_p = NULL);
     void check_smkeys(uct_rkey_t rkey1, uct_rkey_t rkey2);
 
+    void test_mkey_pack_mt(bool invalidate);
+    void test_mkey_pack_mt_internal(unsigned access_mask, bool invalidate);
+
 private:
 #ifdef HAVE_MLX5_DV
     uint32_t m_mlx5_flags = 0;
@@ -220,6 +223,75 @@ UCS_TEST_P(test_ib_md, smkey_reg_atomic)
     EXPECT_UCS_OK(uct_md_mem_dereg(md(), memh2));
     EXPECT_UCS_OK(uct_md_mem_dereg(md(), memh3));
     ucs_mmap_free(buffer, size);
+}
+
+void
+test_ib_md::test_mkey_pack_mt_internal(unsigned access_mask, bool invalidate)
+{
+    constexpr size_t size = 1 * UCS_MBYTE;
+    std::array<char, size> buffer;
+    unsigned pack_flags, dereg_flags;
+    uct_mem_h memh;
+
+    if ((access_mask & UCT_MD_MEM_ACCESS_REMOTE_ATOMIC) && is_bf_arm()) {
+        UCS_TEST_SKIP_R("FIXME: AMO reg key bug on BF device, skipping");
+        return;
+    }
+
+    if (!is_supported_pack_mem_flags(access_mask)) {
+        UCS_TEST_SKIP_R("memory packing is unsupported");
+    }
+
+    if (invalidate) {
+        pack_flags  = UCT_MD_MKEY_PACK_FLAG_INVALIDATE_RMA;
+        dereg_flags = UCT_MD_MEM_DEREG_FLAG_INVALIDATE;
+    } else {
+        pack_flags = dereg_flags = 0;
+    }
+
+    ucs_status_t status = reg_mem(access_mask, buffer.data(), size, &memh);
+    ASSERT_UCS_OK(status);
+
+    /* memh isn't always registered as multithreaded due to the following error:
+       mlx5dv_devx_obj_create(CREATE_MKEY, mode=KSM) failed, syndrome 0x103e77: Remote I/O error
+    */
+
+    uct_ib_mem_t *ib_memh = (uct_ib_mem_t *)memh;
+    EXPECT_TRUE(ib_memh->flags & UCT_IB_MEM_MULTITHREADED);
+
+    std::vector<uint8_t> rkey(md_attr().rkey_packed_size);
+    uct_md_mkey_pack_params_t pack_params;
+    pack_params.field_mask = UCT_MD_MKEY_PACK_FIELD_FLAGS;
+    pack_params.flags      = pack_flags;
+    status = uct_md_mkey_pack_v2(md(), memh, &pack_params, rkey.data());
+    EXPECT_UCS_OK(status);
+
+    uct_md_mem_dereg_params_t params;
+    params.field_mask  = UCT_MD_MEM_DEREG_FIELD_MEMH |
+                         UCT_MD_MEM_DEREG_FIELD_COMPLETION |
+                         UCT_MD_MEM_DEREG_FIELD_FLAGS;
+    params.memh        = memh;
+    params.flags       = dereg_flags;
+    comp().comp.func   = dereg_cb;
+    comp().comp.count  = 1;
+    comp().comp.status = UCS_OK;
+    comp().self        = this;
+    params.comp        = &comp().comp;
+    status = uct_md_mem_dereg_v2(md(), &params);
+    EXPECT_UCS_OK(status);
+}
+
+void test_ib_md::test_mkey_pack_mt(bool invalidate) {
+    test_mkey_pack_mt_internal(UCT_MD_MEM_ACCESS_REMOTE_ATOMIC, invalidate);
+    test_mkey_pack_mt_internal(md_flags_remote_rma, invalidate);
+    test_mkey_pack_mt_internal(UCT_MD_MEM_ACCESS_ALL, invalidate);
+    test_mkey_pack_mt_internal(UCT_MD_MEM_ACCESS_RMA, invalidate);
+}
+
+UCS_TEST_P(test_ib_md, pack_mkey_mt, "REG_MT_THRESH=128K", "REG_MT_CHUNK=128K")
+{
+    test_mkey_pack_mt(false);
+    test_mkey_pack_mt(true);
 }
 
 _UCT_MD_INSTANTIATE_TEST_CASE(test_ib_md, ib)
