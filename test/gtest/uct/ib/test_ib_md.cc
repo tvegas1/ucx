@@ -229,9 +229,13 @@ void
 test_ib_md::test_mkey_pack_mt_internal(unsigned access_mask, bool invalidate)
 {
     constexpr size_t size = 1 * UCS_MBYTE;
-    std::array<char, size> buffer;
     unsigned pack_flags, dereg_flags;
+    void* buffer;
+    int ret;
     uct_mem_h memh;
+
+    ret = ucs_posix_memalign(&buffer, UCS_KBYTE, size, "mkey_pack_mt");
+    ASSERT_EQ(0, ret) << "Allocation failed";
 
     if ((access_mask & UCT_MD_MEM_ACCESS_REMOTE_ATOMIC) && is_bf_arm()) {
         UCS_TEST_SKIP_R("FIXME: AMO reg key bug on BF device, skipping");
@@ -249,12 +253,8 @@ test_ib_md::test_mkey_pack_mt_internal(unsigned access_mask, bool invalidate)
         pack_flags = dereg_flags = 0;
     }
 
-    ucs_status_t status = reg_mem(access_mask, buffer.data(), size, &memh);
+    ucs_status_t status = reg_mem(access_mask, buffer, size, &memh);
     ASSERT_UCS_OK(status);
-
-    /* memh isn't always registered as multithreaded due to the following error:
-       mlx5dv_devx_obj_create(CREATE_MKEY, mode=KSM) failed, syndrome 0x103e77: Remote I/O error
-    */
 
     uct_ib_mem_t *ib_memh = (uct_ib_mem_t *)memh;
     EXPECT_TRUE(ib_memh->flags & UCT_IB_MEM_MULTITHREADED);
@@ -279,6 +279,8 @@ test_ib_md::test_mkey_pack_mt_internal(unsigned access_mask, bool invalidate)
     params.comp        = &comp().comp;
     status = uct_md_mem_dereg_v2(md(), &params);
     EXPECT_UCS_OK(status);
+
+    ucs_free(buffer);
 }
 
 void test_ib_md::test_mkey_pack_mt(bool invalidate) {

@@ -56,7 +56,7 @@ protected:
                           const mapped_buffer &recvbuf,
                           uct_completion_t *comp);
 
-    void random_op(const mapped_buffer &sendbuf, const mapped_buffer &recvbuf);
+    virtual void random_op(const mapped_buffer &sendbuf, const mapped_buffer &recvbuf);
 
     void run(unsigned count);
 
@@ -64,7 +64,6 @@ protected:
 
     virtual void cleanup();
 
-private:
     std::vector<send_func_t> m_avail_send_funcs;
     size_t                   m_send_size;
     static uint32_t          am_pending;

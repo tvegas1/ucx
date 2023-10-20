@@ -7,6 +7,7 @@
 #include <uct/test_p2p_rma.h>
 #include <uct/test_p2p_mix.h>
 
+#include <uct/ib/base/ib_md.h>
 
 class uct_p2p_rma_test_xfer : public uct_p2p_rma_test {};
 
@@ -129,13 +130,33 @@ UCS_TEST_P(uct_p2p_mix_test_alloc_methods, mix1000)
     run(1000);
 }
 
-UCS_TEST_P(uct_p2p_mix_test_alloc_methods, mix1000_multithreaded,
+UCT_INSTANTIATE_IB_TEST_CASE(uct_p2p_mix_test_alloc_methods)
+
+
+class uct_p2p_mix_test_alloc_methods_mt : public uct_p2p_mix_test {
+protected:
+    virtual void random_op(const mapped_buffer &sendbuf,
+                           const mapped_buffer &recvbuf) override
+    {
+        uint32_t mt_flag = UCT_IB_MEM_MULTITHREADED;
+
+        /* The potential reason of failure is alignment of the memory.
+         * Should be aligned to max atomic size
+         * or even to uct_ib_md_ext_config_t::mt_reg_chunk size on old FW.*/
+        EXPECT_TRUE(((uct_ib_mem_t *)sendbuf.memh())->flags & mt_flag);
+        EXPECT_TRUE(((uct_ib_mem_t *)recvbuf.memh())->flags & mt_flag);
+
+        uct_p2p_mix_test::random_op(sendbuf, recvbuf);
+    }
+};
+
+UCS_TEST_P(uct_p2p_mix_test_alloc_methods_mt, mix1000,
            "REG_MT_THRESH=1", "REG_MT_CHUNK=1K", "REG_MT_BIND=y")
 {
     run(1000);
 }
 
-UCT_INSTANTIATE_IB_TEST_CASE(uct_p2p_mix_test_alloc_methods)
+UCT_INSTANTIATE_IB_TEST_CASE(uct_p2p_mix_test_alloc_methods_mt)
 
 
 class uct_p2p_mix_test_indirect_atomic : public uct_p2p_mix_test {};
