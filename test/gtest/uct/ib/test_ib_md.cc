@@ -228,13 +228,13 @@ UCS_TEST_P(test_ib_md, smkey_reg_atomic)
 void
 test_ib_md::test_mkey_pack_mt_internal(unsigned access_mask, bool invalidate)
 {
-    constexpr size_t size = 1 * UCS_MBYTE;
+    constexpr size_t size = UCS_MBYTE;
     unsigned pack_flags, dereg_flags;
     void* buffer;
     int ret;
     uct_mem_h memh;
 
-    ret = ucs_posix_memalign(&buffer, UCS_KBYTE, size, "mkey_pack_mt");
+    ret = ucs_posix_memalign(&buffer, size, size, "mkey_pack_mt");
     ASSERT_EQ(0, ret) << "Allocation failed";
 
     if ((access_mask & UCT_MD_MEM_ACCESS_REMOTE_ATOMIC) && is_bf_arm()) {
@@ -243,7 +243,7 @@ test_ib_md::test_mkey_pack_mt_internal(unsigned access_mask, bool invalidate)
     }
 
     if (!is_supported_pack_mem_flags(access_mask)) {
-        UCS_TEST_SKIP_R("memory packing is unsupported");
+        UCS_TEST_SKIP_R("mkey pack isn't supported");
     }
 
     if (invalidate) {

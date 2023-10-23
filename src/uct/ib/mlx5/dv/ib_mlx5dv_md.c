@@ -375,7 +375,10 @@ uct_ib_mlx5_devx_reg_ksm_data(uct_ib_mlx5_md_t *md, uct_ib_mlx5_devx_mem_t *memh
     size_t length;
 
     if (memh->super.flags & UCT_IB_MEM_MULTITHREADED) {
-        length = mr->ksm_data->length;
+        ucs_assertv_always(mr->ksm_data->length > iova_offset,
+                           "mr->ksm_data->length=%ld iova_offset=%u",
+                           mr->ksm_data->length, iova_offset);
+        length = mr->ksm_data->length - iova_offset;
         status = uct_ib_mlx5_devx_reg_ksm_data_mt(md, atomic, address,
                                                   mr->ksm_data, length,
                                                   iova, mkey_index,
