@@ -143,10 +143,23 @@ protected:
         /* The potential reason of failure is alignment of the memory.
          * Should be aligned to max atomic size
          * or even to uct_ib_md_ext_config_t::mt_reg_chunk size on old FW.*/
-        EXPECT_TRUE(((uct_ib_mem_t *)sendbuf.memh())->flags & mt_flag);
-        EXPECT_TRUE(((uct_ib_mem_t *)recvbuf.memh())->flags & mt_flag);
+        ASSERT_TRUE(((uct_ib_mem_t *)sendbuf.memh())->flags & mt_flag);
+        ASSERT_TRUE(((uct_ib_mem_t *)recvbuf.memh())->flags & mt_flag);
 
         uct_p2p_mix_test::random_op(sendbuf, recvbuf);
+    }
+
+
+    virtual void init() override {
+        uct_p2p_mix_test::init();
+
+        /* Large buffer can cause failures because of too many chunks 
+         *registration */
+        m_send_size = ucs_min(m_send_size, 128 * UCS_KBYTE);
+
+        if (m_send_size <= UCS_KBYTE) {
+            UCS_TEST_SKIP_R("send buffer size is lower then 1 chunk");
+        }
     }
 };
 
