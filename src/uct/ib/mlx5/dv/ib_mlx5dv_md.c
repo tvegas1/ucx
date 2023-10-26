@@ -463,13 +463,68 @@ UCS_PROFILE_FUNC_ALWAYS(ucs_status_t, uct_ib_mlx5_devx_reg_atomic_key,
 }
 
 static ucs_status_t
+uct_ib_mlx5_devx_reg_symmetric(uct_ib_mlx5_md_t *md,
+                               uct_ib_mlx5_devx_mem_t *memh, void *address,
+                               uct_ib_mr_type_t mr_type, unsigned flags)
+{
+    uint32_t start = md->smkey_index;
+    struct mlx5dv_devx_obj *smkey_mr;
+    uint32_t symmetric_rkey;
+    ucs_status_t status;
+
+    if ((mr_type != UCT_IB_MR_DEFAULT) ||
+        !(flags & UCT_MD_MEM_SYMMETRIC_RKEY) ||
+        !(md->flags & UCT_IB_MLX5_MD_FLAG_MKEY_BY_NAME_RESERVE)) {
+        return UCS_ERR_UNSUPPORTED;
+    }
+
+    if (memh->smkey_mr != NULL) {
+        /* Already created by MT memory registration */
+        return UCS_ERR_ALREADY_EXISTS;
+    }
+
+    /* Best effort, only allocate in the range below the atomic keys. */
+    while (md->smkey_index < md->super.mkey_by_name_reserve.size) {
+        status = uct_ib_mlx5_devx_reg_ksm_data(
+                md, memh, UCT_IB_MR_DEFAULT, 0,
+                (memh->super.flags & UCT_IB_MEM_ACCESS_REMOTE_ATOMIC),
+                md->super.mkey_by_name_reserve.base + md->smkey_index, NULL,
+                &smkey_mr, &symmetric_rkey);
+        if (status == UCS_OK) {
+            ucs_trace("%s: symmetric rkey created for addr=%p "
+                      "mkey_index=0x%x smkey_mr=%p rkey=0x%x",
+                      uct_ib_device_name(&md->super.dev), address,
+                      md->super.mkey_by_name_reserve.base + start, smkey_mr,
+                      symmetric_rkey);
+
+            memh->smkey_mr   = smkey_mr;
+            memh->super.rkey = symmetric_rkey;
+            md->smkey_index++;
+            return UCS_OK;
+        }
+
+        /* Use blocks of 8 mkeys, first mkey creation gives block ownership.
+         * Try from the start of the next block if any failure.
+         */
+        md->smkey_index = ucs_align_up_pow2(md->smkey_index + 1,
+                                            md->super.config.smkey_block_size);
+    }
+
+    ucs_debug("%s: symmetric rkey create failed for addr=%p mkey_index=0x%x",
+              uct_ib_device_name(&md->super.dev), address,
+              md->super.mkey_by_name_reserve.base + start);
+    return UCS_ERR_NO_ELEM;
+}
+
+static ucs_status_t
 uct_ib_mlx5_devx_reg_mt(uct_ib_mlx5_md_t *md, void *address, size_t length,
                         int is_atomic, const uct_md_mem_reg_params_t *params,
                         uint64_t access_flags, uint32_t *mkey_p,
-                        uct_ib_mlx5_devx_ksm_data_t **ksm_data_p)
+                        uct_ib_mlx5_devx_mem_t *memh, uct_ib_mr_type_t mr_type)
 {
-    size_t chunk = md->super.config.mt_reg_chunk;
-    int mr_num   = ucs_div_round_up(length, chunk);
+    size_t chunk   = md->super.config.mt_reg_chunk;
+    int mr_num     = ucs_div_round_up(length, chunk);
+    unsigned flags = UCT_MD_MEM_REG_FIELD_VALUE(params, flags, FIELD_FLAGS, 0);
     uct_ib_mlx5_devx_ksm_data_t *ksm_data;
     ucs_status_t status;
     int dmabuf_fd;
@@ -505,15 +560,26 @@ uct_ib_mlx5_devx_reg_mt(uct_ib_mlx5_md_t *md, void *address, size_t length,
         goto err_free;
     }
 
-    status = uct_ib_mlx5_devx_reg_ksm_data_mt(md, is_atomic, address, ksm_data,
-                                              length, (uint64_t)address, 0,
-                                              "multi-thread key",
-                                              &ksm_data->dvmr, mkey_p);
-    if (status != UCS_OK) {
-        goto err_dereg;
+    memh->super.flags          |= UCT_IB_MEM_MULTITHREADED;
+    memh->mrs[mr_type].ksm_data = ksm_data;
+
+    status = uct_ib_mlx5_devx_reg_symmetric(md, memh, address, mr_type, flags);
+    if (status == UCS_OK) {
+        ksm_data->dvmr = NULL;
+        *mkey_p        = memh->super.rkey;
+    } else {
+        status = uct_ib_mlx5_devx_reg_ksm_data_mt(md, is_atomic, address,
+                                                  ksm_data, length,
+                                                  (uint64_t)address, 0,
+                                                  "multi-thread key",
+                                                  &ksm_data->dvmr, mkey_p);
+        if (status != UCS_OK) {
+            memh->super.flags          &= ~UCT_IB_MEM_MULTITHREADED;
+            memh->mrs[mr_type].ksm_data = NULL;
+            goto err_dereg;
+        }
     }
 
-    *ksm_data_p = ksm_data;
     return UCS_OK;
 
 err_dereg:
@@ -535,9 +601,12 @@ uct_ib_mlx5_devx_dereg_mt(uct_ib_mlx5_md_t *md,
     ucs_trace("%s: destroy KSM %p", uct_ib_device_name(&md->super.dev),
               ksm_data->dvmr);
 
-    status = uct_ib_mlx5_devx_obj_destroy(ksm_data->dvmr, "MKEY, KSM");
-    if (status != UCS_OK) {
-        return status;
+    /* Not created if symmetric key was used instead */
+    if (ksm_data->dvmr != NULL) {
+        status = uct_ib_mlx5_devx_obj_destroy(ksm_data->dvmr, "MKEY, KSM");
+        if (status != UCS_OK) {
+            return status;
+        }
     }
 
     status = uct_ib_md_handle_mr_list_mt(&md->super, 0, ksm_data->length, NULL,
@@ -558,49 +627,6 @@ uct_ib_mlx5_devx_dereg_mt(uct_ib_mlx5_md_t *md,
     return status;
 }
 
-static void uct_ib_mlx5_devx_reg_symmetric(uct_ib_mlx5_md_t *md,
-                                           uct_ib_mlx5_devx_mem_t *memh,
-                                           void *address)
-{
-    uint32_t start = md->smkey_index;
-    struct mlx5dv_devx_obj *smkey_mr;
-    uint32_t symmetric_rkey;
-    ucs_status_t status;
-
-    ucs_assert(!(memh->super.flags & UCT_IB_MEM_MULTITHREADED));
-    /* Best effort, only allocate in the range below the atomic keys. */
-    while (md->smkey_index < md->super.mkey_by_name_reserve.size) {
-        status = uct_ib_mlx5_devx_reg_ksm_data_contig(
-                md, &memh->mrs[UCT_IB_MR_DEFAULT], address, (uint64_t)address,
-                (memh->super.flags & UCT_IB_MEM_ACCESS_REMOTE_ATOMIC),
-                md->super.mkey_by_name_reserve.base + md->smkey_index, NULL,
-                &smkey_mr, &symmetric_rkey);
-        if (status == UCS_OK) {
-            ucs_trace("%s: symmetric rkey created for addr=%p "
-                      "mkey_index=0x%x smkey_mr=%p rkey=0x%x",
-                      uct_ib_device_name(&md->super.dev), address,
-                      md->super.mkey_by_name_reserve.base + start, smkey_mr,
-                      symmetric_rkey);
-
-            memh->smkey_mr   = smkey_mr;
-            memh->super.rkey = symmetric_rkey;
-            md->smkey_index++;
-            return;
-        }
-
-        /* Use blocks of 8 mkeys, first mkey creation gives block ownership.
-         * Try from the start of the next block if any failure.
-         */
-        md->smkey_index = ucs_align_up_pow2(md->smkey_index + 1,
-                                            md->super.config.smkey_block_size);
-    }
-
-    ucs_debug("%s: symmetric rkey create failed for addr=%p mkey_index=0x%x",
-              uct_ib_device_name(&md->super.dev), address,
-              md->super.mkey_by_name_reserve.base + start);
-}
-
-
 static ucs_status_t
 uct_ib_mlx5_devx_reg_mr(uct_ib_mlx5_md_t *md, uct_ib_mlx5_devx_mem_t *memh,
                         void *address, size_t length,
@@ -619,11 +645,10 @@ uct_ib_mlx5_devx_reg_mr(uct_ib_mlx5_md_t *md, uct_ib_mlx5_devx_mem_t *memh,
         status = uct_ib_mlx5_devx_reg_mt(md, address, length,
                                          (memh->super.flags &
                                           UCT_IB_MEM_ACCESS_REMOTE_ATOMIC),
-                                         params, access_flags, &mkey,
-                                         &memh->mrs[mr_type].ksm_data);
+                                         params, access_flags, &mkey, memh,
+                                         mr_type);
         if (status == UCS_OK) {
             *rkey_p = *lkey_p = mkey;
-            memh->super.flags |= UCT_IB_MEM_MULTITHREADED;
             return UCS_OK;
         } else if (status != UCS_ERR_UNSUPPORTED) {
             return status;
@@ -684,9 +709,9 @@ uct_ib_mlx5_devx_mem_reg(uct_md_h uct_md, void *address, size_t length,
         goto err_memh_free;
     }
 
-    if ((flags & UCT_MD_MEM_SYMMETRIC_RKEY) &&
-        (md->flags & UCT_IB_MLX5_MD_FLAG_MKEY_BY_NAME_RESERVE)) {
-        uct_ib_mlx5_devx_reg_symmetric(md, memh, address);
+    if (!(memh->super.flags & UCT_IB_MEM_MULTITHREADED)) {
+        uct_ib_mlx5_devx_reg_symmetric(md, memh, address, UCT_IB_MR_DEFAULT,
+                                       flags);
     }
 
     if (md->super.relaxed_order) {

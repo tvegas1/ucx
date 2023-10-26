@@ -29,6 +29,7 @@ protected:
 
     void test_mkey_pack_mt(bool invalidate);
     void test_mkey_pack_mt_internal(unsigned access_mask, bool invalidate);
+    void test_smkey_reg_atomic(void);
 
 private:
 #ifdef HAVE_MLX5_DV
@@ -200,7 +201,7 @@ void test_ib_md::check_smkeys(uct_rkey_t rkey1, uct_rkey_t rkey2)
               uct_ib_md_atomic_rkey(rkey2) - uct_ib_md_direct_rkey(rkey2));
 }
 
-UCS_TEST_P(test_ib_md, smkey_reg_atomic)
+void test_ib_md::test_smkey_reg_atomic(void)
 {
     static const size_t size = 8192;
     void *buffer;
@@ -223,6 +224,17 @@ UCS_TEST_P(test_ib_md, smkey_reg_atomic)
     EXPECT_UCS_OK(uct_md_mem_dereg(md(), memh2));
     EXPECT_UCS_OK(uct_md_mem_dereg(md(), memh3));
     ucs_mmap_free(buffer, size);
+}
+
+UCS_TEST_P(test_ib_md, smkey_reg_atomic)
+{
+    test_smkey_reg_atomic();
+}
+
+UCS_TEST_P(test_ib_md, smkey_reg_atomic_mt, "REG_MT_THRESH=1k",
+           "REG_MT_CHUNK=1k")
+{
+    test_smkey_reg_atomic();
 }
 
 void
