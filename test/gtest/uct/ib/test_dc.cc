@@ -118,7 +118,7 @@ protected:
         uct_dc_mlx5_ep_t *ep;
 
         ep = dc_ep(preq->e, 0);
-        EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+        EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
 
         status = uct_ep_flush(preq->e->ep(0), 0, NULL);
         if (status == UCS_OK) {
@@ -134,7 +134,7 @@ protected:
 
         ep = dc_ep(preq->e, 0);
 
-        EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+        EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
 
         /* simulate arbiter stop because lack of global resource
          * operation still stands on pending
@@ -147,7 +147,7 @@ protected:
     {
         struct dcs_pending *preq = (struct dcs_pending *)uct_req;
 
-        EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, dc_ep(preq->e, 0)->dci);
+        EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, dc_ep(preq->e, 0)->dci[UCT_DC_MLX5_EP_DCI].id);
     }
 
     static void purge_count_cb(uct_pending_req_t *uct_req, void *arg)
@@ -169,18 +169,18 @@ UCS_TEST_P(test_dc, dcs_single) {
     m_e1->connect_to_iface(0, *m_e2);
     ep = dc_ep(m_e1, 0);
     iface = dc_iface(m_e1);
-    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
     status = uct_ep_am_short(m_e1->ep(0), 0, 0, NULL, 0);
     EXPECT_UCS_OK(status);
     /* dci 0 must be assigned to the ep */
-    EXPECT_EQ(iface->tx.dci_pool[0].stack[0], ep->dci);
+    EXPECT_EQ(iface->tx.dci_pool[0].stack[0], ep->dci[UCT_DC_MLX5_EP_DCI].id);
     EXPECT_EQ(1, iface->tx.dci_pool[0].stack_top);
-    EXPECT_EQ(ep, iface->tx.dcis[ep->dci].ep);
+    EXPECT_EQ(ep, iface->tx.dcis[ep->dci[UCT_DC_MLX5_EP_DCI].id].ep);
 
     flush();
 
     /* after the flush dci must be released */
-    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
     EXPECT_EQ(0, iface->tx.dci_pool[0].stack_top);
     EXPECT_EQ(0, iface->tx.dci_pool[0].stack[0]);
 }
@@ -198,14 +198,14 @@ UCS_TEST_P(test_dc, dcs_multi) {
 
     for (i = 0; i < iface->tx.ndci; i++) {
         ep = dc_ep(m_e1, i);
-        EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+        EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
         status = uct_ep_am_short(m_e1->ep(i), 0, 0, NULL, 0);
         EXPECT_UCS_OK(status);
 
         /* dci on free LIFO must be assigned to the ep */
-        EXPECT_EQ(iface->tx.dci_pool[0].stack[i], ep->dci);
+        EXPECT_EQ(iface->tx.dci_pool[0].stack[i], ep->dci[UCT_DC_MLX5_EP_DCI].id);
         EXPECT_EQ(i+1, iface->tx.dci_pool[0].stack_top);
-        EXPECT_EQ(ep, iface->tx.dcis[ep->dci].ep);
+        EXPECT_EQ(ep, iface->tx.dcis[ep->dci[UCT_DC_MLX5_EP_DCI].id].ep);
     }
 
     /* this should fail because there are no free dci */
@@ -219,7 +219,7 @@ UCS_TEST_P(test_dc, dcs_multi) {
     EXPECT_EQ(0, iface->tx.dci_pool[0].stack_top);
     for (i = 0; i < iface->tx.ndci; i++) {
         ep = dc_ep(m_e1, i);
-        EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+        EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
     }
 }
 
@@ -239,12 +239,12 @@ UCS_TEST_P(test_dc, dcs_ep_destroy) {
     ep = dc_ep(m_e1, 0);
     iface = dc_iface(m_e1);
     n_warnings = 0;
-    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
     send_am_messages(m_e1, 2, UCS_OK);
     /* dci 0 must be assigned to the ep */
-    EXPECT_EQ(iface->tx.dci_pool[0].stack[0], ep->dci);
+    EXPECT_EQ(iface->tx.dci_pool[0].stack[0], ep->dci[UCT_DC_MLX5_EP_DCI].id);
     EXPECT_EQ(1, iface->tx.dci_pool[0].stack_top);
-    EXPECT_EQ(ep, iface->tx.dcis[ep->dci].ep);
+    EXPECT_EQ(ep, iface->tx.dcis[ep->dci[UCT_DC_MLX5_EP_DCI].id].ep);
 
     m_e1->destroy_eps();
     EXPECT_EQ(1, iface->tx.dci_pool[0].stack_top);
@@ -266,13 +266,13 @@ UCS_TEST_P(test_dc, dcs_ep_flush_destroy) {
     m_e1->connect_to_iface(0, *m_e2);
     ep = dc_ep(m_e1, 0);
     iface = dc_iface(m_e1);
-    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
     status = uct_ep_am_short(m_e1->ep(0), 0, 0, NULL, 0);
     EXPECT_UCS_OK(status);
 
-    EXPECT_EQ(iface->tx.dci_pool[0].stack[0], ep->dci);
+    EXPECT_EQ(iface->tx.dci_pool[0].stack[0], ep->dci[UCT_DC_MLX5_EP_DCI].id);
     EXPECT_EQ(1, iface->tx.dci_pool[0].stack_top);
-    EXPECT_EQ(ep, iface->tx.dcis[ep->dci].ep);
+    EXPECT_EQ(ep, iface->tx.dcis[ep->dci[UCT_DC_MLX5_EP_DCI].id].ep);
 
     comp.uct_comp.count  = 1;
     comp.uct_comp.func   = uct_comp_cb;
@@ -366,7 +366,7 @@ UCS_TEST_P(test_dc, dcs_ep_purge_pending, "DC_NUM_DCI=1") {
 
     uct_ep_pending_purge(m_e1->ep(0), purge_cb, NULL);
     flush();
-    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+    EXPECT_EQ(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
 }
 
 UCS_TEST_P(test_dc, rand_dci_many_eps) {
@@ -383,7 +383,7 @@ UCS_TEST_P(test_dc, rand_dci_many_eps) {
     for (int i = 0; i < num_eps; i++) {
         rand_e->connect_to_iface(i, *m_e2);
         ep = dc_ep(rand_e, i);
-        EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
+        EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
     }
 
     /* Try to send on all eps (taking into account available resources) */
@@ -416,15 +416,15 @@ UCS_TEST_P(test_dc, rand_dci_pending_purge) {
             int ep_id = i + dci_id*ndci;
             rand_e->connect_to_iface(ep_id, *m_e2);
             ep = dc_ep(rand_e, ep_id);
-            EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, ep->dci);
-            int available = iface->tx.dcis[ep->dci].txqp.available;
-            iface->tx.dcis[ep->dci].txqp.available = 0;
+            EXPECT_NE(UCT_DC_MLX5_EP_NO_DCI, ep->dci[UCT_DC_MLX5_EP_DCI].id);
+            int available = iface->tx.dcis[ep->dci[UCT_DC_MLX5_EP_DCI].id].txqp.available;
+            iface->tx.dcis[ep->dci[UCT_DC_MLX5_EP_DCI].id].txqp.available = 0;
             for (int j = 0; j < num_reqs; ++j, ++idx) {
                 preq[idx].func = NULL;
                 ASSERT_UCS_OK(uct_ep_pending_add(rand_e->ep(ep_id),
                                                  &preq[idx], 0));
             }
-            iface->tx.dcis[ep->dci].txqp.available = available;
+            iface->tx.dcis[ep->dci[UCT_DC_MLX5_EP_DCI].id].txqp.available = available;
         }
     }
 

@@ -371,6 +371,7 @@ ucs_status_t uct_dc_mlx5_iface_keepalive_init(uct_dc_mlx5_iface_t *iface);
 
 void uct_dc_mlx5_iface_set_ep_failed(uct_dc_mlx5_iface_t *iface,
                                      uct_dc_mlx5_ep_t *ep,
+                                     int index,
                                      struct mlx5_cqe64 *cqe,
                                      uct_ib_mlx5_txwq_t *txwq,
                                      ucs_status_t ep_status);

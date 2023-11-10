@@ -1024,7 +1024,9 @@ ucs_status_t uct_dc_mlx5_iface_init_fc_ep(uct_dc_mlx5_iface_t *iface)
         goto err_free;
     }
 
-    ep->flags = 0;
+    ep->dci[UCT_DC_MLX5_EP_DCI].flags           = 0;
+    ep->dci[UCT_DC_MLX5_EP_DCI_RDMA_READ].flags = 0;
+
     status    = uct_dc_mlx5_ep_basic_init(iface, ep);
     if (status != UCS_OK) {
         ucs_error("FC ep init failed %s", ucs_status_string(status));
@@ -1050,24 +1052,24 @@ static void uct_dc_mlx5_iface_cleanup_fc_ep(uct_dc_mlx5_iface_t *iface)
     uct_rc_txqp_t *txqp;
 
     uct_dc_mlx5_ep_pending_purge(&fc_ep->super.super, NULL, NULL);
-    ucs_arbiter_group_cleanup(&fc_ep->arb_group);
+    ucs_arbiter_group_cleanup(&fc_ep->dci[UCT_DC_MLX5_EP_DCI].arb_group);
     uct_rc_fc_cleanup(&fc_ep->fc);
 
     if (uct_dc_mlx5_iface_is_dci_shared(iface)) {
-        txqp = &iface->tx.dcis[fc_ep->dci].txqp;
+        txqp = &iface->tx.dcis[fc_ep->dci[UCT_DC_MLX5_EP_DCI].id].txqp;
         ucs_queue_for_each_safe(op, iter, &txqp->outstanding, queue) {
             if (op->handler == uct_dc_mlx5_ep_fc_pure_grant_send_completion) {
                 ucs_queue_del_iter(&txqp->outstanding, iter);
                 op->handler(op, NULL);
             }
         }
-    } else if (fc_ep->dci != UCT_DC_MLX5_EP_NO_DCI) {
+    } else if (fc_ep->dci[UCT_DC_MLX5_EP_DCI].id != UCT_DC_MLX5_EP_NO_DCI) {
         /* All outstanding operations on this DCI are FC_PURE_GRANT packets */
-        txqp = &iface->tx.dcis[fc_ep->dci].txqp;
+        txqp = &iface->tx.dcis[fc_ep->dci[UCT_DC_MLX5_EP_DCI].id].txqp;
         uct_rc_txqp_purge_outstanding(&iface->super.super, txqp,
                                       /* complete with OK to avoid re-sending */
                                       UCS_OK,
-                                      iface->tx.dcis[fc_ep->dci].txwq.sw_pi, 0);
+                                      iface->tx.dcis[fc_ep->dci[UCT_DC_MLX5_EP_DCI].id].txwq.sw_pi, 0);
     }
 
     UCS_CLASS_CLEANUP(uct_base_ep_t, fc_ep);
@@ -1208,7 +1210,7 @@ uct_dc_mlx5_iface_fc_handler(uct_rc_iface_t *rc_iface, unsigned qp_num,
          * current fc_wnd is <= 0 */
         if (cur_wnd == 0) {
             uct_dc_mlx5_get_arbiter_params(iface, ep, &waitq, &group,
-                                           &pool_index);
+                                           &pool_index, UCT_DC_MLX5_EP_DCI);
             ucs_arbiter_group_schedule(waitq, group);
             uct_dc_mlx5_iface_progress_pending(iface, pool_index);
             uct_dc_mlx5_iface_check_tx(iface);
@@ -1241,7 +1243,7 @@ static void uct_dc_mlx5_dci_handle_failure(uct_dc_mlx5_iface_t *iface,
         return;
     }
 
-    uct_dc_mlx5_ep_handle_failure(ep, cqe, status);
+    uct_dc_mlx5_ep_handle_failure(ep, dci_index, cqe, status);
 }
 
 static void uct_dc_mlx5_iface_handle_failure(uct_ib_iface_t *ib_iface,
@@ -1706,7 +1708,7 @@ uct_dc_mlx5_dci_keepalive_handle_failure(uct_dc_mlx5_iface_t *iface,
     }
 
     ep = ucs_derived_of(op->ep, uct_dc_mlx5_ep_t);
-    uct_dc_mlx5_iface_set_ep_failed(iface, ep, cqe, txwq, ep_status);
+    uct_dc_mlx5_iface_set_ep_failed(iface, ep, dci_index, cqe, txwq, ep_status);
 
 put_op:
     ucs_mpool_put(op);
@@ -1777,6 +1779,7 @@ void uct_dc_mlx5_iface_reset_dci(uct_dc_mlx5_iface_t *iface, uint8_t dci_index)
 
 void uct_dc_mlx5_iface_set_ep_failed(uct_dc_mlx5_iface_t *iface,
                                      uct_dc_mlx5_ep_t *ep,
+                                     int dci_index,
                                      struct mlx5_cqe64 *cqe,
                                      uct_ib_mlx5_txwq_t *txwq,
                                      ucs_status_t ep_status)
@@ -1784,6 +1787,7 @@ void uct_dc_mlx5_iface_set_ep_failed(uct_dc_mlx5_iface_t *iface,
     uct_ib_iface_t *ib_iface = &iface->super.super.super;
     ucs_status_t status;
     ucs_log_level_t log_lvl;
+    int id = uct_dc_mlx5_iface_dci_id(ep, dci_index);
 
     /* We don't purge an endpoint's pending queue, because only a FC endpoint
      * could have internal TX operations scheduled there which shouldn't be
@@ -1801,16 +1805,16 @@ void uct_dc_mlx5_iface_set_ep_failed(uct_dc_mlx5_iface_t *iface,
         return;
     }
 
-    if (ep->flags & UCT_DC_MLX5_EP_FLAG_ERR_HANDLER_INVOKED) {
+    if (ep->dci[id].flags & UCT_DC_MLX5_EP_FLAG_ERR_HANDLER_INVOKED) {
         return;
     }
 
-    ep->flags |= UCT_DC_MLX5_EP_FLAG_ERR_HANDLER_INVOKED;
+    ep->dci[id].flags |= UCT_DC_MLX5_EP_FLAG_ERR_HANDLER_INVOKED;
 
     uct_dc_mlx5_fc_remove_ep(iface, ep, UINT64_MAX);
     uct_rc_fc_restore_wnd(&iface->super.super, &ep->fc);
 
-    if (ep->flags & UCT_DC_MLX5_EP_FLAG_FLUSH_CANCEL) {
+    if (ep->dci[id].flags & UCT_DC_MLX5_EP_FLAG_FLUSH_CANCEL) {
         return;
     }
 

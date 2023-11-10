@@ -27,38 +27,41 @@ static UCS_F_ALWAYS_INLINE void
 uct_dc_mlx5_get_arbiter_params(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep,
                                ucs_arbiter_t **waitq_p,
                                ucs_arbiter_group_t **group_p,
-                               uint8_t *pool_index_p)
+                               uint8_t *pool_index_p,
+                               int index)
 {
     *pool_index_p = uct_dc_mlx5_ep_pool_index(ep);
 
-    if (ep->dci != UCT_DC_MLX5_EP_NO_DCI) {
+    if (ep->dci[index].id != UCT_DC_MLX5_EP_NO_DCI) {
         *waitq_p = uct_dc_mlx5_iface_tx_waitq(iface);
-        *group_p = uct_dc_mlx5_ep_arb_group(iface, ep);
+        *group_p = uct_dc_mlx5_ep_arb_group(iface, ep, index);
     } else {
         *waitq_p = uct_dc_mlx5_iface_dci_waitq(iface, *pool_index_p);
-        *group_p = &ep->arb_group;
+        *group_p = &ep->dci[index].arb_group;
     }
 }
 
 static UCS_F_ALWAYS_INLINE void
-uct_dc_mlx5_ep_schedule(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep)
+uct_dc_mlx5_ep_schedule(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep,
+                        int index)
 {
-    if (ep->dci == UCT_DC_MLX5_EP_NO_DCI) {
+    if (ep->dci[index].id == UCT_DC_MLX5_EP_NO_DCI) {
         /* no dci:
          * Do not grab dci here. Instead put the group on dci allocation
          * arbiter. This way we can assure fairness between all eps waiting for
          * dci allocation. Relevant for dcs and dcs_quota policies.
          */
-        uct_dc_mlx5_iface_schedule_dci_alloc(iface, ep);
+        uct_dc_mlx5_iface_schedule_dci_alloc(iface, ep, index);
     } else {
-        uct_dc_mlx5_iface_dci_sched_tx(iface, ep);
+        uct_dc_mlx5_iface_dci_sched_tx(iface, ep, index);
     }
 }
 
 static UCS_F_ALWAYS_INLINE void
 uct_dc_mlx5_ep_pending_common(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep,
                               uct_pending_req_t *r, unsigned flags,
-                              int push_to_head, int schedule)
+                              int push_to_head, int schedule,
+                              int index)
 {
     ucs_arbiter_group_t *group;
 
@@ -67,9 +70,9 @@ uct_dc_mlx5_ep_pending_common(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep,
 
     if (uct_dc_mlx5_iface_is_dci_shared(iface)) {
         uct_dc_mlx5_pending_req_priv(r)->ep = ep;
-        group = uct_dc_mlx5_ep_rand_arb_group(iface, ep);
+        group = uct_dc_mlx5_ep_rand_arb_group(iface, ep, index);
     } else {
-        group = &ep->arb_group;
+        group = &ep->dci[index].arb_group;
     }
 
     if (push_to_head) {
@@ -83,5 +86,5 @@ uct_dc_mlx5_ep_pending_common(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep,
         return;
     }
 
-    uct_dc_mlx5_ep_schedule(iface, ep);
+    uct_dc_mlx5_ep_schedule(iface, ep, index);
 }
