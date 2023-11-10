@@ -58,7 +58,10 @@ uct_dc_mlx5_iface_bcopy_post(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep,
     size_t av_size;
     UCT_DC_MLX5_TXQP_DECL(txqp, txwq);
 
+
     UCT_DC_MLX5_IFACE_TXQP_DCI_GET(iface, ep->dci[index].id, txqp, txwq);
+    ucs_debug("VEGAS bcopy opcode %d index %d id %d txqp %p",
+              opcode, index, ep->dci[index].id, txqp);
     av_size = uct_dc_mlx5_set_dgram_seg(txwq, iface, &ep->av,
                                         uct_dc_mlx5_ep_get_grh(ep, index));
     uct_rc_mlx5_common_txqp_bcopy_post(&iface->super, UCT_IB_QPT_DCI, txqp,
@@ -86,6 +89,8 @@ uct_dc_mlx5_iface_zcopy_post(uct_dc_mlx5_iface_t *iface, uct_dc_mlx5_ep_t *ep,
 
     UCT_DC_MLX5_IFACE_TXQP_DCI_GET(iface, ep->dci[index].id, txqp, txwq);
 
+    ucs_debug("VEGAS zcopy opcode %d index %d id %d txqp %p",
+              opcode, index, ep->dci[index].id, txqp);
     sn = txwq->sw_pi;
     av_size = uct_dc_mlx5_set_dgram_seg(txwq, iface, &ep->av,
                                         uct_dc_mlx5_ep_get_grh(ep, index));

@@ -459,6 +459,7 @@ uct_rc_mlx5_common_post_send(uct_rc_mlx5_iface_common_t *iface, int qp_type,
                        ((opcode == MLX5_OPCODE_SEND) || (opcode == MLX5_OPCODE_SEND_IMM)) ?
                        uct_rc_mlx5_common_packet_dump : NULL);
 
+    ucs_debug("VEGAS txqp %p\n", txqp);
     res_count = uct_ib_mlx5_post_send(txwq, ctrl, wqe_size, 1);
     if (fm_ce_se & MLX5_WQE_CTRL_CQ_UPDATE) {
         txwq->sig_pi = txwq->prev_sw_pi;
