@@ -86,6 +86,9 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_get_common_send(
     uct_rkey_t tl_rkey      = ucp_rkey_get_tl_rkey(req->send.rndv.rkey,
                                                    lpriv->super.rkey_index);
     uint64_t remote_address = req->send.rndv.remote_address + offset;
+    ucp_request_t *recv_req = ucp_request_get_super(req);
+
+    recv_req->times.get_tx = ucs_get_time();
 
     return uct_ep_get_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
                             iov, 1, remote_address, tl_rkey, comp);

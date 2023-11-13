@@ -219,7 +219,10 @@ UCS_PTR_MAP_IMPL(request, 0);
 
 static UCS_F_ALWAYS_INLINE void ucp_request_id_reset(ucp_request_t *req)
 {
-    req->id = UCS_PTR_MAP_KEY_INVALID;
+    memset(&req->times, 0, sizeof(req->times));
+
+    req->id          = UCS_PTR_MAP_KEY_INVALID;
+    req->times.start = ucs_get_time();
 }
 
 static UCS_F_ALWAYS_INLINE void
@@ -235,6 +238,7 @@ ucp_request_put(ucp_request_t *req)
 {
     ucs_trace_req("put request %p", req);
     ucp_request_id_check(req, ==, UCS_PTR_MAP_KEY_INVALID);
+    req->times.destroy = ucs_get_time();
     UCS_PROFILE_REQUEST_FREE(req);
     UCP_REQUEST_RESET(req);
     ucs_mpool_put_inline(req);

@@ -322,6 +322,13 @@ void ucp_rndv_req_send_ack(ucp_request_t *ack_req, size_t ack_size,
                            ucs_ptr_map_key_t remote_req_id, ucs_status_t status,
                            ucp_am_id_t am_id, const char *ack_str)
 {
+    ucp_request_t *rreq = NULL;
+
+    if (ack_req->flags & UCP_REQUEST_FLAG_SUPER_VALID) {
+        rreq = ucp_request_get_super(ack_req);
+        rreq->times.ats_tx = ucs_get_time();
+    }
+
     ucp_trace_req(ack_req, "%s remote_req_id 0x%" PRIxPTR " size %zu", ack_str,
                   remote_req_id, ack_size);
     UCS_PROFILE_REQUEST_EVENT(ack_req, ack_str, 0);
@@ -413,6 +420,7 @@ ucs_status_t ucp_rndv_send_rts(ucp_request_t *sreq, uct_pack_callback_t pack_cb,
     size_t max_rts_size = ucp_ep_config(sreq->send.ep)->rndv.rkey_size +
                           rts_size;
 
+    sreq->times.rts_tx = ucs_get_time();
     return ucp_do_am_single(&sreq->send.uct, UCP_AM_ID_RNDV_RTS, pack_cb,
                             max_rts_size);
 }

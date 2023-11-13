@@ -76,6 +76,8 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
     UCP_SEND_REQUEST_GET_BY_ID(&req, worker, rephdr->req_id, 0, return UCS_OK,
                                "ATS %p", rephdr);
 
+    req->times.ats_rx = ucs_get_time();
+
     if (req->flags & UCP_REQUEST_FLAG_OFFLOADED) {
         ucp_tag_offload_cancel_rndv(req);
     }

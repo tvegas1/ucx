@@ -118,6 +118,18 @@ enum {
     UCP_RDESC_ALL_LIST  = 1
 };
 
+struct ucp_times {
+    uint64_t start;
+    uint64_t rts_tx;
+    uint64_t rts_rx;
+    uint64_t get_tx;
+    uint64_t ats_rx;
+    uint64_t ats_tx;
+    uint64_t destroy;
+
+    uint64_t count;
+    uint64_t duration;
+};
 
 /**
  * Request in progress.
@@ -457,6 +469,8 @@ struct ucp_request {
             unsigned                uct_flags;    /* Flags to pass to @ref uct_ep_flush */
         } flush_worker;
     };
+
+    struct ucp_times times;
 };
 
 

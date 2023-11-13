@@ -21,6 +21,88 @@
 #include <ucs/debug/debug_int.h>
 #include <ucs/debug/log.h>
 
+static struct ucp_times_pair *pair_list;
+
+struct ucp_times_pair {
+    struct ucp_times rx_times;
+    struct ucp_times tx_times;
+    struct ucp_times_pair *next;
+};
+
+static __thread struct ucp_times_pair *ucp_req_times;
+
+static uint64_t other_times;
+static uint64_t skip_times;
+
+static struct ucp_times_pair *get_times(void)
+{
+    void *old;
+
+    if (ucp_req_times == NULL) {
+        ucp_req_times = calloc(1, sizeof(*ucp_req_times));
+        ucs_assert(ucp_req_times != NULL);
+
+        do {
+            old = pair_list;
+            ucp_req_times->next = old;
+        } while (old != __sync_val_compare_and_swap(&pair_list, old, ucp_req_times));
+    }
+
+    return ucp_req_times;
+}
+
+void ucp_request_timing(ucp_request_t *req)
+{
+    struct ucp_times_pair *t = get_times();
+    struct ucp_times *tx_times, *rx_times;
+
+    tx_times = &t->tx_times;
+    rx_times = &t->rx_times;
+
+    if (req->times.rts_tx) {
+        if ((req->times.start == 0) ||
+            (req->times.rts_tx == 0) ||
+            (req->times.ats_rx == 0) ||
+            (req->times.destroy == 0)) {
+            goto skip;
+        }
+        tx_times->rts_tx += req->times.rts_tx - req->times.start;
+        tx_times->ats_rx += req->times.ats_rx - req->times.rts_tx;
+        tx_times->destroy += req->times.destroy - req->times.ats_rx;
+        tx_times->duration += req->times.destroy - req->times.start;
+        tx_times->count++;
+    } else if (req->times.rts_rx) {
+        if ((req->times.start == 0) ||
+            (req->times.rts_rx == 0) ||
+            (req->times.get_tx == 0) ||
+            (req->times.ats_tx == 0) ||
+            (req->times.destroy == 0)) {
+            goto skip;
+        }
+        rx_times->rts_rx += req->times.rts_rx - req->times.start;
+        rx_times->ats_tx += req->times.ats_tx - req->times.rts_rx;
+        rx_times->destroy += req->times.destroy - req->times.ats_tx;
+        rx_times->duration += req->times.destroy - req->times.start;
+        rx_times->count++;
+    } else {
+        other_times++;
+    }
+
+    return;
+
+skip:
+    skip_times++;
+}
+
+__attribute__((destructor)) void ucp_times_dummper()
+{
+    struct ucp_times_pair *t;
+
+    for (t = pair_list; t; t = t->next) {
+        printf("TIME: skip %zu other %zu tx/rx count %zu/%zu\n",
+                  skip_times, other_times, t->tx_times.count, t->rx_times.count);
+    }
+}
 
 const ucp_request_param_t ucp_request_null_param = { .op_attr_mask = 0 };
 
