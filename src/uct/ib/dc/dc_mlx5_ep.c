@@ -1422,6 +1422,7 @@ uct_dc_mlx5_iface_dci_do_pending_wait(ucs_arbiter_t *arbiter,
                                                        uct_dc_mlx5_iface_t);
     uint8_t pool_index                = uct_dc_mlx5_ep_pool_index(ep);
     uint8_t id                        = ep_dci->id;
+    (void)id;
 
     ucs_assert(!uct_dc_mlx5_iface_is_dci_shared(iface));
     ucs_assertv(id == UCT_DC_MLX5_EP_NO_DCI,
