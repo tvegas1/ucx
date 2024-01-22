@@ -364,6 +364,7 @@ ucp_address_gather_devices(ucp_worker_h worker, const ucp_ep_config_key_t *key,
                            ucp_address_packed_device_t **devices_p,
                            ucp_rsc_index_t *num_devices_p)
 {
+    unsigned iface_num_paths;
     ucp_context_h context = worker->context;
     ucp_tl_bitmap_t current_tl_bitmap = *tl_bitmap;
     ucp_address_packed_device_t *dev, *devices;
@@ -440,7 +441,11 @@ ucp_address_gather_devices(ucp_worker_h worker, const ucp_ep_config_key_t *key,
 
         dev->rsc_index  = rsc_index;
         UCS_BITMAP_SET(dev->tl_bitmap, rsc_index);
-        dev->num_paths  = ucs_min(max_num_paths, iface_attr->dev_num_paths);
+
+        iface_num_paths = iface_attr->dev_num_paths + !!(iface_attr->cap.flags & UCT_IFACE_FLAG_SEPARATE_AM);
+        dev->num_paths  = ucs_max(dev->num_paths, ucs_min(max_num_paths, iface_num_paths));
+        printf("VEGAS packing iface num paths %d max num paths %d-> dev  %p dev_num_paths %d\n",
+               iface_num_paths, max_num_paths, dev, dev->num_paths);
     }
 
     *devices_p     = devices;

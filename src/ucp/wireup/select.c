@@ -1571,7 +1571,7 @@ ucp_wireup_add_bw_lanes(const ucp_wireup_select_params_t *select_params,
                         ucp_tl_bitmap_t tl_bitmap, ucp_lane_index_t excl_lane,
                         ucp_wireup_select_context_t *select_ctx)
 {
-    int am_dev_index = -1;
+    int skip_dev_index                   = -1;
     ucp_ep_h ep                          = select_params->ep;
     ucp_context_h context                = ep->worker->context;
     ucp_wireup_dev_usage_count dev_count = {};
@@ -1620,14 +1620,13 @@ ucp_wireup_add_bw_lanes(const ucp_wireup_select_params_t *select_params,
             dev_index         = context->tl_rscs[rsc_index].dev_index;
             sinfo->path_index = dev_count.local[dev_index];
 
-
         } else {
             /* disqualify/count lane_desc_idx */
             addr_index      = select_ctx->lane_descs[excl_lane].addr_index;
             rsc_index       = select_ctx->lane_descs[excl_lane].rsc_index;
             dev_index       = context->tl_rscs[rsc_index].dev_index;
             excl_lane       = UCP_NULL_LANE;
-            am_dev_index    = dev_index;
+            skip_dev_index  = dev_index;
         }
 
         /* Count how many times the LOCAL device is used */
@@ -1636,7 +1635,9 @@ ucp_wireup_add_bw_lanes(const ucp_wireup_select_params_t *select_params,
         if (dev_count.local[dev_index] >= iface_attr->dev_num_paths) {
             /* exclude local device if reached max concurrency level */
 
-            if (am_dev_index != dev_index || dev_count.local[dev_index] >= iface_attr->dev_num_paths + 1) {
+            if ((skip_dev_index != dev_index) ||
+                !(iface_attr->cap.flags & UCT_IFACE_FLAG_SEPARATE_AM) ||
+                (dev_count.local[dev_index] >= iface_attr->dev_num_paths + 1)) {
                 local_dev_bitmap  &= ~UCS_BIT(dev_index);
             }
         }
@@ -1644,7 +1645,7 @@ ucp_wireup_add_bw_lanes(const ucp_wireup_select_params_t *select_params,
         /* Count how many times the REMOTE device is used */
         ae = &select_params->address->address_list[addr_index];
         ++dev_count.remote[ae->dev_index];
-        if (dev_count.remote[ae->dev_index] > ae->dev_num_paths) {
+        if (dev_count.remote[ae->dev_index] >= ae->dev_num_paths) {
             /* exclude remote device if reached max concurrency level */
             remote_dev_bitmap &= ~UCS_BIT(ae->dev_index);
         }
@@ -1789,6 +1790,8 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
     ucp_wireup_select_flags_t iface_rma_flags, peer_rma_flags;
     int path_index;
     ucp_lane_index_t lane_desc_idx, am_lane;
+    const uct_iface_attr_t *iface_attr;
+    ucp_rsc_index_t rsc_index;
 
     ucp_wireup_init_select_flags(&iface_rma_flags, 0, 0);
     ucp_wireup_init_select_flags(&peer_rma_flags, 0, 0);
@@ -1869,11 +1872,15 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
                 UCS_BIT(UCP_LANE_TYPE_AM)) {
             /* do not continue searching since we found AM lane (and there is
              * only one AM lane) */
-            am_lane = lane_desc_idx;
-            /* Map AM lane to specific path_index */
-            path_index = select_ctx->lane_descs[lane_desc_idx].path_index;
-            ucs_assert_always(path_index == 0 || path_index == UCP_WIREUP_PATH_INDEX_UNDEFINED);
-            select_ctx->lane_descs[lane_desc_idx].path_index = 0;
+            rsc_index  = select_ctx->lane_descs[lane_desc_idx].rsc_index;
+            iface_attr = ucp_worker_iface_get_attr(ep->worker, rsc_index);
+            if (iface_attr->cap.flags & UCT_IFACE_FLAG_SEPARATE_AM) {
+                am_lane = lane_desc_idx;
+                /* Map AM lane to specific path_index */
+                path_index = select_ctx->lane_descs[lane_desc_idx].path_index;
+                ucs_assert_always(path_index == 0 || path_index == UCP_WIREUP_PATH_INDEX_UNDEFINED);
+                select_ctx->lane_descs[lane_desc_idx].path_index = 0;
+            }
             break;
         }
     }
