@@ -1778,6 +1778,7 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
     ucp_tl_bitmap_t tl_bitmap, mem_type_tl_bitmap;
     uint8_t i;
     ucp_wireup_select_flags_t iface_rma_flags, peer_rma_flags;
+    ucp_lane_index_t lane_desc_idx, am_lane;
 
     ucp_wireup_init_select_flags(&iface_rma_flags, 0, 0);
     ucp_wireup_init_select_flags(&peer_rma_flags, 0, 0);
@@ -1850,6 +1851,20 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
         bw_info.criteria.local_md_flags |= UCT_MD_FLAG_INVALIDATE_RMA;
     }
 
+    /* VEGAS interesting flag above */
+    /* am_bw_lane[0] is am_lane, so don't re-select it here */
+    am_lane = UCP_NULL_LANE;
+    for (lane_desc_idx = 0; lane_desc_idx < select_ctx->num_lanes; ++lane_desc_idx) {
+        if (select_ctx->lane_descs[lane_desc_idx].lane_types &
+                UCS_BIT(UCP_LANE_TYPE_AM)) {
+            /* do not continue searching since we found AM lane (and there is
+             * only one AM lane) */
+            am_lane = lane_desc_idx;
+            break;
+        }
+    }
+
+
     /* RNDV protocol can't mix different schemes, i.e. wireup has to
      * select lanes with the same iface flags depends on a requested
      * RNDV scheme.
@@ -1883,7 +1898,7 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
                                                select_params, &bw_info,
                                                UCP_TL_BITMAP_AND_NOT(
                                                  mem_type_tl_bitmap, tl_bitmap),
-                                               UCP_NULL_LANE, select_ctx);
+                                               am_lane, select_ctx);
 
             UCS_BITMAP_OR_INPLACE(&tl_bitmap, mem_type_tl_bitmap);
         }
