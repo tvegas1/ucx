@@ -62,6 +62,7 @@ typedef struct {
     uint64_t              remote_dev_bitmap;
     ucp_md_map_t          md_map;
     unsigned              max_lanes;
+    unsigned              skip_num_paths;
 } ucp_wireup_select_bw_info_t;
 
 
@@ -1634,10 +1635,8 @@ ucp_wireup_add_bw_lanes(const ucp_wireup_select_params_t *select_params,
         ++dev_count.local[dev_index];
         if (dev_count.local[dev_index] >= iface_attr->dev_num_paths) {
             /* exclude local device if reached max concurrency level */
-
             if ((skip_dev_index != dev_index) ||
-                !(iface_attr->cap.flags & UCT_IFACE_FLAG_SEPARATE_AM) ||
-                (dev_count.local[dev_index] >= iface_attr->dev_num_paths + 1)) {
+                (dev_count.local[dev_index] >= bw_info->skip_num_paths)) {
                 local_dev_bitmap  &= ~UCS_BIT(dev_index);
             }
         }
@@ -1645,7 +1644,7 @@ ucp_wireup_add_bw_lanes(const ucp_wireup_select_params_t *select_params,
         /* Count how many times the REMOTE device is used */
         ae = &select_params->address->address_list[addr_index];
         ++dev_count.remote[ae->dev_index];
-        if (dev_count.remote[ae->dev_index] >= ae->dev_num_paths) {
+        if (dev_count.remote[ae->dev_index] > ae->dev_num_paths) {
             /* exclude remote device if reached max concurrency level */
             remote_dev_bitmap &= ~UCS_BIT(ae->dev_index);
         }
@@ -1706,6 +1705,7 @@ ucp_wireup_add_am_bw_lanes(const ucp_wireup_select_params_t *select_params,
 
     /* am_bw_lane[0] is am_lane, so don't re-select it here */
     am_lane = UCP_NULL_LANE;
+    bw_info.skip_num_paths = 0;
     for (lane_desc_idx = 0; lane_desc_idx < select_ctx->num_lanes; ++lane_desc_idx) {
         if (select_ctx->lane_descs[lane_desc_idx].lane_types &
                 UCS_BIT(UCP_LANE_TYPE_AM)) {
@@ -1825,6 +1825,7 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
     bw_info.local_dev_bitmap  = UINT64_MAX;
     bw_info.remote_dev_bitmap = UINT64_MAX;
     bw_info.md_map            = 0;
+    bw_info.skip_num_paths    = 0;
 
     /* check rkey_ptr */
     if (!(ep_init_flags & UCP_EP_INIT_FLAG_MEM_TYPE) &&
@@ -1880,6 +1881,7 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
                 path_index = select_ctx->lane_descs[lane_desc_idx].path_index;
                 ucs_assert_always(path_index == 0 || path_index == UCP_WIREUP_PATH_INDEX_UNDEFINED);
                 select_ctx->lane_descs[lane_desc_idx].path_index = 0;
+                bw_info.skip_num_paths = iface_attr->dev_num_paths + 1;
             }
             break;
         }
