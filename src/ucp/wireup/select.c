@@ -736,6 +736,10 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_add_lane_desc(
              * and exit
              */
             if (!(lane_desc->lane_types & UCS_BIT(lane_type))) {
+            printf("VEGAS matched addr_index %d path_index %d/%d ",
+                   lane_desc->addr_index, lane_desc->path_index,
+                   select_info->path_index);
+
                 goto out_update;
             }
 
@@ -1778,6 +1782,7 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
     ucp_tl_bitmap_t tl_bitmap, mem_type_tl_bitmap;
     uint8_t i;
     ucp_wireup_select_flags_t iface_rma_flags, peer_rma_flags;
+    int path_index;
     ucp_lane_index_t lane_desc_idx, am_lane;
 
     ucp_wireup_init_select_flags(&iface_rma_flags, 0, 0);
@@ -1860,6 +1865,10 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
             /* do not continue searching since we found AM lane (and there is
              * only one AM lane) */
             am_lane = lane_desc_idx;
+            /* Map AM lane to specific path_index */
+            path_index = select_ctx->lane_descs[lane_desc_idx].path_index;
+            ucs_assert_always(path_index == 0 || path_index == UCP_WIREUP_PATH_INDEX_UNDEFINED);
+            select_ctx->lane_descs[lane_desc_idx].path_index = 0;
             break;
         }
     }
