@@ -1571,6 +1571,7 @@ ucp_wireup_add_bw_lanes(const ucp_wireup_select_params_t *select_params,
                         ucp_tl_bitmap_t tl_bitmap, ucp_lane_index_t excl_lane,
                         ucp_wireup_select_context_t *select_ctx)
 {
+    int am_dev_index = -1;
     ucp_ep_h ep                          = select_params->ep;
     ucp_context_h context                = ep->worker->context;
     ucp_wireup_dev_usage_count dev_count = {};
@@ -1626,6 +1627,7 @@ ucp_wireup_add_bw_lanes(const ucp_wireup_select_params_t *select_params,
             rsc_index       = select_ctx->lane_descs[excl_lane].rsc_index;
             dev_index       = context->tl_rscs[rsc_index].dev_index;
             excl_lane       = UCP_NULL_LANE;
+            am_dev_index    = dev_index;
         }
 
         /* Count how many times the LOCAL device is used */
@@ -1633,13 +1635,16 @@ ucp_wireup_add_bw_lanes(const ucp_wireup_select_params_t *select_params,
         ++dev_count.local[dev_index];
         if (dev_count.local[dev_index] >= iface_attr->dev_num_paths) {
             /* exclude local device if reached max concurrency level */
-            local_dev_bitmap  &= ~UCS_BIT(dev_index);
+
+            if (am_dev_index != dev_index || dev_count.local[dev_index] >= iface_attr->dev_num_paths + 1) {
+                local_dev_bitmap  &= ~UCS_BIT(dev_index);
+            }
         }
 
         /* Count how many times the REMOTE device is used */
         ae = &select_params->address->address_list[addr_index];
         ++dev_count.remote[ae->dev_index];
-        if (dev_count.remote[ae->dev_index] >= ae->dev_num_paths) {
+        if (dev_count.remote[ae->dev_index] > ae->dev_num_paths) {
             /* exclude remote device if reached max concurrency level */
             remote_dev_bitmap &= ~UCS_BIT(ae->dev_index);
         }
