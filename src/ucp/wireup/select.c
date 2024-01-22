@@ -367,34 +367,6 @@ static size_t ucp_wireup_max_lanes(ucp_lane_type_t lane_type)
                    UCP_MAX_LANES;
 }
 
-static int
-ucp_wireup_path_index_is_equal(unsigned path_index1, unsigned path_index2)
-{
-    return (path_index1 == UCP_WIREUP_PATH_INDEX_UNDEFINED) ||
-           (path_index2 == UCP_WIREUP_PATH_INDEX_UNDEFINED) ||
-           (path_index1 == path_index2);
-}
-
-static const ucp_wireup_lane_desc_t *
-ucp_wireup_find_lane_desc(
-        const ucp_wireup_select_context_t *select_ctx,
-        const ucp_wireup_select_info_t *select_info)
-{
-    const ucp_wireup_lane_desc_t *lane_desc;
-
-    for (lane_desc = select_ctx->lane_descs;
-         lane_desc < select_ctx->lane_descs + select_ctx->num_lanes; ++lane_desc) {
-        if ((lane_desc->rsc_index == select_info->rsc_index) &&
-            (lane_desc->addr_index == select_info->addr_index) &&
-            ucp_wireup_path_index_is_equal(lane_desc->path_index,
-                                           select_info->path_index)) {
-            return lane_desc;
-       }
-    }
-
-    return lane_desc;
-}
-
 /**
  * Select a local and remote transport
  */
@@ -413,9 +385,6 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_select_transport(
     ucp_worker_h worker                           = ep->worker;
     ucp_context_h context                         = worker->context;
     ucp_wireup_select_info_t sinfo                = {0};
-    ucp_wireup_select_info_t tmp_sinfo            = {0};
-    ucp_wireup_dev_usage_count dev_count         = {};
-    ucp_wireup_dev_usage_count dev_skip           = {};
     int found                                     = 0;
     ucp_wireup_select_flags_t local_iface_flags = criteria->local_iface_flags;
     int has_cm;
@@ -446,8 +415,6 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_select_transport(
     UCS_BITMAP_AND_INPLACE(&tl_bitmap, context->tl_bitmap);
     show_error   = (select_params->show_error && show_error);
 
-    memset(&dev_count, 0xff, sizeof(dev_count));
-
     /* Check which remote addresses satisfy the criteria */
     UCS_BITMAP_CLEAR(&addr_index_map);
     ucp_unpacked_address_for_each(ae, address) {
@@ -468,7 +435,6 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_select_transport(
         ucs_assert(ucs_test_all_flags(UCP_ADDRESS_IFACE_EVENT_FLAGS,
                                       criteria->remote_event_flags));
 
-       /* VEGAS check remote iface flags */
         ucs_string_buffer_reset(&missing_flags_str);
         if (!ucp_wireup_test_select_flags(&criteria->remote_iface_flags,
                                           ae->iface_attr.flags,
@@ -494,7 +460,6 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_select_transport(
         UCP_WIREUP_CHECK_AMO_FLAGS(ae, criteria, context, addr_index, fop, 32);
         UCP_WIREUP_CHECK_AMO_FLAGS(ae, criteria, context, addr_index, fop, 64);
 
-        dev_count.local[ae->dev_index] = addr_index;
         UCS_BITMAP_SET(addr_index_map, addr_index);
     }
 
@@ -523,7 +488,6 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_select_transport(
             continue;
         }
 
-/*VEGAS: TO_IFACE_ONLY flags */
         has_cm = ucp_ep_init_flags_has_cm(select_params->ep_init_flags);
         if (select_params->ep_init_flags & UCP_EP_INIT_CONNECT_TO_IFACE_ONLY) {
             local_iface_flags.mandatory |= UCT_IFACE_FLAG_CONNECT_TO_IFACE;
@@ -627,14 +591,6 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_select_transport(
                 continue;
             }
 
-           ucs_error("VEGAS last addr %d dev %d stored %d",
-                     addr_index, ae->dev_index, dev_count.local[ae->dev_index]);
-            if (dev_count.local[ae->dev_index] == addr_index) {
-                if (!dev_skip.local[ae->dev_index]) {
-                   ucs_error("  ->>>>>>>>>>> NOTT SKIPPED VEGAS last addr %d dev %d", addr_index, ae->dev_index);
-                }
-            }
-
             score        = criteria->calc_score(wiface, md_attr, address, ae,
                                                 criteria->arg);
             priority     = iface_attr->priority + ae->iface_attr.priority;
@@ -648,23 +604,8 @@ static UCS_F_NOINLINE ucs_status_t ucp_wireup_select_transport(
             if (!found || (ucp_score_prio_cmp(score, priority, sinfo.score,
                                               sinfo.priority) > 0)) {
                 ucp_wireup_init_select_info(score, addr_index, rsc_index,
-                                            priority, &tmp_sinfo);
+                                            priority, &sinfo);
                 found = 1;
-
-               if (criteria->lane_type == UCP_LANE_TYPE_RMA_BW) {
-               /* VEGAS: TODO: Add iface flag checking */
-               /* VEGAS: TODO: Add remote lib version checking */
-                    lane_desc = ucp_wireup_find_lane_desc(select_ctx, &tmp_sinfo);
-                    if (lane_desc && (lane_desc->lane_types & UCS_BIT(UCP_LANE_TYPE_AM))) {
-                           ucs_error("VEGAS Already used");
-                           found = 0;
-                            dev_skip.local[ae->dev_index] = 1;
-                    }
-               }
-
-               if (found == 1) {
-                    memcpy(&sinfo, &tmp_sinfo, sizeof(sinfo));
-                }
             }
         }
 
@@ -754,6 +695,14 @@ static int ucp_wireup_has_slow_lanes(ucp_wireup_select_context_t *select_ctx)
     }
 
     return 0;
+}
+
+static int
+ucp_wireup_path_index_is_equal(unsigned path_index1, unsigned path_index2)
+{
+    return (path_index1 == UCP_WIREUP_PATH_INDEX_UNDEFINED) ||
+           (path_index2 == UCP_WIREUP_PATH_INDEX_UNDEFINED) ||
+           (path_index1 == path_index2);
 }
 
 static UCS_F_NOINLINE ucs_status_t ucp_wireup_add_lane_desc(
@@ -1900,8 +1849,6 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
     if (ep_init_flags & UCP_EP_INIT_ERR_MODE_PEER_FAILURE) {
         bw_info.criteria.local_md_flags |= UCT_MD_FLAG_INVALIDATE_RMA;
     }
-
-    /* VEGAS interesting flag above */
 
     /* RNDV protocol can't mix different schemes, i.e. wireup has to
      * select lanes with the same iface flags depends on a requested

@@ -1180,7 +1180,7 @@ static void uct_ib_iface_set_num_paths(uct_ib_iface_t *iface,
             iface->num_paths = iface->path_bits_count;
         }
 
-        if ((iface->num_paths == 1) ||
+        if ((iface->num_paths == 1) &&
             (uct_ib_iface_port_attr(iface)->active_speed == UCT_IB_SPEED_NDR)) {
             iface->num_paths = 2;
         }
