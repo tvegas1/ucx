@@ -446,7 +446,7 @@ ucs_stats_deserialize_recurs(FILE *stream, ucs_stats_class_t **classes,
     }
 
     if (feof(stream)) {
-        ucs_error("Error parsing statistics - premature end of stream");
+        ucs_fatal("Error parsing statistics - premature end of stream");
         return UCS_ERR_MESSAGE_TRUNCATED;
     }
 

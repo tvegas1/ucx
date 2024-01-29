@@ -435,6 +435,8 @@ ucp_datatype_iter_unpack(ucp_datatype_iter_t *dt_iter, ucp_worker_h worker,
     void *dest;
 
     if (ucs_unlikely(dt_iter->length - offset < length)) {
+        ucs_fatal("iter unpack iter length %zu offset %zu length %zu",
+                  dt_iter->length, offset, length);
         return UCS_ERR_MESSAGE_TRUNCATED;
     }
 
@@ -691,6 +693,8 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_datatype_iter_unpack_single(
 
     if (truncation && (dt_iter.length < length)) {
         ucs_debug("message truncated: recv_length %zu dt_iter.length %zu",
+                  length, dt_iter.length);
+        ucs_fatal("message truncated: recv_length %zu dt_iter.length %zu",
                   length, dt_iter.length);
         status = UCS_ERR_MESSAGE_TRUNCATED;
         goto out_cleanup;

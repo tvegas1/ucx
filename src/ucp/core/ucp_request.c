@@ -717,6 +717,7 @@ ucs_status_t ucp_request_recv_msg_truncated(ucp_request_t *req, size_t length,
               length, offset, req->recv.dt_iter.length);
 
     ucp_datatype_iter_cleanup(&req->recv.dt_iter, 0, UCP_DT_MASK_ALL);
+    ucs_fatal("ucp_request_recv_msg_truncated req %p", req);
     return UCS_ERR_MESSAGE_TRUNCATED;
 }
 

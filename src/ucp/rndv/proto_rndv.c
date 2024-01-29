@@ -789,6 +789,8 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
         rkey_length      = 0; /* Override rkey length to disable data fetch */
         op_id            = UCP_OP_ID_RNDV_RECV_DROP;
         recv_req->status = UCS_ERR_MESSAGE_TRUNCATED;
+        ucs_fatal("ucp_proto_rndv_receive_start rts_size %zu recv_req %zu",
+                  rts->size, recv_req->recv.dt_iter.length);
         ucp_datatype_iter_cleanup(&recv_req->recv.dt_iter, 1, UCP_DT_MASK_ALL);
         ucp_datatype_iter_init_null(&req->send.state.dt_iter, rts->size,
                                     &sg_count);

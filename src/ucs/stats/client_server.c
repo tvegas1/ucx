@@ -361,7 +361,7 @@ ucs_stats_server_entity_update(ucs_stats_server_h server, stats_entity_t *entity
 
     hole = find_frag_hole(entity, frag_size, frag_offset);
     if (hole == NULL) {
-        ucs_error("cannot fill fragment (offset %zu size %zu)", frag_offset, frag_size);
+        ucs_fatal("cannot fill fragment (offset %zu size %zu)", frag_offset, frag_size);
         return UCS_ERR_MESSAGE_TRUNCATED;
     }
 
@@ -423,7 +423,7 @@ ucs_stats_server_update_context(ucs_stats_server_h server, struct sockaddr_in *s
 
     /* Validate fragment size */
     if (pkt_len != pkt->frag_size + sizeof(ucs_stats_packet_hdr_t)) {
-        ucs_error("Invalid receive size: expected %zu, got %zu",
+        ucs_fatal("Invalid receive size: expected %zu, got %zu",
                   pkt->frag_size + sizeof(ucs_stats_packet_hdr_t), pkt_len);
         return UCS_ERR_MESSAGE_TRUNCATED;
     }

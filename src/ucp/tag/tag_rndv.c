@@ -90,6 +90,8 @@ ucp_tag_send_start_rndv(ucp_request_t *sreq, const ucp_request_param_t *param)
 {
     ucp_ep_h ep = sreq->send.ep;
     ucs_status_t status;
+    uint64_t req_id, ep_id, tag;
+    size_t size;
 
     ucp_trace_req(sreq, "start_rndv to %s buffer %p length %zu mem_type:%s",
                   ucp_ep_peer_name(ep), sreq->send.buffer,
@@ -103,12 +105,23 @@ ucp_tag_send_start_rndv(ucp_request_t *sreq, const ucp_request_param_t *param)
 
     ucp_send_request_id_alloc(sreq);
 
+    req_id = ucp_send_request_get_id(sreq);
+    ep_id  = ucp_send_request_get_ep_remote_id(sreq);
+    size   = sreq->send.state.dt_iter.length;
+    tag    = sreq->send.msg_proto.tag;
+
     if (ucp_ep_config_key_has_tag_lane(&ucp_ep_config(ep)->key)) {
         status = ucp_tag_offload_start_rndv(sreq, param);
     } else {
         ucs_assert(sreq->send.lane == ucp_ep_get_am_lane(ep));
         sreq->send.uct.func = ucp_proto_progress_tag_rndv_rts;
         status              = ucp_rndv_reg_send_buffer(sreq, param);
+    }
+
+    if (status == UCS_OK) {
+        ucs_print("rndv_rts v1: ep_id 0x%"PRIx64" req_id 0x%"PRIx64
+                  " tag %" PRIx64 " size %zu",
+                  ep_id, req_id, tag, size);
     }
 
     return status;
@@ -132,6 +145,8 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_rndv_rts_progress, (self),
     const ucp_proto_rndv_ctrl_priv_t *rpriv;
     size_t max_rts_size;
     ucs_status_t status;
+    uint64_t req_id, ep_id, tag;
+    size_t size;
 
     rpriv        = req->send.proto_config->priv;
     max_rts_size = sizeof(ucp_rndv_rts_hdr_t) + rpriv->packed_rkey_size;
@@ -142,11 +157,20 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_rndv_rts_progress, (self),
         return UCS_OK;
     }
 
+    req_id = ucp_send_request_get_id(req);
+    ep_id  = ucp_send_request_get_ep_remote_id(req);
+    size   = req->send.state.dt_iter.length;
+    tag    = req->send.msg_proto.tag;
+
     status = UCS_PROFILE_CALL(ucp_proto_am_bcopy_single_progress, req,
                             UCP_AM_ID_RNDV_RTS, rpriv->lane,
                             ucp_tag_rndv_proto_rts_pack, req, max_rts_size,
                             NULL, 0);
     if (status == UCS_OK) {
+        ucs_print("rndv_rts: ep_id 0x%"PRIx64" req_id 0x%"PRIx64
+                  " tag %" PRIx64 " size %zu",
+                  ep_id, req_id, tag, size);
+
         UCP_EP_STAT_TAG_OP(req->send.ep, RNDV);
     }
 

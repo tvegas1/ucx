@@ -221,7 +221,7 @@ ucp_stream_rdata_unpack(const void *rdata, size_t length, ucp_request_t *dst_req
         return valid_len;
     }
 
-    ucs_assert(status != UCS_ERR_MESSAGE_TRUNCATED);
+    ucs_assert_always(status != UCS_ERR_MESSAGE_TRUNCATED);
     return status;
 }
 

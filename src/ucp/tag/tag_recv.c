@@ -66,10 +66,10 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_tag_recv_common(
     size_t hdr_len, recv_len;
     ucs_status_t status;
 
-    ucp_trace_req(req,
-                  "%s buffer %p dt 0x%lx count %zu tag %" PRIx64 "/%" PRIx64,
-                  debug_name, buffer, ucp_request_param_datatype(param), count,
-                  tag, tag_mask);
+    ucs_print(
+              "%s: req %p buffer %p dt 0x%lx count %zu tag %" PRIx64 "/%" PRIx64,
+              debug_name, req, buffer, ucp_request_param_datatype(param), count,
+              tag, tag_mask);
 
 #if ENABLE_DEBUG_DATA
     req->recv.proto_rndv_config = NULL;

@@ -1639,6 +1639,9 @@ UCS_PROFILE_FUNC_VOID(ucp_rndv_receive, (worker, rreq, rndv_rts_hdr, rkey_buf),
         ucp_rndv_req_send_ack(rndv_req, rndv_rts_hdr->size,
                               rndv_rts_hdr->sreq.req_id, UCS_OK,
                               UCP_AM_ID_RNDV_ATS, "send_ats");
+
+        ucs_fatal("rndv truncated remote size %zu local size %zu rreq %p",
+                  rndv_rts_hdr->size, rreq->recv.dt_iter.length, rreq);
         ucp_rndv_zcopy_recv_req_complete(rreq, UCS_ERR_MESSAGE_TRUNCATED,
                                          UCP_DT_MASK_ALL);
         return;
