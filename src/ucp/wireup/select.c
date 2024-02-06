@@ -1771,6 +1771,7 @@ static ucs_status_t
 ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
                             ucp_wireup_select_context_t *select_ctx)
 {
+    ucp_lane_index_t am_lane           = UCP_NULL_LANE;
     ucp_ep_h ep                        = select_params->ep;
     ucp_context_h context              = ep->worker->context;
     unsigned ep_init_flags             = ucp_wireup_ep_init_flags(select_params,
@@ -1788,7 +1789,7 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
     uint8_t i;
     ucp_wireup_select_flags_t iface_rma_flags, peer_rma_flags;
     int path_index;
-    ucp_lane_index_t lane_desc_idx, am_lane;
+    ucp_lane_index_t lane_desc_idx;
     const uct_iface_attr_t *iface_attr;
     ucp_rsc_index_t rsc_index;
 
@@ -1863,28 +1864,32 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
         bw_info.criteria.local_md_flags |= UCT_MD_FLAG_INVALIDATE_RMA;
     }
 
-    /* VEGAS interesting flag above */
-    /* am_bw_lane[0] is am_lane, so don't re-select it here */
-    am_lane = UCP_NULL_LANE;
-    for (lane_desc_idx = 0; lane_desc_idx < select_ctx->num_lanes; ++lane_desc_idx) {
-        if (select_ctx->lane_descs[lane_desc_idx].lane_types &
-                UCS_BIT(UCP_LANE_TYPE_AM)) {
-            /* do not continue searching since we found AM lane (and there is
-             * only one AM lane) */
-            rsc_index  = select_ctx->lane_descs[lane_desc_idx].rsc_index;
-            iface_attr = ucp_worker_iface_get_attr(ep->worker, rsc_index);
-            if (iface_attr->cap.flags & UCT_IFACE_FLAG_SEPARATE_AM) {
-                am_lane = lane_desc_idx;
-                /* Map AM lane to specific path_index */
-                path_index = select_ctx->lane_descs[lane_desc_idx].path_index;
-                ucs_assert_always(path_index == 0 || path_index == UCP_WIREUP_PATH_INDEX_UNDEFINED);
-                select_ctx->lane_descs[lane_desc_idx].path_index = 0;
-                bw_info.criteria.num_paths_override = 1;
-            }
+    /* Find an AM lane that needs to be segregated from RMA accesses */
+    for (lane_desc_idx = 0; lane_desc_idx < select_ctx->num_lanes;
+         ++lane_desc_idx) {
+
+        if (!(select_ctx->lane_descs[lane_desc_idx].lane_types &
+              UCS_BIT(UCP_LANE_TYPE_AM))) {
+            continue;
+        }
+
+        rsc_index  = select_ctx->lane_descs[lane_desc_idx].rsc_index;
+        iface_attr = ucp_worker_iface_get_attr(ep->worker, rsc_index);
+
+        if (iface_attr->cap.flags & UCT_IFACE_FLAG_TX_RX_DEPENDENCY) {
+            am_lane = lane_desc_idx;
+
+            /* Map AM lane to specific path_index */
+            path_index = select_ctx->lane_descs[lane_desc_idx].path_index;
+            ucs_assertv((path_index == 0) ||
+                        (path_index == UCP_WIREUP_PATH_INDEX_UNDEFINED),
+                        "path_index=%u", path_index);
+
+            select_ctx->lane_descs[lane_desc_idx].path_index = 0;
+            bw_info.criteria.num_paths_override              = 1;
             break;
         }
     }
-
 
     /* RNDV protocol can't mix different schemes, i.e. wireup has to
      * select lanes with the same iface flags depends on a requested

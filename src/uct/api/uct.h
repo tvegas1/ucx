@@ -435,7 +435,9 @@ typedef enum uct_atomic_op {
 #define UCT_IFACE_FLAG_TAG_EAGER_ZCOPY UCS_BIT(52) /**< Hardware tag matching zcopy eager support */
 #define UCT_IFACE_FLAG_TAG_RNDV_ZCOPY  UCS_BIT(53) /**< Hardware tag matching rendezvous zcopy support */
 
-#define UCT_IFACE_FLAG_SEPARATE_AM     UCS_BIT(54) /**< Supports using one more path index to separate AM */
+        /* Miscellaneous */
+#define UCT_IFACE_FLAG_TX_RX_DEPENDENCY UCS_BIT(54) /**< TX operations depend on unrelated RX operations
+                                                         completion */
 
 /**
  * @}
