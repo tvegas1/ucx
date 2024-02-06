@@ -85,6 +85,9 @@ typedef struct {
     /* Required support of keepalive mechanism */
     int                         is_keepalive;
 
+    /* Allows overriding num_paths when skipping lane */
+    int                         num_paths_override;
+
     /**
      * Calculates score of a potential transport.
      *
