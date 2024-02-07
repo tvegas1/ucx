@@ -196,6 +196,7 @@ uct_dc_mlx5_ep_create_connected(const uct_ep_params_t *params, uct_ep_h* ep_p)
 static ucs_status_t uct_dc_mlx5_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
 {
     uct_dc_mlx5_iface_t *iface = ucs_derived_of(tl_iface, uct_dc_mlx5_iface_t);
+    uct_ib_iface_t *ib_iface   = &iface->super.super.super;
     size_t max_am_inline       = UCT_IB_MLX5_AM_MAX_SHORT(UCT_IB_MLX5_AV_FULL_SIZE);
     size_t max_put_inline      = UCT_IB_MLX5_PUT_MAX_SHORT(UCT_IB_MLX5_AV_FULL_SIZE);
     ucs_status_t status;
@@ -223,7 +224,10 @@ static ucs_status_t uct_dc_mlx5_iface_query(uct_iface_h tl_iface, uct_iface_attr
     /* fixup flags and address lengths */
     iface_attr->cap.flags     &= ~UCT_IFACE_FLAG_CONNECT_TO_EP;
     iface_attr->cap.flags     |= UCT_IFACE_FLAG_CONNECT_TO_IFACE;
-    iface_attr->cap.flags     |= UCT_IFACE_FLAG_TX_RX_DEPENDENCY;
+    if (uct_ib_iface_port_attr(ib_iface)->active_speed == UCT_IB_SPEED_NDR) {
+        iface_attr->cap.flags |= UCT_IFACE_FLAG_TX_RX_DEPENDENCY;
+    }
+
     iface_attr->ep_addr_len    = 0;
     iface_attr->max_conn_priv  = 0;
     iface_attr->iface_addr_len = uct_rc_iface_flush_rkey_enabled(&iface->super.super) ?
