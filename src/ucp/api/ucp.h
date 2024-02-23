@@ -734,12 +734,13 @@ typedef enum {
                                                         operation, fail if the
                                                         operation cannot be
                                                         completed immediately */
-    UCP_OP_ATTR_FLAG_MULTI_SEND     = UCS_BIT(19)  /**< optimize for bandwidth of
+    UCP_OP_ATTR_FLAG_MULTI_SEND     = UCS_BIT(19), /**< optimize for bandwidth of
                                                         multiple in-flight operations,
                                                         rather than for the latency
                                                         of a single operation.
                                                         This flag and UCP_OP_ATTR_FLAG_FAST_CMPL
                                                         are mutually exclusive. */
+    UCP_OP_ATTR_FLAG_EP             = UCS_BIT(20)  /**< hint on the expected remote endpoint */
 } ucp_op_attr_t;
 
 
@@ -1819,6 +1820,11 @@ typedef struct {
      */
     ucp_mem_h memh;
 
+    /**
+     * Intended remote endpoint: might not be used, but must be accurate if
+     * present.
+     */
+    ucp_ep_h ep;
 } ucp_request_param_t;
 
 

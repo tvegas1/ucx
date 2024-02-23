@@ -142,6 +142,10 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_tag_recv_common(
     req->recv.op_attr       = param->op_attr_mask;
     req->recv.tag.tag       = tag;
     req->recv.tag.tag_mask  = tag_mask;
+    if (param->op_attr_mask & UCP_OP_ATTR_FLAG_EP) {
+        req->recv.tag.ep = param->ep;
+    }
+
     if (param->op_attr_mask & UCP_OP_ATTR_FIELD_CALLBACK) {
         req->recv.tag.cb = param->cb.recv;
         req->user_data   = ucp_request_param_user_data(param);
