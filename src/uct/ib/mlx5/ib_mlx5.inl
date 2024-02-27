@@ -505,7 +505,11 @@ static UCS_F_ALWAYS_INLINE void uct_ib_mlx5_bf_copy_bb(void * restrict dst,
                                                        void * restrict src)
 {
 #if defined( __SSE4_2__)
-    UCS_WORD_COPY(__m128i, dst, __m128i, src, MLX5_SEND_WQE_BB);
+    UCS_STATIC_ASSERT(MLX5_SEND_WQE_BB == 64);
+    _mm_storeu_si128((__m128i *)dst, *(__m128i *)src);
+    _mm_storeu_si128(((__m128i *)dst + 1), *((__m128i *)src + 1));
+    _mm_storeu_si128(((__m128i *)dst + 2), *((__m128i *)src + 2));
+    _mm_storeu_si128(((__m128i *)dst + 3), *((__m128i *)src + 3));
 #elif defined(__ARM_NEON)
     vst4q_u64(dst, vld4q_u64(src));
 #else
