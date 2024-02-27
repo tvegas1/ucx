@@ -583,6 +583,8 @@ public:
                     progress_responder();
                 }
             }
+            m_recv_params.op_attr_mask |= UCP_OP_ATTR_FLAG_EP;
+            m_recv_params.ep            = ep;
             request = ucp_tag_recv_nbx(worker, buffer, length, TAG, TAG_MASK,
                                        &m_recv_params);
             if (ucs_likely(!UCS_PTR_IS_PTR(request))) {
