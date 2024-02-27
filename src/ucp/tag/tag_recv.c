@@ -13,11 +13,26 @@
 #include "tag_match.inl"
 #include "offload.h"
 
+#include <ucp/rndv/proto_rndv.h>
 #include <ucp/core/ucp_worker.h>
 #include <ucp/core/ucp_request.inl>
 #include <ucs/datastruct/mpool.inl>
 #include <ucs/datastruct/queue.h>
 
+#include <ucp/proto/proto_select.inl>
+
+static void ucp_tag_rndv_rtr_trigger(ucp_worker_h worker, ucp_request_t *req)
+{
+    ucs_status_t status;
+
+    status = ucp_proto_rndv_first_recv_init(worker, req);
+    if (status != UCS_OK) {
+        ucs_trace_req("RNDV RTR trigger failed: status: %d", status);
+        return;
+    }
+
+    UCS_PROFILE_CALL_VOID(ucp_request_send, req);
+}
 
 static void ucp_tag_recv_eager_multi(ucp_worker_h worker, ucp_request_t *req,
                                      ucp_recv_desc_t *rdesc)
@@ -144,6 +159,14 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_tag_recv_common(
     req->recv.tag.tag_mask  = tag_mask;
     if (param->op_attr_mask & UCP_OP_ATTR_FLAG_EP) {
         req->recv.tag.ep = param->ep;
+    } else {
+        req->recv.tag.ep = NULL;
+    }
+
+    if (param->op_attr_mask & UCP_OP_ATTR_FIELD_MEMORY_TYPE) {
+        req->recv.tag.memory_type = param->memory_type;
+    } else {
+        req->recv.tag.memory_type = UCS_MEMORY_TYPE_UNKNOWN;
     }
 
     if (param->op_attr_mask & UCP_OP_ATTR_FIELD_CALLBACK) {
@@ -165,8 +188,13 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_tag_recv_common(
 
         ucp_tag_exp_push(&worker->tm, req_queue, req);
 
-        ucs_trace_req("%s returning expected request %p (%p)", debug_name, req,
-                      req + 1);
+        if (req->recv.tag.ep != NULL) {
+            ucp_tag_rndv_rtr_trigger(worker, req);
+        }
+
+        ucs_trace_req("%s returning expected request %p (%p)%s", debug_name, req,
+                      req + 1, req->recv.tag.ep != NULL?" RTR sent" : "");
+
         return req + 1;
     }
 

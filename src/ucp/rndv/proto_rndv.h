@@ -193,4 +193,6 @@ void ucp_proto_rndv_ppln_recv_frag_clean(ucp_request_t *freq);
 void ucp_proto_rndv_ppln_recv_frag_complete(ucp_request_t *freq, int send_ack,
                                             int abort);
 
+ucs_status_t
+ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *req);
 #endif

@@ -426,10 +426,11 @@ struct ucp_request {
                                                                 non-contig unexpected
                                                                 message in tag offload flow. */
                     };
-                    ucp_worker_iface_t      *wiface;    /* Cached iface this request
-                                                           is received on. Used in
-                                                           tag offload expected callbacks*/
-                    ucp_ep_h                    ep;         /* Remote sender */
+                    ucp_worker_iface_t      *wiface;     /* Cached iface this request
+                                                            is received on. Used in
+                                                            tag offload expected callbacks*/
+                    ucp_ep_h                ep;          /* Remote sender */
+                    ucs_memory_type_t       memory_type; /* Memory type */
                 } tag;
 
                 struct {
