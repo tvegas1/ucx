@@ -226,7 +226,7 @@ ucp_proto_rndv_ctrl_perf(const ucp_proto_init_params_t *params,
 }
 
 /* TODO: Merge with ucp_proto_rndv_receive_start */
-ucs_status_t
+ucp_request_t *
 ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
 {
     ucp_operation_id_t op_id   = UCP_OP_ID_RNDV_RECV;
@@ -235,8 +235,9 @@ ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
     ucp_proto_select_t *proto_select;
     ucp_proto_select_param_t params;
     ucp_memory_info_t mem_info;
-    ucs_status_t status;
     ucp_request_t *req;
+    ucs_status_t status;
+    uint8_t sg_count;
 
     proto_select = &ep_config->proto_select; /* endpoint remote protocols */
 
@@ -246,13 +247,17 @@ ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
     req = ucp_request_get(worker);
     if (req == NULL) {
         ucs_error("Failed to allocate send req for RTR initiation");
-        return UCS_ERR_NO_MEMORY;
+        return NULL;
     }
 
     ucp_proto_request_send_init(req, ep, 0);
     req->send.rndv.offset = 0;
     ucp_request_set_super(req, rreq);
 
+    rreq->status = UCS_OK;
+    UCS_PROFILE_CALL_VOID(ucp_datatype_iter_move, &req->send.state.dt_iter,
+                          &rreq->recv.dt_iter, rreq->recv.dt_iter.length,
+                          &sg_count);
 
     ucp_proto_select_param_init(&params, op_id, rreq->recv.op_attr, 0,
                                 UCP_DATATYPE_CONTIG,
@@ -264,12 +269,12 @@ ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
                               &params, rreq->recv.dt_iter.length);
     ucp_trace_req(req,
                   "%s rva 0x%" PRIx64 " length %zd"
-                  " with protocol %s for tag first recv",
+                  " with protocol %s for tag first recv status %d",
                   ucp_operation_names[ucp_proto_select_op_id(&params)],
-                  (uint64_t)rreq->recv.dt_iter.type.contig.buffer,
-                  rreq->recv.dt_iter.length,
-                  rreq->send.proto_config->proto->name);
-    return status;
+                  (uint64_t)req->recv.dt_iter.type.contig.buffer,
+                  req->recv.dt_iter.length,
+                  req->send.proto_config->proto->name, status);
+    return req;
 }
 
 static ucs_status_t
@@ -921,6 +926,15 @@ ucp_proto_rndv_handle_rtr(void *arg, void *data, size_t length, unsigned flags)
     uint32_t op_attr_mask;
     ucs_status_t status;
     uint8_t sg_count;
+
+    if (rtr->sreq_id == UCS_PTR_MAP_KEY_INVALID) {
+        ucp_trace_req(NULL, "recv RTR initiated remote req id 0x%" PRIx64
+                      " offset %zu length %zu",
+                      rtr->sreq_id, rtr->offset,
+                      rtr->size);
+
+        return UCS_OK;
+    }
 
     UCP_SEND_REQUEST_GET_BY_ID(&req, worker, rtr->sreq_id, 0, return UCS_OK,
                                "RTR %p", rtr);

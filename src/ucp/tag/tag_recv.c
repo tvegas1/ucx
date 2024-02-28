@@ -23,11 +23,9 @@
 
 static void ucp_tag_rndv_rtr_trigger(ucp_worker_h worker, ucp_request_t *req)
 {
-    ucs_status_t status;
-
-    status = ucp_proto_rndv_first_recv_init(worker, req);
-    if (status != UCS_OK) {
-        ucs_trace_req("RNDV RTR trigger failed: status: %d", status);
+    req = ucp_proto_rndv_first_recv_init(worker, req);
+    if (req == NULL) {
+        ucs_trace_req("RNDV RTR trigger failed");
         return;
     }
 
