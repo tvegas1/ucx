@@ -225,37 +225,50 @@ ucp_proto_rndv_ctrl_perf(const ucp_proto_init_params_t *params,
     return UCS_OK;
 }
 
+/* TODO: Merge with ucp_proto_rndv_receive_start */
 ucs_status_t
-ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *req)
+ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
 {
     ucp_operation_id_t op_id   = UCP_OP_ID_RNDV_RECV;
-    ucp_ep_h ep                = req->recv.tag.ep;
+    ucp_ep_h ep                = rreq->recv.tag.ep;
     ucp_ep_config_t *ep_config = ucp_ep_config(ep);
     ucp_proto_select_t *proto_select;
     ucp_proto_select_param_t params;
     ucp_memory_info_t mem_info;
     ucs_status_t status;
+    ucp_request_t *req;
 
     proto_select = &ep_config->proto_select; /* endpoint remote protocols */
 
-    mem_info.type    = req->recv.tag.memory_type;
+    mem_info.type    = rreq->recv.tag.memory_type;
     mem_info.sys_dev = UCS_SYS_DEVICE_ID_UNKNOWN;
 
-    ucp_proto_select_param_init(&params, op_id, req->recv.op_attr, 0,
+    req = ucp_request_get(worker);
+    if (req == NULL) {
+        ucs_error("Failed to allocate send req for RTR initiation");
+        return UCS_ERR_NO_MEMORY;
+    }
+
+    ucp_proto_request_send_init(req, ep, 0);
+    req->send.rndv.offset = 0;
+    ucp_request_set_super(req, rreq);
+
+
+    ucp_proto_select_param_init(&params, op_id, rreq->recv.op_attr, 0,
                                 UCP_DATATYPE_CONTIG,
                                 &mem_info, 1);
 
     status = UCS_PROFILE_CALL(ucp_proto_request_lookup_proto, worker, ep, req,
                               proto_select,
                               UCP_WORKER_CFG_INDEX_NULL,
-                              &params, req->recv.dt_iter.length);
+                              &params, rreq->recv.dt_iter.length);
     ucp_trace_req(req,
                   "%s rva 0x%" PRIx64 " length %zd"
                   " with protocol %s for tag first recv",
                   ucp_operation_names[ucp_proto_select_op_id(&params)],
-                  (uint64_t)req->recv.dt_iter.type.contig.buffer,
-                  req->recv.dt_iter.length,
-                  req->send.proto_config->proto->name);
+                  (uint64_t)rreq->recv.dt_iter.type.contig.buffer,
+                  rreq->recv.dt_iter.length,
+                  rreq->send.proto_config->proto->name);
     return status;
 }
 
