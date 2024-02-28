@@ -238,6 +238,7 @@ ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
     ucp_request_t *req;
     ucs_status_t status;
     uint8_t sg_count;
+    ucp_datatype_iter_t backup_dt_iter;
 
     proto_select = &ep_config->proto_select; /* endpoint remote protocols */
 
@@ -252,12 +253,17 @@ ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
 
     ucp_proto_request_send_init(req, ep, 0);
     req->send.rndv.offset = 0;
+    req->send.rndv.remote_req_id = 0;
     ucp_request_set_super(req, rreq);
 
     rreq->status = UCS_OK;
+
+    backup_dt_iter = rreq->recv.dt_iter;
+    /* invalidates source iterator */
     UCS_PROFILE_CALL_VOID(ucp_datatype_iter_move, &req->send.state.dt_iter,
                           &rreq->recv.dt_iter, rreq->recv.dt_iter.length,
                           &sg_count);
+    rreq->recv.dt_iter = backup_dt_iter;
 
     ucp_proto_select_param_init(&params, op_id, rreq->recv.op_attr, 0,
                                 UCP_DATATYPE_CONTIG,
