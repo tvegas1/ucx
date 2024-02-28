@@ -507,14 +507,15 @@ static UCS_F_ALWAYS_INLINE void uct_ib_mlx5_bf_copy_bb(void * restrict dst,
 #if defined(__ARM_NEON)
     vst4q_u64(dst, vld4q_u64(src));
 #else
-#if defined( __SSE4_2__)
+#if defined(__SSE4_2__)
     typedef __m128i uct_ib_mlx5_send_wqe_bb_block_t;
 #else
     typedef uint8_t uct_ib_mlx5_send_wqe_bb_block_t;
 #endif
     /* Prevent compiler to replace by memmove() */
     typedef struct {
-        uct_ib_mlx5_send_wqe_bb_block_t data[MLX5_SEND_WQE_BB / sizeof(uct_ib_mlx5_send_wqe_bb_block_t)];
+        uct_ib_mlx5_send_wqe_bb_block_t
+                data[MLX5_SEND_WQE_BB / sizeof(uct_ib_mlx5_send_wqe_bb_block_t)];
     } UCS_S_PACKED uct_ib_mlx5_send_wqe_bb_t;
 
     UCS_WORD_COPY(uct_ib_mlx5_send_wqe_bb_t, dst,
