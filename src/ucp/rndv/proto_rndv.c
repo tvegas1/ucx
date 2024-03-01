@@ -257,6 +257,7 @@ ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
     ucp_request_set_super(req, rreq);
 
     rreq->status = UCS_OK;
+    rreq->recv.tag.rtr_req = req;
 
     backup_dt_iter = rreq->recv.dt_iter;
     /* invalidates source iterator */

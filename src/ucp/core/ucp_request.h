@@ -430,6 +430,7 @@ struct ucp_request {
                                                             is received on. Used in
                                                             tag offload expected callbacks*/
                     ucp_ep_h                ep;          /* Remote sender */
+                    ucp_request_t           *rtr_req;
                     ucs_memory_type_t       memory_type; /* Memory type */
                 } tag;
 

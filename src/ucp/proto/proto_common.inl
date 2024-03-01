@@ -233,6 +233,7 @@ ucp_proto_request_send_init(ucp_request_t *req, ucp_ep_h ep, uint32_t flags)
 {
     req->flags   = UCP_REQUEST_FLAG_PROTO_SEND | flags;
     req->send.ep = ep;
+    req->recv.tag.rtr_req = NULL;
 }
 
 

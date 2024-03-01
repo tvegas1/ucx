@@ -378,6 +378,7 @@ ucp_proto_rndv_recv_complete_status(ucp_request_t *req, ucs_status_t status)
 
     ucp_proto_rndv_recv_req_complete(ucp_request_get_super(req), status);
     ucp_request_put(req);
+    ucs_assert(req->recv.tag.rtr_req == NULL);
     return UCS_OK;
 }
 
