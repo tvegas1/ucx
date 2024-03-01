@@ -46,6 +46,9 @@ typedef struct {
  * Rendezvous RTR
  */
 typedef struct {
+    /* Protocol-specific header */
+    uint64_t hdr;
+
     /* Request ID on the rndv initiator side - sender */
     uint64_t sreq_id;
 

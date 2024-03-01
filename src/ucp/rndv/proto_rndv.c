@@ -14,6 +14,7 @@
 #include <ucp/proto/proto_debug.h>
 #include <ucp/proto/proto_common.inl>
 
+#include <ucp/tag/tag_rndv.h>
 
 static void
 ucp_proto_rndv_ctrl_get_md_map(const ucp_proto_rndv_ctrl_init_params_t *params,
@@ -254,6 +255,7 @@ ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
     ucp_proto_request_send_init(req, ep, 0);
     req->send.rndv.offset = 0;
     req->send.rndv.remote_req_id = 0;
+    req->recv.tag.tag = rreq->recv.tag.tag; /* TODO: Add tag mask */
     ucp_request_set_super(req, rreq);
 
     rreq->status = UCS_OK;
@@ -936,11 +938,10 @@ ucp_proto_rndv_handle_rtr(void *arg, void *data, size_t length, unsigned flags)
 
     if (rtr->sreq_id == UCS_PTR_MAP_KEY_INVALID) {
         ucp_trace_req(NULL, "recv RTR initiated remote req id 0x%" PRIx64
-                      " offset %zu length %zu",
-                      rtr->sreq_id, rtr->offset,
-                      rtr->size);
-
-        return UCS_OK;
+                      " rreq_id 0x%" PRIx64 " offset %zu length %zu tag 0x%" PRIx64,
+                      rtr->sreq_id, rtr->rreq_id, rtr->offset,
+                      rtr->size, rtr->hdr);
+        return ucp_proto_rndv_tag_rtr_recv(worker, rtr);
     }
 
     UCP_SEND_REQUEST_GET_BY_ID(&req, worker, rtr->sreq_id, 0, return UCS_OK,

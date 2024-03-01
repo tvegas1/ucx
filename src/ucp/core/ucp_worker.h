@@ -317,6 +317,7 @@ typedef struct ucp_worker {
                                                            * are in-progress */
     uct_worker_cb_id_t               rkey_ptr_cb_id;      /* RKEY PTR worker callback queue ID */
     ucp_tag_match_t                  tm;                  /* Tag-matching queues and offload info */
+    ucp_tag_match_t                  rtr_tm;              /* RTR-initiated Tag-matching queues */
     ucp_am_info_t                    am;                  /* Array of AM callbacks and their data */
     uint64_t                         am_message_id;       /* For matching long AMs */
     size_t                           max_am_header;       /* Maximum allowed

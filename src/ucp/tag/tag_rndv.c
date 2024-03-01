@@ -173,3 +173,37 @@ ucp_proto_t ucp_tag_rndv_proto = {
     .abort    = ucp_proto_rndv_rts_abort,
     .reset    = ucp_proto_rndv_rts_reset
 };
+
+ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
+                                        const ucp_rndv_rtr_hdr_t *rtr)
+{
+    ucp_tag_t tag     = ucp_tag_hdr_from_rts(rtr)->tag;
+    unsigned tl_flags = 0;
+    ucp_recv_desc_t *rdesc;
+    ucp_request_t *sreq;
+    ucs_status_t status;
+
+    /* TODO: Do we also need to index by EP? */
+    sreq = ucp_tag_exp_search(&worker->rtr_tm, tag);
+    if (sreq != NULL) {
+        ucs_error("VEG RTS was already there on the list");
+        return UCS_OK;
+    }
+
+    status = ucp_recv_desc_init(worker, (ucp_rndv_rtr_hdr_t *)rtr,
+                                sizeof(*rtr), 0, tl_flags,
+                                sizeof(*rtr),
+                                UCP_RECV_DESC_FLAG_RNDV_RTR_INIT |
+                                UCP_RECV_DESC_FLAG_RNDV, 0, 1,
+                                "tag_rndv_process_rtr_init", &rdesc);
+    if ((rdesc == NULL) || (status != UCS_OK)) {
+        ucs_error("RTR-initiated: failed to allocate rtr rdesc");
+        return UCS_OK;
+    }
+
+    ucp_tag_unexp_recv(&worker->rtr_tm, rdesc, tag);
+
+    ucs_error("VEG adding to expected receive tag 0x%" PRIx64, tag);
+
+    return UCS_OK;
+}

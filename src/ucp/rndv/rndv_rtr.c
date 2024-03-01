@@ -15,6 +15,7 @@
 #include <ucp/proto/proto_init.h>
 #include <ucp/proto/proto_single.inl>
 
+#include <ucp/tag/tag_rndv.h>
 
 /**
  * RTR protocol callback, which is called when all incoming data is filled to
@@ -110,6 +111,7 @@ static UCS_F_ALWAYS_INLINE void
 ucp_proto_rndv_rtr_hdr_pack(ucp_request_t *req, ucp_rndv_rtr_hdr_t *rtr,
                             void *buffer)
 {
+    ucp_tag_hdr_from_rts(rtr)->tag = req->recv.tag.tag;
     rtr->sreq_id = req->send.rndv.remote_req_id;
     rtr->rreq_id = ucp_send_request_get_id(req);
     rtr->size    = req->send.state.dt_iter.length;
