@@ -12,6 +12,7 @@
 
 #include <ucp/proto/lane_type.h>
 #include <ucp/proto/proto_select.h>
+#include <ucp/tag/tag_match.h>
 #include <ucp/wireup/ep_match.h>
 #include <ucp/api/ucp.h>
 #include <uct/api/uct.h>
@@ -551,6 +552,8 @@ typedef struct ucp_ep {
     /* Transports for every lane */
     uct_ep_h                      uct_eps[UCP_MAX_FAST_PATH_LANES];
     ucp_ep_ext_t                  *ext;                   /* Endpoint extension */
+
+    ucp_tag_match_t               rtr_tm;
 
 #if ENABLE_DEBUG_DATA
     char                          peer_name[UCP_WORKER_ADDRESS_NAME_MAX];

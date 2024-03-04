@@ -2600,12 +2600,6 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
         goto err_destroy_mpools;
     }
 
-    /* Initialize RTR-based tag matching */
-    status = ucp_tag_match_init(&worker->rtr_tm);
-    if (status != UCS_OK) {
-        goto err_destroy_mpools;
-    }
-
     /* Initialize UCP AMs */
     status = ucp_am_init(worker);
     if (status != UCS_OK) {

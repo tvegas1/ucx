@@ -49,6 +49,9 @@ typedef struct {
     /* Protocol-specific header */
     uint64_t hdr;
 
+    /* Remote ep_id usable by receiver */
+    uint64_t ep_id;
+
     /* Request ID on the rndv initiator side - sender */
     uint64_t sreq_id;
 

@@ -182,9 +182,14 @@ ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
     ucp_recv_desc_t *rdesc;
     ucp_request_t *sreq;
     ucs_status_t status;
+    ucp_ep_h ep;
 
-    /* TODO: Do we also need to index by EP? */
-    sreq = ucp_tag_exp_search(&worker->rtr_tm, tag);
+    /* Receive RTR per-EP */
+    UCP_WORKER_GET_EP_BY_ID(&ep, worker, rtr->ep_id,
+                            return UCS_ERR_UNREACHABLE,
+                            "TAG RTR RECV");
+
+    sreq = ucp_tag_exp_search(&ep->rtr_tm, tag);
     if (sreq != NULL) {
         ucs_error("VEG RTS was already there on the list");
         return UCS_OK;
@@ -201,9 +206,10 @@ ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
         return UCS_OK;
     }
 
-    ucp_tag_unexp_recv(&worker->rtr_tm, rdesc, tag);
+    ucp_tag_unexp_recv(&ep->rtr_tm, rdesc, tag);
 
-    ucs_error("VEG adding to expected receive tag 0x%" PRIx64, tag);
+    ucs_error("VEG adding to expected receive tag 0x%" PRIx64 " ep 0x%" PRIx64,
+              tag, rtr->ep_id);
 
     return UCS_OK;
 }
