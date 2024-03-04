@@ -13,6 +13,7 @@
 #include <ucp/dt/datatype_iter.inl>
 #include <ucp/core/ucp_request.inl>
 
+#include <ucp/tag/tag_match.inl>
 
 static UCS_F_ALWAYS_INLINE ucs_status_t
 ucp_proto_request_complete_success(ucp_request_t *req)
@@ -236,6 +237,21 @@ ucp_proto_request_send_init(ucp_request_t *req, ucp_ep_h ep, uint32_t flags)
     req->recv.tag.rtr_req = NULL;
 }
 
+static void ucp_proto_request_respond_rtr(ucp_request_t *req, ucp_ep_h ep)
+{
+    uint64_t tag = req->send.msg_proto.tag;
+    ucp_recv_desc_t *rdesc;
+
+    rdesc = ucp_tag_unexp_search(&ep->rtr_tm, tag, UCP_TAG_MASK_FULL, 1,
+                                 "rtr_respond");
+    if (rdesc != NULL) {
+        ucs_error("VEG: Send: Found received RTS!!");
+        return;
+    }
+
+    ucs_error("VEG: Send: Not Found !!");
+
+}
 
 static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
         ucp_worker_h worker, ucp_ep_h ep, ucp_proto_select_t *proto_select,
@@ -245,6 +261,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
 {
     ucs_string_buffer_t strb;
     ucs_status_t status;
+    const char *mode = "";
 
     status = UCS_PROFILE_CALL(ucp_proto_request_lookup_proto, worker, ep, req,
                               proto_select, rkey_cfg_index, select_param,
@@ -262,12 +279,18 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
 
     ucp_request_set_send_callback_param(param, req, send);
 
+    /* Trigger RTR flow if possible */
+    if ((select_param->op_id_flags & UCP_OP_ID_TAG_SEND) == UCP_OP_ID_TAG_SEND) {
+        mode = " using RTR";
+        ucp_proto_request_respond_rtr(req, ep);
+    }
+
     if (ucs_log_is_enabled(UCS_LOG_LEVEL_TRACE_REQ)) {
         ucs_string_buffer_init(&strb);
         ucp_datatype_iter_str(&req->send.state.dt_iter, &strb);
-        ucs_trace_req("returning send request %p: %s %s", req,
+        ucs_trace_req("returning send request %p: %s %s%s", req,
                       ucp_operation_names[ucp_proto_select_op_id(select_param)],
-                      ucs_string_buffer_cstr(&strb));
+                      ucs_string_buffer_cstr(&strb), mode);
         ucs_string_buffer_cleanup(&strb);
     }
 

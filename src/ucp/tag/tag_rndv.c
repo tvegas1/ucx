@@ -125,27 +125,37 @@ size_t ucp_tag_rndv_proto_rts_pack(void *dest, void *arg)
     return ucp_proto_rndv_rts_pack(req, tag_rts, sizeof(*tag_rts));
 }
 
+ucs_status_t ucp_tag_rndv_rtr_write_start(void)
+{
+    return UCS_OK;
+}
+
 UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_rndv_rts_progress, (self),
                  uct_pending_req_t *self)
 {
     ucp_request_t *req = ucs_container_of(self, ucp_request_t, send.uct);
-    const ucp_proto_rndv_ctrl_priv_t *rpriv;
-    size_t max_rts_size;
     ucs_status_t status;
 
-    rpriv        = req->send.proto_config->priv;
-    max_rts_size = sizeof(ucp_rndv_rts_hdr_t) + rpriv->packed_rkey_size;
-
+    /* Initialization seems needed to register memory: no because RTR */
     status = UCS_PROFILE_CALL(ucp_proto_rndv_rts_request_init, req);
     if (status != UCS_OK) {
         ucp_proto_request_abort(req, status);
         return UCS_OK;
     }
 
+#if 0
+    const ucp_proto_rndv_ctrl_priv_t *rpriv;
+    rpriv        = req->send.proto_config->priv;
+
+    size_t max_rts_size;
+    max_rts_size = sizeof(ucp_rndv_rts_hdr_t) + rpriv->packed_rkey_size;
     status = UCS_PROFILE_CALL(ucp_proto_am_bcopy_single_progress, req,
                             UCP_AM_ID_RNDV_RTS, rpriv->lane,
                             ucp_tag_rndv_proto_rts_pack, req, max_rts_size,
                             NULL, 0);
+#else
+    status = UCS_OK;
+#endif
     if (status == UCS_OK) {
         UCP_EP_STAT_TAG_OP(req->send.ep, RNDV);
     }
@@ -192,6 +202,7 @@ ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
     sreq = ucp_tag_exp_search(&ep->rtr_tm, tag);
     if (sreq != NULL) {
         ucs_error("VEG RTS was already there on the list");
+        /* TODO: Trigger sending */
         return UCS_OK;
     }
 
