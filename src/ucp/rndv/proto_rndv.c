@@ -929,7 +929,7 @@ ucs_status_t
 ucp_proto_rndv_handle_rtr(void *arg, void *data, size_t length, unsigned flags)
 {
     ucp_worker_h worker           = arg;
-    const ucp_rndv_rtr_hdr_t *rtr = data;
+    ucp_rndv_rtr_hdr_t *rtr = data;
     const ucp_proto_select_param_t *select_param;
     ucp_request_t *req, *freq;
     uint32_t op_attr_mask;
@@ -941,7 +941,7 @@ ucp_proto_rndv_handle_rtr(void *arg, void *data, size_t length, unsigned flags)
                       " rreq_id 0x%" PRIx64 " offset %zu length %zu tag 0x%" PRIx64,
                       rtr->sreq_id, rtr->rreq_id, rtr->offset,
                       rtr->size, rtr->hdr);
-        return ucp_proto_rndv_tag_rtr_recv(worker, rtr);
+        return ucp_proto_rndv_tag_rtr_recv(worker, rtr, length);
     }
 
     UCP_SEND_REQUEST_GET_BY_ID(&req, worker, rtr->sreq_id, 0, return UCS_OK,

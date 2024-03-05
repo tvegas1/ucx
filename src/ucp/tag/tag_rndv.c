@@ -184,8 +184,22 @@ ucp_proto_t ucp_tag_rndv_proto = {
     .reset    = ucp_proto_rndv_rts_reset
 };
 
+static ucs_status_t ucp_proto_rndv_tag_rtr_trigger(
+        ucp_worker_h worker,
+        ucp_rndv_rtr_hdr_t *rtr,
+        size_t length,
+        ucp_request_t *sreq)
+{
+    unsigned flags = 0;
+    ucs_assert(rtr->sreq_id == UCS_PTR_MAP_KEY_INVALID);
+    rtr->sreq_id = sreq->id;
+
+    ucp_proto_rndv_handle_rtr(worker, rtr, length, flags);
+    return UCS_OK;
+}
+
 ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
-                                        const ucp_rndv_rtr_hdr_t *rtr)
+                                        ucp_rndv_rtr_hdr_t *rtr, size_t length)
 {
     ucp_tag_t tag     = ucp_tag_hdr_from_rts(rtr)->tag;
     unsigned tl_flags = 0;
@@ -202,12 +216,11 @@ ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
     sreq = ucp_tag_exp_search(&ep->rtr_tm, tag);
     if (sreq != NULL) {
         ucs_error("VEG RTS was already there on the list");
-        /* TODO: Trigger sending */
-        return UCS_OK;
+        return ucp_proto_rndv_tag_rtr_trigger(worker, rtr, length, sreq);
     }
 
     status = ucp_recv_desc_init(worker, (ucp_rndv_rtr_hdr_t *)rtr,
-                                sizeof(*rtr), 0, tl_flags,
+                                length, 0, tl_flags,
                                 sizeof(*rtr),
                                 UCP_RECV_DESC_FLAG_RNDV_RTR_INIT |
                                 UCP_RECV_DESC_FLAG_RNDV, 0, 1,

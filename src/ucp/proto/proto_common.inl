@@ -241,15 +241,19 @@ static void ucp_proto_request_respond_rtr(ucp_request_t *req, ucp_ep_h ep)
 {
     uint64_t tag = req->send.msg_proto.tag;
     ucp_recv_desc_t *rdesc;
+    ucp_request_queue_t *req_queue;
 
     rdesc = ucp_tag_unexp_search(&ep->rtr_tm, tag, UCP_TAG_MASK_FULL, 1,
                                  "rtr_respond");
     if (rdesc != NULL) {
-        ucs_error("VEG: Send: Found received RTS!!");
+        ucs_error("VEG: Send: Found received RT tag 0x%" PRIx64, tag);
         return;
     }
 
-    ucs_error("VEG: Send: Not Found !!");
+    ucs_error("VEG: Send: Not Found !! adding on expected: tag 0x%" PRIx64, tag);
+    req_queue = ucp_tag_exp_get_queue(&ep->rtr_tm, tag, UCP_TAG_MASK_FULL);
+    ucp_tag_exp_push(&ep->rtr_tm, req_queue, req);
+
 
 }
 
