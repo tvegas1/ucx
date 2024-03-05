@@ -255,7 +255,8 @@ ucp_proto_rndv_first_recv_init(ucp_worker_h worker, ucp_request_t *rreq)
     ucp_proto_request_send_init(req, ep, 0);
     req->send.rndv.offset = 0;
     req->send.rndv.remote_req_id = 0;
-    req->recv.tag.tag = rreq->recv.tag.tag; /* TODO: Add tag mask */
+    req->send.rndv.rkey = 0;
+    req->send.msg_proto.tag = rreq->recv.tag.tag; /* TODO: Add tag mask */
     ucp_request_set_super(req, rreq);
 
     rreq->status = UCS_OK;

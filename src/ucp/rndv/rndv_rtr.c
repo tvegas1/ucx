@@ -111,7 +111,8 @@ static UCS_F_ALWAYS_INLINE void
 ucp_proto_rndv_rtr_hdr_pack(ucp_request_t *req, ucp_rndv_rtr_hdr_t *rtr,
                             void *buffer)
 {
-    ucp_tag_hdr_from_rts(rtr)->tag = req->recv.tag.tag;
+    ucp_tag_hdr_from_rts(rtr)->tag
+                 = req->send.msg_proto.tag;
     rtr->ep_id   = ucp_send_request_get_ep_remote_id(req);
     rtr->sreq_id = req->send.rndv.remote_req_id;
     rtr->rreq_id = ucp_send_request_get_id(req);
