@@ -266,7 +266,9 @@ ucp_request_complete_tag_recv(ucp_request_t *req, ucs_status_t status)
     UCS_PROFILE_REQUEST_EVENT(req, "complete_tag_recv", status);
     if (req->recv.tag.rtr_req != NULL) {
         req->recv.tag.rtr_req->id = UCS_PTR_MAP_KEY_INVALID;
+        ucs_error("VEG: req %p has rtr_req %p", req, req->recv.tag.rtr_req);
         ucp_request_put(req->recv.tag.rtr_req);
+        req->recv.tag.rtr_req = NULL;
     }
     ucp_request_complete(req, recv.tag.cb, status, &req->recv.tag.info,
                          req->user_data);

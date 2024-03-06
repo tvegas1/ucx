@@ -233,7 +233,7 @@ ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
 
     ucp_tag_unexp_recv(&ep->rtr_tm, rdesc, tag);
 
-    ucs_error("VEG adding to unexpected receive tag 0x%" PRIx64 " ep 0x%" PRIx64,
+    ucs_error("VEG: rtr recv: unexpected receive add tag 0x%" PRIx64 " ep 0x%" PRIx64,
               tag, rtr->ep_id);
 
     return UCS_OK;
