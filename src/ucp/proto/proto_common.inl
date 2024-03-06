@@ -246,15 +246,16 @@ static void ucp_proto_request_respond_rtr(ucp_request_t *req, ucp_ep_h ep)
     rdesc = ucp_tag_unexp_search(&ep->rtr_tm, tag, UCP_TAG_MASK_FULL, 1,
                                  "rtr_respond");
     if (rdesc != NULL) {
-        ucs_error("VEG: Send: Found received RT tag 0x%" PRIx64, tag);
+        ucs_error("VEG: send: found rdesc %p received RTR tag 0x%" PRIx64,
+                  rdesc, tag);
         return;
     }
 
-    ucs_error("VEG: Send: Not Found !! adding on expected: tag 0x%" PRIx64, tag);
+    ucs_error("VEG: send: ep %p: unexp not found: "
+              "adding req %p on expected: tag 0x%" PRIx64,
+              ep, req, tag);
     req_queue = ucp_tag_exp_get_queue(&ep->rtr_tm, tag, UCP_TAG_MASK_FULL);
     ucp_tag_exp_push(&ep->rtr_tm, req_queue, req);
-
-
 }
 
 static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
