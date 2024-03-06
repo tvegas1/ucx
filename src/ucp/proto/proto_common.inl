@@ -268,6 +268,7 @@ static void ucp_proto_request_respond_rtr(ucp_worker_h worker,
         ucs_error("VEG: send: found rdesc %p received RTR tag 0x%" PRIx64,
                   rdesc, tag);
         ucp_proto_request_respond_rtr_unexp(worker, req, ep, rdesc);
+        ucp_recv_desc_release(rdesc);
         return;
     }
 
