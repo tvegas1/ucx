@@ -10,6 +10,8 @@
 #include "proto_common.h"
 #include "proto_select.inl"
 
+#include <ucp/rndv/proto_rndv.h>
+
 #include <ucp/dt/datatype_iter.inl>
 #include <ucp/core/ucp_request.inl>
 
@@ -237,7 +239,23 @@ ucp_proto_request_send_init(ucp_request_t *req, ucp_ep_h ep, uint32_t flags)
     req->recv.tag.rtr_req = NULL;
 }
 
-static void ucp_proto_request_respond_rtr(ucp_request_t *req, ucp_ep_h ep)
+static void ucp_proto_request_respond_rtr_unexp(ucp_worker_h worker,
+                                                ucp_request_t *req,
+                                                ucp_ep_h ep,
+                                                ucp_recv_desc_t *rdesc)
+{
+    unsigned flags = 0;
+    size_t length  = rdesc->length;
+    ucp_rndv_rtr_hdr_t *rtr = (ucp_rndv_rtr_hdr_t *)(rdesc + 1);
+
+    ucs_assert(rtr->sreq_id == UCS_PTR_MAP_KEY_INVALID);
+
+    rtr->sreq_id = req->id;
+    ucp_proto_rndv_handle_rtr(worker, rtr, length, flags);
+}
+
+static void ucp_proto_request_respond_rtr(ucp_worker_h worker,
+                                          ucp_request_t *req, ucp_ep_h ep)
 {
     uint64_t tag = req->send.msg_proto.tag;
     ucp_recv_desc_t *rdesc;
@@ -246,9 +264,10 @@ static void ucp_proto_request_respond_rtr(ucp_request_t *req, ucp_ep_h ep)
     rdesc = ucp_tag_unexp_search(&ep->rtr_tm, tag, UCP_TAG_MASK_FULL, 1,
                                  "rtr_respond");
     if (rdesc != NULL) {
+
         ucs_error("VEG: send: found rdesc %p received RTR tag 0x%" PRIx64,
                   rdesc, tag);
-        /* TODO; Add the sending */
+        ucp_proto_request_respond_rtr_unexp(worker, req, ep, rdesc);
         return;
     }
 
@@ -291,7 +310,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
     /* Trigger RTR flow if possible */
     if ((select_param->op_id_flags & UCP_OP_ID_TAG_SEND) == UCP_OP_ID_TAG_SEND) {
         mode = " using RTR";
-        ucp_proto_request_respond_rtr(req, ep);
+        ucp_proto_request_respond_rtr(worker, req, ep);
     }
 
     if (ucs_log_is_enabled(UCS_LOG_LEVEL_TRACE_REQ)) {
