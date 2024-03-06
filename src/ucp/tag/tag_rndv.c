@@ -215,8 +215,10 @@ ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
 
     sreq = ucp_tag_exp_search(&ep->rtr_tm, tag);
     if (sreq != NULL) {
+        /*
         ucs_error("VEG: rtr recv: expected found req %p tag 0x%" PRIx64,
                   sreq, tag);
+                  */
         return ucp_proto_rndv_tag_rtr_trigger(worker, rtr, length, sreq);
     }
 
@@ -233,8 +235,10 @@ ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
 
     ucp_tag_unexp_recv(&ep->rtr_tm, rdesc, tag);
 
+    /*
     ucs_error("VEG: rtr recv: unexpected receive add rdesc %p tag 0x%" PRIx64 " ep 0x%" PRIx64,
               rdesc, tag, rtr->ep_id);
+              */
 
     return UCS_OK;
 }

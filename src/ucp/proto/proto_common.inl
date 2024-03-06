@@ -265,8 +265,10 @@ static void ucp_proto_request_respond_rtr(ucp_worker_h worker,
                                  "rtr_respond");
     if (rdesc != NULL) {
 
+        /*
         ucs_error("VEG: send: found rdesc %p received RTR tag 0x%" PRIx64,
                   rdesc, tag);
+                  */
         ucp_proto_request_respond_rtr_unexp(worker, req, ep, rdesc);
         ucp_recv_desc_release(rdesc);
         return;
@@ -277,9 +279,11 @@ static void ucp_proto_request_respond_rtr(ucp_worker_h worker,
 
     req_queue = ucp_tag_exp_get_queue(&ep->rtr_tm, tag, UCP_TAG_MASK_FULL);
     ucp_tag_exp_push(&ep->rtr_tm, req_queue, req);
+    /*
     ucs_error("VEG: send: ep %p: unexp not found: "
               "adding req %p on expected: tag 0x%" PRIx64 " queue %p/%p",
               ep, req, tag, req_queue->queue.head, req_queue->queue.ptail);
+              */
 }
 
 static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
