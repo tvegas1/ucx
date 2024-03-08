@@ -2464,16 +2464,20 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     case UCS_THREAD_MODE_SINGLE:
         /* UCT is serialized by UCP lock or by UCP user */
         uct_thread_mode = UCS_THREAD_MODE_SINGLE;
+        ucs_info("worker %p thread-mode single", worker);
         break;
     case UCS_THREAD_MODE_SERIALIZED:
         uct_thread_mode = UCS_THREAD_MODE_SERIALIZED;
         worker->flags  |= UCP_WORKER_FLAG_THREAD_SERIALIZED;
+        ucs_info("worker %p thread-mode serialized", worker);
         break;
     case UCS_THREAD_MODE_MULTI:
         uct_thread_mode = UCS_THREAD_MODE_SERIALIZED;
 #if ENABLE_MT
         worker->flags |= UCP_WORKER_FLAG_THREAD_MULTI;
+        ucs_info("worker %p thread-mode multi", worker);
 #else
+        ucs_info("worker %p thread-mode multi not supported!!", worker);
         ucs_diag("multi-threaded worker is requested, but library is built "
                  "without multi-thread support");
 #endif
@@ -2482,6 +2486,16 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
         ucs_error("invalid thread mode %d", thread_mode);
         status = UCS_ERR_INVALID_PARAM;
         goto err_free;
+    }
+
+    if (context->config.ext.force_mt) {
+        uct_thread_mode = UCS_THREAD_MODE_SERIALIZED;
+#if ENABLE_MT
+        worker->flags |= UCP_WORKER_FLAG_THREAD_MULTI;
+        ucs_info("worker %p thread-mode FORCE multi", worker);
+#else
+        ucs_info("worker %p thread-mode can't FORCE multi, mt disabled", worker);
+#endif
     }
 
     /* Initialize endpoint allocator */
