@@ -101,6 +101,48 @@ static inline uint64_t ucp_tag_exp_req_seq(ucs_queue_iter_t iter)
            ucs_container_of(*iter, ucp_request_t, recv.queue)->recv.tag.sn;
 }
 
+void
+ucp_tag_exp_search_all_dump(ucp_tag_match_t *tm, ucp_request_queue_t *req_queue,
+                           ucp_tag_t tag)
+{
+    ucs_queue_head_t *hash_queue = &req_queue->queue;
+    ucs_queue_iter_t hash_iter, wild_iter, *iter;
+    uint64_t hash_sn, wild_sn, *sn_p;
+    ucp_request_t *req;
+
+    ucs_error("ucp_tag_exp_search_all_dump(): start");
+    *hash_queue->ptail                 = NULL;
+    *tm->expected.wildcard.queue.ptail = NULL;
+
+    hash_iter = ucs_queue_iter_begin(hash_queue);
+    wild_iter = ucs_queue_iter_begin(&tm->expected.wildcard.queue);
+
+    hash_sn = ucp_tag_exp_req_seq(hash_iter);
+    wild_sn = ucp_tag_exp_req_seq(wild_iter);
+
+    while (hash_sn != wild_sn) {
+        if (hash_sn < wild_sn) {
+            iter  = &hash_iter;
+            sn_p  = &hash_sn;
+        } else {
+            iter  = &wild_iter;
+            sn_p  = &wild_sn;
+        }
+
+        req = ucs_container_of(**iter, ucp_request_t, recv.queue);
+        ucs_error("checking req %p tag %"PRIx64"/%"PRIx64" with sn %"PRIu64 " size %zu",
+                   req, req->recv.tag.tag, req->recv.tag.tag_mask, req->recv.tag.sn,
+                   req->recv.dt_iter.length);
+        if (ucp_tag_is_match(tag, req->recv.tag.tag, req->recv.tag.tag_mask)) {
+            ucs_error("  matched received tag %"PRIx64" to req %p", tag, req);
+        }
+
+        *iter = ucs_queue_iter_next(*iter);
+        *sn_p = ucp_tag_exp_req_seq(*iter);
+    }
+    ucs_error("ucp_tag_exp_search_all_dump(): done");
+}
+
 ucp_request_t*
 ucp_tag_exp_search_all(ucp_tag_match_t *tm, ucp_request_queue_t *req_queue,
                        ucp_tag_t tag)

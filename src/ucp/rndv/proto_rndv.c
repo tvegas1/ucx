@@ -14,6 +14,7 @@
 #include <ucp/proto/proto_debug.h>
 #include <ucp/proto/proto_common.inl>
 
+#include <ucp/tag/tag_rndv.h>
 
 static void
 ucp_proto_rndv_ctrl_get_md_map(const ucp_proto_rndv_ctrl_init_params_t *params,
@@ -750,6 +751,8 @@ ucp_proto_rndv_check_rkey_length(uint64_t address, size_t rkey_length,
                 rkey_length);
 }
 
+#include "../tag/tag_match.inl"
+
 void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
                                   const ucp_rndv_rts_hdr_t *rts,
                                   const void *rkey_buffer, size_t rkey_length)
@@ -759,6 +762,7 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
     ucp_request_t *req;
     uint8_t sg_count;
     ucp_ep_h ep;
+    uint64_t tag;
 
     UCP_WORKER_GET_VALID_EP_BY_ID(&ep, worker, rts->sreq.ep_id, {
         ucp_proto_rndv_recv_req_complete(recv_req, UCS_ERR_CANCELED);
@@ -789,11 +793,31 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
         rkey_length      = 0; /* Override rkey length to disable data fetch */
         op_id            = UCP_OP_ID_RNDV_RECV_DROP;
         recv_req->status = UCS_ERR_MESSAGE_TRUNCATED;
-        ucs_fatal("ucp_proto_rndv_receive_start rts_size %zu recv_req %zu",
-                  rts->size, recv_req->recv.dt_iter.length);
+        tag              = ucp_tag_hdr_from_rts(rts)->tag;
+        ucs_error("ucp_proto_rndv_receive_start rts_size %zu"
+                  " rts_tag 0x%" PRIx64
+                  " recv_req %p"
+                  " sreq_id 0x%" PRIx64
+                  " tag 0x%" PRIx64
+                  " tag_mask 0x%" PRIx64
+                  " length %zu"
+                  " sn %" PRIu64,
+                  rts->size,
+                  tag,
+                  recv_req,
+                  rts->sreq.req_id,
+                  recv_req->recv.tag.tag,
+                  recv_req->recv.tag.tag_mask,
+                  recv_req->recv.dt_iter.length,
+                  recv_req->recv.tag.sn);
+
+        ucp_tag_exp_dump(&worker->tm, recv_req->recv.tag.tag);
+
         ucp_datatype_iter_cleanup(&recv_req->recv.dt_iter, 1, UCP_DT_MASK_ALL);
-        ucp_datatype_iter_init_null(&req->send.state.dt_iter, rts->size,
+        ucp_datatype_iter_init_null(&req->send.state.dt_iter,
+                                    recv_req->recv.dt_iter.length,
                                     &sg_count);
+        req->status = UCS_ERR_MESSAGE_TRUNCATED;
     }
 
     status = ucp_proto_rndv_send_reply(worker, req, op_id,

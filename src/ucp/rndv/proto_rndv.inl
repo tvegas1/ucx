@@ -72,6 +72,10 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
     ucs_status_t status           = rephdr->status;
     const ucp_rndv_ack_hdr_t *ats;
     ucp_request_t *req;
+    ucs_ptr_map_key_t ep_id;
+    ucp_tag_t tag;
+    ucs_ptr_map_key_t req_id;
+    size_t size;
 
     UCP_SEND_REQUEST_GET_BY_ID(&req, worker, rephdr->req_id, 0, return UCS_OK,
                                "ATS %p", rephdr);
@@ -83,9 +87,28 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
     if (length >= sizeof(*ats)) {
         /* ATS message carries a size field */
         ats = ucs_derived_of(rephdr, ucp_rndv_ack_hdr_t);
-        if (!ucp_proto_common_frag_complete(req, ats->size, "rndv_ats")) {
+
+        if (ats->super.status == UCS_ERR_MESSAGE_TRUNCATED) {
+
+            ep_id  = ucp_send_request_get_ep_remote_id(req);
+            req_id = ucp_send_request_get_id(req);
+            size   = req->send.state.dt_iter.length;
+            tag    = req->send.msg_proto.tag;
+
+            ucs_error("ats message truncated: ep %p remote_ep_id 0x%" PRIx64
+                      " req_id 0x%"PRIx64
+                      " tag %" PRIx64 " size %zu ats_size %zu",
+                      req->send.ep, ep_id, req_id, tag, size, ats->size);
+
+        } else {
+            size = ats->size;
+        }
+
+        if (!ucp_proto_common_frag_complete(req, size, "rndv_ats")) {
             return UCS_OK; /* Not completed */
         }
+    } else {
+        ucs_error("rndv_ats_handler: length %zu < size of ats", length);
     }
 
     ucp_send_request_id_release(req);
@@ -133,7 +156,13 @@ static size_t UCS_F_ALWAYS_INLINE ucp_proto_rndv_pack_ack(ucp_request_t *req,
     }
 
     ack_hdr->super.req_id = req->send.rndv.remote_req_id;
-    ack_hdr->super.status = UCS_OK;
+
+    if (req->status == UCS_ERR_MESSAGE_TRUNCATED) {
+        ack_hdr->super.status = UCS_ERR_MESSAGE_TRUNCATED;
+    } else {
+        ack_hdr->super.status = UCS_OK;
+    }
+
     ack_hdr->size         = ack_size;
     return sizeof(*ack_hdr);
 }

@@ -93,6 +93,34 @@ ucp_tag_exp_delete(ucp_request_t *req, ucp_tag_match_t *tm,
     ucs_queue_del_iter(&req_queue->queue, iter);
 }
 
+static UCS_F_ALWAYS_INLINE void
+ucp_tag_exp_dump(ucp_tag_match_t *tm, ucp_tag_t tag)
+{
+    ucp_request_queue_t *req_queue;
+    ucs_queue_iter_t iter;
+    ucp_request_t *req;
+
+    ucs_error("ucp_tag_exp_dump(): start");
+    if (ucs_unlikely(!ucs_queue_is_empty(&tm->expected.wildcard.queue))) {
+        req_queue = ucp_tag_exp_get_queue_for_tag(tm, tag);
+        ucp_tag_exp_search_all_dump(tm, req_queue, tag);
+    }
+
+    /* fast path - wildcard queue is empty, search only the specific queue */
+    req_queue = ucp_tag_exp_get_queue_for_tag(tm, tag);
+    ucs_queue_for_each_safe(req, iter, &req_queue->queue, recv.queue) {
+        req = ucs_container_of(*iter, ucp_request_t, recv.queue);
+        ucs_error("checking req %p tag %"PRIx64"/%"PRIx64" with tag %"PRIx64 " size %zu sn %" PRIu64,
+                   req, req->recv.tag.tag, req->recv.tag.tag_mask, tag, req->recv.dt_iter.length,
+                   req->recv.tag.sn
+                   );
+        if (ucp_tag_is_match(tag, req->recv.tag.tag, req->recv.tag.tag_mask)) {
+            ucs_error("  matched received tag %"PRIx64" to req %p", tag, req);
+        }
+    }
+    ucs_error("ucp_tag_exp_dump(): end");
+}
+
 static UCS_F_ALWAYS_INLINE ucp_request_t *
 ucp_tag_exp_search(ucp_tag_match_t *tm, ucp_tag_t tag)
 {
@@ -109,8 +137,10 @@ ucp_tag_exp_search(ucp_tag_match_t *tm, ucp_tag_t tag)
     req_queue = ucp_tag_exp_get_queue_for_tag(tm, tag);
     ucs_queue_for_each_safe(req, iter, &req_queue->queue, recv.queue) {
         req = ucs_container_of(*iter, ucp_request_t, recv.queue);
-        ucs_trace_data("checking req %p tag %"PRIx64"/%"PRIx64" with tag %"PRIx64,
-                       req, req->recv.tag.tag, req->recv.tag.tag_mask, tag);
+        ucs_trace_data("checking req %p tag %"PRIx64"/%"PRIx64" with tag %"PRIx64 " size %zu sn%" PRIu64,
+                       req, req->recv.tag.tag, req->recv.tag.tag_mask, tag, req->recv.dt_iter.length,
+                       req->recv.tag.sn
+                       );
         if (ucp_tag_is_match(tag, req->recv.tag.tag, req->recv.tag.tag_mask)) {
             ucs_trace_req("matched received tag %"PRIx64" to req %p", tag, req);
             ucp_tag_exp_delete(req, tm, req_queue, iter);
