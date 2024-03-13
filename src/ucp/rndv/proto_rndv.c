@@ -795,26 +795,34 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
         recv_req->status = UCS_ERR_MESSAGE_TRUNCATED;
         tag              = ucp_tag_hdr_from_rts(rts)->tag;
         ucs_error("ucp_proto_rndv_receive_start rts_size %zu"
+                  " rts address %" PRIx64
                   " rts_tag 0x%" PRIx64
                   " recv_req %p"
                   " sreq_id 0x%" PRIx64
                   " tag 0x%" PRIx64
                   " tag_mask 0x%" PRIx64
+                  " buffer %p"
                   " length %zu"
                   " sn %" PRIu64
                   " pid %" PRIu64
                   " tid %" PRIu64
+                  " generation %u"
+                  " pack %u"
                   ,
                   rts->size,
+                  rts->address,
                   tag,
                   recv_req,
                   rts->sreq.req_id,
                   recv_req->recv.tag.tag,
                   recv_req->recv.tag.tag_mask,
+                  recv_req->recv.dt_iter.type.contig.buffer,
                   recv_req->recv.dt_iter.length,
                   recv_req->recv.tag.sn,
                   rts->pid,
-                  rts->tid);
+                  rts->tid,
+                  rts->generation,
+                  rts->pack);
 
         ucp_tag_exp_dump(&worker->tm, recv_req->recv.tag.tag);
 

@@ -104,16 +104,24 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
                       " tag %" PRIx64 " size %zu ats_size %zu"
                       " send_length %zu"
                       " orig { dt_class %u length %zu }"
+                      " orig buffer %p"
+                      " buffer %p"
                       " dt_class %u"
                       " pid/tid %"PRIu64"/%"PRIu64
                       " orig pid/tid %"PRIu64"/%"PRIu64
+                      " generation %u"
+                      " pack %u"
                       ,
                       req->send.ep, ep_id, req_id, tag, size, ats->size,
                       send_length,
                       req->orig_dt_iter.dt_class, req->orig_dt_iter.length,
+                      req->orig_dt_iter.type.contig.buffer,
+                      req->send.state.dt_iter.type.contig.buffer,
                       req->send.state.dt_iter.dt_class,
                       (uint64_t)getpid(), (uint64_t)pthread_self(),
-                      (uint64_t)req->orig_pid, (uint64_t)req->orig_tid);
+                      (uint64_t)req->orig_pid, (uint64_t)req->orig_tid,
+                      req->generation,
+                      req->pack);
 
         } else {
             size = ats->size;
@@ -167,7 +175,10 @@ static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
     rts->size        = req->send.state.dt_iter.length;
     rts->pid         = ucp_proto_get_pid();
     rts->tid         = ucp_proto_get_tid();
+    rts->generation  = req->generation;
+    rts->pack        = ++req->pack;
     rpriv            = req->send.proto_config->priv;
+
 
     req->orig_dt_iter = req->send.state.dt_iter;
     req->orig_pid = ucp_proto_get_pid();

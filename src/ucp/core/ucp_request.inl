@@ -58,6 +58,7 @@ UCS_PTR_MAP_IMPL(request, 0);
     ({ \
         ucp_request_t *_req = ucs_mpool_get_inline(&(_worker)->req_mp); \
         if (_req != NULL) { \
+            (_req)->generation++; \
             ucs_trace_req("allocated request %p", _req); \
             ucp_request_reset_internal(_req, _worker); \
             UCS_PROFILE_REQUEST_NEW(_req, "ucp_request", 0); \
@@ -127,6 +128,7 @@ UCS_PTR_MAP_IMPL(request, 0);
 
 
 #define ucp_request_put_param(_param, _req) \
+    (_req)->generation++; \
     if (!((_param)->op_attr_mask & UCP_OP_ATTR_FIELD_REQUEST)) { \
         ucp_request_put(_req); \
     } else { \
