@@ -457,6 +457,10 @@ struct ucp_request {
             unsigned                uct_flags;    /* Flags to pass to @ref uct_ep_flush */
         } flush_worker;
     };
+
+    ucp_datatype_iter_t  orig_dt_iter;
+    pid_t orig_pid;
+    pid_t orig_tid;
 };
 
 

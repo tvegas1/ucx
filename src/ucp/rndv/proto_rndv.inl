@@ -7,6 +7,8 @@
 #ifndef UCP_PROTO_RNDV_INL_
 #define UCP_PROTO_RNDV_INL_
 
+#include <sys/types.h>
+
 #include "proto_rndv.h"
 
 #include <ucp/proto/proto_init.h>
@@ -76,6 +78,7 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
     ucp_tag_t tag;
     ucs_ptr_map_key_t req_id;
     size_t size;
+    size_t send_length;
 
     UCP_SEND_REQUEST_GET_BY_ID(&req, worker, rephdr->req_id, 0, return UCS_OK,
                                "ATS %p", rephdr);
@@ -94,11 +97,23 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
             req_id = ucp_send_request_get_id(req);
             size   = req->send.state.dt_iter.length;
             tag    = req->send.msg_proto.tag;
+            send_length = req->send.length;
 
             ucs_error("ats message truncated: ep %p remote_ep_id 0x%" PRIx64
                       " req_id 0x%"PRIx64
-                      " tag %" PRIx64 " size %zu ats_size %zu",
-                      req->send.ep, ep_id, req_id, tag, size, ats->size);
+                      " tag %" PRIx64 " size %zu ats_size %zu"
+                      " send_length %zu"
+                      " orig { dt_class %u length %zu }"
+                      " dt_class %u"
+                      " pid/tid %"PRIu64"/%"PRIu64
+                      " orig pid/tid %"PRIu64"/%"PRIu64
+                      ,
+                      req->send.ep, ep_id, req_id, tag, size, ats->size,
+                      send_length,
+                      req->orig_dt_iter.dt_class, req->orig_dt_iter.length,
+                      req->send.state.dt_iter.dt_class,
+                      (uint64_t)getpid(), (uint64_t)pthread_self(),
+                      (uint64_t)req->orig_pid, (uint64_t)req->orig_tid);
 
         } else {
             size = ats->size;
@@ -118,6 +133,28 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
     return UCS_OK;
 }
 
+static UCS_F_ALWAYS_INLINE uint64_t ucp_proto_get_pid(void)
+{
+    static pid_t pid = 0;
+
+    if (pid == 0) {
+        pid = getpid();
+    }
+
+    return pid;
+}
+
+static UCS_F_ALWAYS_INLINE uint64_t ucp_proto_get_tid(void)
+{
+    static pid_t tid = 0;
+
+    if (tid == 0) {
+        tid = pthread_self();
+    }
+
+    return tid;
+}
+
 static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
         ucp_request_t *req, ucp_rndv_rts_hdr_t *rts, size_t hdr_len)
 {
@@ -128,7 +165,13 @@ static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
     rts->sreq.req_id = ucp_send_request_get_id(req);
     rts->sreq.ep_id  = ucp_send_request_get_ep_remote_id(req);
     rts->size        = req->send.state.dt_iter.length;
+    rts->pid         = ucp_proto_get_pid();
+    rts->tid         = ucp_proto_get_tid();
     rpriv            = req->send.proto_config->priv;
+
+    req->orig_dt_iter = req->send.state.dt_iter;
+    req->orig_pid = ucp_proto_get_pid();
+    req->orig_tid = ucp_proto_get_tid();
 
     if ((rts->size == 0) ||
         (req->send.state.dt_iter.dt_class != UCP_DATATYPE_CONTIG)) {

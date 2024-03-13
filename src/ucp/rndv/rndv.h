@@ -35,6 +35,10 @@ typedef struct {
     size_t            size;
     /* RNDV proto opcode */
     uint8_t           opcode;
+    /* PID of the sender */
+    uint64_t          pid;
+    /* TID of the sender */
+    uint64_t          tid;
     /*
      * 1. Packed rkeys follow
      * 2. AM only: User header follows, if am->header_length is not 0
