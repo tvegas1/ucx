@@ -184,7 +184,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_tag_recv_common(
          * TODO: need to distinguish the cases when posting is not needed. */
         ucp_tag_offload_try_post(worker, req, req_queue);
 
-        ucp_tag_exp_push(&worker->tm, req_queue, req);
+        //ucp_tag_exp_push(&worker->tm, req_queue, req);
 
         if (req->recv.tag.ep != NULL) {
             ucp_tag_rndv_rtr_trigger(worker, req);

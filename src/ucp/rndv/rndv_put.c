@@ -401,6 +401,7 @@ static void ucp_proto_rndv_put_zcopy_completion(uct_completion_t *uct_comp)
 {
     ucp_request_t *req = ucs_container_of(uct_comp, ucp_request_t,
                                           send.state.uct_comp);
+    ucp_trace_req(req, "rndv_put_zcopy_completion");
     ucp_proto_rndv_put_common_complete(req);
 }
 

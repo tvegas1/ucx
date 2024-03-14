@@ -251,6 +251,9 @@ static void ucp_proto_request_respond_rtr_unexp(ucp_worker_h worker,
     ucs_assert(rtr->sreq_id == UCS_PTR_MAP_KEY_INVALID);
 
     rtr->sreq_id = req->id;
+
+    ucs_assertv(rtr->size >= length, "rtr->size=%zu length=%zu", rtr->size, length);
+
     ucp_proto_rndv_handle_rtr(worker, rtr, length, flags);
 }
 
@@ -261,14 +264,12 @@ static void ucp_proto_request_respond_rtr(ucp_worker_h worker,
     ucp_recv_desc_t *rdesc;
     ucp_request_queue_t *req_queue;
 
-    rdesc = ucp_tag_unexp_search(&ep->rtr_tm, tag, UCP_TAG_MASK_FULL, 1,
+    rdesc = ucp_tag_unexp_search(&worker->rtr_tm, tag, UCP_TAG_MASK_FULL, 1,
                                  "rtr_respond");
     if (rdesc != NULL) {
 
-        /*
-        ucs_error("VEG: send: found rdesc %p received RTR tag 0x%" PRIx64,
+        ucs_print("VEG: send: found rdesc %p received RTR tag 0x%" PRIx64,
                   rdesc, tag);
-                  */
         ucp_proto_request_respond_rtr_unexp(worker, req, ep, rdesc);
         ucp_recv_desc_release(rdesc);
         return;
@@ -277,13 +278,11 @@ static void ucp_proto_request_respond_rtr(ucp_worker_h worker,
     req->recv.tag.tag      = tag;
     req->recv.tag.tag_mask = UCP_TAG_MASK_FULL;
 
-    req_queue = ucp_tag_exp_get_queue(&ep->rtr_tm, tag, UCP_TAG_MASK_FULL);
-    ucp_tag_exp_push(&ep->rtr_tm, req_queue, req);
-    /*
-    ucs_error("VEG: send: ep %p: unexp not found: "
+    req_queue = ucp_tag_exp_get_queue(&worker->rtr_tm, tag, UCP_TAG_MASK_FULL);
+    ucp_tag_exp_push(&worker->rtr_tm, req_queue, req);
+    ucs_print("VEG: send: ep %p: unexp not found: "
               "adding req %p on expected: tag 0x%" PRIx64 " queue %p/%p",
               ep, req, tag, req_queue->queue.head, req_queue->queue.ptail);
-              */
 }
 
 static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
@@ -313,7 +312,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
     ucp_request_set_send_callback_param(param, req, send);
 
     /* Trigger RTR flow if possible */
-    if ((select_param->op_id_flags & UCP_OP_ID_TAG_SEND) == UCP_OP_ID_TAG_SEND) {
+    if (select_param->op_id_flags == UCP_OP_ID_TAG_SEND) {
         mode = " using RTR";
         ucp_proto_request_respond_rtr(worker, req, ep);
     }
@@ -321,9 +320,13 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
     if (ucs_log_is_enabled(UCS_LOG_LEVEL_TRACE_REQ)) {
         ucs_string_buffer_init(&strb);
         ucp_datatype_iter_str(&req->send.state.dt_iter, &strb);
-        ucs_trace_req("returning send request %p: %s %s%s", req,
+        ucs_trace_req("returning send request %p: %s %s%s comp func %p count %d", req,
                       ucp_operation_names[ucp_proto_select_op_id(select_param)],
-                      ucs_string_buffer_cstr(&strb), mode);
+                      ucs_string_buffer_cstr(&strb), mode,
+                      req->send.state.uct_comp.func,
+                      req->send.state.uct_comp.count
+                     );
+
         ucs_string_buffer_cleanup(&strb);
     }
 

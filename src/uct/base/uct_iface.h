@@ -959,7 +959,7 @@ uct_iface_invoke_am(uct_base_iface_t *iface, uint8_t id, void *data,
 static UCS_F_ALWAYS_INLINE
 void uct_invoke_completion(uct_completion_t *comp, ucs_status_t status)
 {
-    ucs_trace_func("comp=%p (%s) count=%d status=%d", comp,
+    ucs_print("VEG comp=%p (%s) count=%d status=%d", comp,
                    ucs_debug_get_symbol_name((void*)comp->func), comp->count,
                    status);
     ucs_assertv(comp->count > 0, "comp=%p (%s) count=%d status=%d", comp,

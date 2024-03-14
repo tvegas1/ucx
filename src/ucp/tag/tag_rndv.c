@@ -38,6 +38,7 @@ ucs_status_t ucp_tag_rndv_process_rts(ucp_worker_h worker,
 
     ucs_assert(ucp_rndv_rts_is_tag(rts_hdr));
 
+    ucs_fatal("VEG NO RTS SHOULD BE PROCESSED");
     rreq = ucp_tag_exp_search(&worker->tm, ucp_tag_hdr_from_rts(rts_hdr)->tag);
     if (rreq != NULL) {
         /* Cancel req in transport if it was offloaded, because it arrived
@@ -194,6 +195,8 @@ static ucs_status_t ucp_proto_rndv_tag_rtr_trigger(
     ucs_assert(rtr->sreq_id == UCS_PTR_MAP_KEY_INVALID);
     rtr->sreq_id = sreq->id;
 
+    ucs_assertv(rtr->size >= length, "rtr->size=%zu length=%zu", rtr->size, length);
+
     ucp_proto_rndv_handle_rtr(worker, rtr, length, flags);
     return UCS_OK;
 }
@@ -213,12 +216,10 @@ ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
                             return UCS_ERR_UNREACHABLE,
                             "TAG RTR RECV");
 
-    sreq = ucp_tag_exp_search(&ep->rtr_tm, tag);
+    sreq = ucp_tag_exp_search(&worker->rtr_tm, tag);
     if (sreq != NULL) {
-        /*
-        ucs_error("VEG: rtr recv: expected found req %p tag 0x%" PRIx64,
+        ucs_print("VEG: rtr recv: expected found req %p tag 0x%" PRIx64,
                   sreq, tag);
-                  */
         return ucp_proto_rndv_tag_rtr_trigger(worker, rtr, length, sreq);
     }
 
@@ -233,12 +234,10 @@ ucs_status_t ucp_proto_rndv_tag_rtr_recv(ucp_worker_h worker,
         return UCS_OK;
     }
 
-    ucp_tag_unexp_recv(&ep->rtr_tm, rdesc, tag);
+    ucp_tag_unexp_recv(&worker->rtr_tm, rdesc, tag);
 
-    /*
-    ucs_error("VEG: rtr recv: unexpected receive add rdesc %p tag 0x%" PRIx64 " ep 0x%" PRIx64,
-              rdesc, tag, rtr->ep_id);
-              */
+    ucs_print("VEG: rtr recv: unexpected receive add rdesc %p tag 0x%" PRIx64 " ep 0x%" PRIx64 "/%p",
+              rdesc, tag, rtr->ep_id, ep);
 
     return UCS_OK;
 }

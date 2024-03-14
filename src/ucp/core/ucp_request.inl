@@ -264,12 +264,14 @@ ucp_request_complete_tag_recv(ucp_request_t *req, ucs_status_t status)
                   req->recv.tag.info.sender_tag, req->recv.tag.info.length,
                   ucs_status_string(status));
     UCS_PROFILE_REQUEST_EVENT(req, "complete_tag_recv", status);
+#if 0
     if (req->recv.tag.rtr_req != NULL) {
         req->recv.tag.rtr_req->id = UCS_PTR_MAP_KEY_INVALID;
-        //ucs_error("VEG: req %p has rtr_req %p", req, req->recv.tag.rtr_req);
+        ucs_error("VEG: req %p has rtr_req %p", req, req->recv.tag.rtr_req);
         ucp_request_put(req->recv.tag.rtr_req);
         req->recv.tag.rtr_req = NULL;
     }
+#endif
     ucp_request_complete(req, recv.tag.cb, status, &req->recv.tag.info,
                          req->user_data);
 }
@@ -975,6 +977,14 @@ ucp_request_param_rndv_thresh(ucp_request_t *req,
 static UCS_F_ALWAYS_INLINE void
 ucp_invoke_uct_completion(uct_completion_t *comp, ucs_status_t status)
 {
+    ucp_request_t *req = ucs_container_of(comp, ucp_request_t,
+                                          send.state.uct_comp);
+    ucs_print("VEG comp %p comp->count %u req %p", comp, comp->count, req);
+    if (comp->count > 100 || comp->count <= 0) {
+        ucs_error("VEG LOOPING!!");
+        for (;;) ;
+        ucs_error("VEG LOOPING DONE");
+    }
     ucs_assertv(comp->count > 0, "comp=%p count=%d func=%p status %s", comp,
                 comp->count, comp->func, ucs_status_string(status));
 

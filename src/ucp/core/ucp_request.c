@@ -250,7 +250,7 @@ UCS_PROFILE_FUNC_VOID(ucp_request_cancel, (worker, request),
                       ucp_worker_h worker, void *request)
 {
     ucp_request_t *req = (ucp_request_t*)request - 1;
-    int removed;
+    int removed        = 0;
 
     if (req->flags & UCP_REQUEST_FLAG_COMPLETED) {
         return;
@@ -259,7 +259,7 @@ UCS_PROFILE_FUNC_VOID(ucp_request_cancel, (worker, request),
     if (req->flags & UCP_REQUEST_FLAG_RECV_TAG) {
         UCP_WORKER_THREAD_CS_ENTER_CONDITIONAL(worker);
 
-        removed = ucp_tag_exp_remove(&worker->tm, req);
+        //removed = ucp_tag_exp_remove(&worker->tm, req);
         /* If tag posted to the transport need to wait its completion */
         if (removed && !(req->flags & UCP_REQUEST_FLAG_OFFLOADED)) {
             ucp_request_complete_tag_recv(req, UCS_ERR_CANCELED);

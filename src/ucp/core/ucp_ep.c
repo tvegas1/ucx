@@ -203,11 +203,13 @@ static ucp_ep_h ucp_ep_allocate(ucp_worker_h worker, const char *peer_name)
         goto err_free_ep;
     }
 
+#if 0
     status = ucp_tag_match_init(&ep->rtr_tm);
     if (status != UCS_OK) {
         ucs_error("failed to init ep rtr tag match");
         goto err_free_ep;
     }
+#endif
 
     ep->ext->ep                           = ep;
     ep->refcount                          = 0;

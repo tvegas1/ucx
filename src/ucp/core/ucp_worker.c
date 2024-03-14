@@ -2606,6 +2606,12 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
         goto err_tag_match_cleanup;
     }
 
+    status = ucp_tag_match_init(&worker->rtr_tm);
+    if (status != UCS_OK) {
+        ucs_error("failed to init worker rtr tag match");
+        goto err_tag_match_cleanup;
+    }
+
     /* Select atomic resources */
     ucp_worker_init_atomic_tls(worker);
 

@@ -322,6 +322,7 @@ typedef struct ucp_worker {
     size_t                           max_am_header;       /* Maximum allowed
                                                              header size used by
                                                              UCP AM */
+    ucp_tag_match_t                  rtr_tm;
     ucp_ep_h                         mem_type_ep[UCS_MEMORY_TYPE_LAST]; /* Memory type EPs */
 
     UCS_STATS_NODE_DECLARE(stats)

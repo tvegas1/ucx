@@ -481,6 +481,7 @@ ucs_status_t ucp_proto_rndv_rtr_handle_atp(void *arg, void *data, size_t length,
     UCP_SEND_REQUEST_GET_BY_ID(&req, worker, atp->super.req_id, 0,
                                return UCS_OK, "ATP %p", atp);
 
+    req->send.state.dt_iter.length = atp->full_size;
     if (!ucp_proto_common_frag_complete(req, atp->size, "rndv_atp")) {
         return UCS_OK;
     }

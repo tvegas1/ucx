@@ -77,6 +77,7 @@ typedef struct {
 
     /* Size of the acknowledged data */
     size_t          size;
+    size_t          full_size;
 } UCS_S_PACKED ucp_rndv_ack_hdr_t;
 
 

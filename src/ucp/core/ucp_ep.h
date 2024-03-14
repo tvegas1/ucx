@@ -553,7 +553,7 @@ typedef struct ucp_ep {
     uct_ep_h                      uct_eps[UCP_MAX_FAST_PATH_LANES];
     ucp_ep_ext_t                  *ext;                   /* Endpoint extension */
 
-    ucp_tag_match_t               rtr_tm;
+    //ucp_tag_match_t               rtr_tm;
 
 #if ENABLE_DEBUG_DATA
     char                          peer_name[UCP_WORKER_ADDRESS_NAME_MAX];

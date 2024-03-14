@@ -957,6 +957,13 @@ ucp_proto_rndv_handle_rtr(void *arg, void *data, size_t length, unsigned flags)
     ucp_trace_req(req, "recv RTR offset %zu length %zu/%zu req %p", rtr->offset,
                   rtr->size, req->send.state.dt_iter.length, req);
 
+    ucs_assertv(rtr->size >= req->send.state.dt_iter.length,
+                "rtr->size=%zu length=%zu",
+                rtr->size, req->send.state.dt_iter.length);
+    if (rtr->size > req->send.state.dt_iter.length) {
+        rtr->size = req->send.state.dt_iter.length;
+    }
+
     if (req->flags & UCP_REQUEST_FLAG_OFFLOADED) {
         ucp_tag_offload_cancel_rndv(req);
         ucs_assert(!ucp_ep_use_indirect_id(req->send.ep));
