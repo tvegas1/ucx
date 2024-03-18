@@ -816,6 +816,7 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
                   " tag_mask 0x%" PRIx64
                   " buffer %p"
                   " length %zu"
+                  " dt_class %d"
                   " sn %" PRIu64
                   " pid %" PRIu64
                   " tid %" PRIu64
@@ -831,6 +832,7 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
                   recv_req->recv.tag.tag_mask,
                   recv_req->recv.dt_iter.type.contig.buffer,
                   recv_req->recv.dt_iter.length,
+                  recv_req->recv.dt_iter.dt_class,
                   recv_req->recv.tag.sn,
                   rts->pid,
                   rts->tid,
