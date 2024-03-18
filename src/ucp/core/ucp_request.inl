@@ -127,8 +127,25 @@ UCS_PTR_MAP_IMPL(request, 0);
                 (_req), (_req)->id, (_id))
 
 
+static inline int get_fatal_put(void)
+{
+    const char *buf;
+    static int v = -1;
+
+    if (v == -1) {
+        buf = getenv("FATAL_REQ_PUT");
+        v = (buf != NULL) && (*buf == 'y');
+    }
+
+    return v;
+}
+
 #define ucp_request_put_param(_param, _req) \
     (_req)->generation++; \
+    if ((_req)->already_packed && get_fatal_put()) { \
+         ucs_fatal("request_put: req %p did not see ats: generation %u pack %u", \
+                   (_req), (_req)->generation, (_req)->pack); \
+    } \
     if (!((_param)->op_attr_mask & UCP_OP_ATTR_FIELD_REQUEST)) { \
         ucp_request_put(_req); \
     } else { \
