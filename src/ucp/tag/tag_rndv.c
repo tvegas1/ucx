@@ -176,6 +176,28 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_rndv_rts_progress, (self),
                   " tag %" PRIx64 " size %zu",
                   ep_id, req_id, tag, size);
 
+        if (req->rts.size >= get_dump_rndv_size()) {
+            ucs_error("SEND RTS rts_size %zu"
+                      " rts address %" PRIx64
+                      " sreq_id 0x%" PRIx64
+                      " pid %" PRIu64
+                      " tid %" PRIu64
+                      " generation %u"
+                      " pack %u"
+                      " rts_packed %" PRIu64
+                      " req_rts_packed %" PRIu64
+                      ,
+                      req->rts.size,
+                      req->rts.address,
+                      req->rts.sreq.req_id,
+                      req->rts.pid,
+                      req->rts.tid,
+                      req->rts.generation,
+                      req->rts.pack,
+                      req->rts.rts_packed,
+                      req->rts_packed);
+        }
+
         UCP_EP_STAT_TAG_OP(req->send.ep, RNDV);
     }
 

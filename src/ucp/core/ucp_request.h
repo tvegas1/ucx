@@ -465,6 +465,7 @@ struct ucp_request {
     uint32_t pack;
     int already_packed;
     uint64_t rts_packed;
+    ucp_rndv_rts_hdr_t rts;
 };
 
 

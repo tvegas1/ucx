@@ -66,13 +66,13 @@ ucp_proto_rndv_rts_request_init(ucp_request_t *req)
     return UCS_OK;
 }
 
-static ssize_t get_dump_ats_size(void)
+static ssize_t get_dump_rndv_size(void)
 {
     static ssize_t s = -2;
     const char *buf;
 
     if (s == -2) {
-        buf = getenv("DUMP_ATS_SIZE");
+        buf = getenv("DUMP_RNDV_SIZE");
         if (buf != NULL) {
             s = atoi(buf);
         } else {
@@ -116,7 +116,7 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
         tag    = req->send.msg_proto.tag;
         send_length = req->send.length;
 
-        limit = get_dump_ats_size();
+        limit = get_dump_rndv_size();
         if ((ats->super.status == UCS_ERR_MESSAGE_TRUNCATED) || (size >= limit)) {
 
             ucs_error("ats message%s: ep %p remote_ep_id 0x%" PRIx64
@@ -241,6 +241,7 @@ static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
                   rts->sreq.ep_id, rts->address, rts->size);
     }
 
+    req->rts = *rts;
     return hdr_len + rkey_size;
 }
 
