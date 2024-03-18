@@ -141,6 +141,16 @@ ucp_proto_rndv_put_common_atp_send(ucp_request_t *req, ucp_lane_index_t lane)
        except the last ATP which will acknowledge the remaining payload size.
        This is simpler than keeping track of how much was sent on each lane */
     ucs_assert(req->send.rndv.put.atp_map != 0);
+
+    if (req->send.state.dt_iter.length == 0) {
+        if (!ucs_is_pow2(req->send.rndv.put.atp_map)) {
+            return UCS_OK;
+        }
+
+        pack_ctx.ack_size = 0;
+        goto out;
+    }
+
     if (ucs_is_pow2(req->send.rndv.put.atp_map)) {
         pack_ctx.ack_size = req->send.state.dt_iter.length -
                             rpriv->atp_num_lanes + 1;
@@ -151,6 +161,7 @@ ucp_proto_rndv_put_common_atp_send(ucp_request_t *req, ucp_lane_index_t lane)
         pack_ctx.ack_size = 1;
     }
 
+out:
     return ucp_proto_am_bcopy_single_send(req, UCP_AM_ID_RNDV_ATP, lane,
                                           ucp_proto_rndv_put_common_pack_atp,
                                           &pack_ctx, sizeof(ucp_rndv_ack_hdr_t),

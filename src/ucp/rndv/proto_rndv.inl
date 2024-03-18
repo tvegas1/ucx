@@ -136,6 +136,13 @@ static size_t UCS_F_ALWAYS_INLINE ucp_proto_rndv_pack_ack(ucp_request_t *req,
     ack_hdr->super.status = UCS_OK;
     ack_hdr->size         = ack_size;
     ack_hdr->full_size    = req->send.state.dt_iter.length;
+
+#if 0
+    ucs_assertv(req->send.state.dt_iter.length != 0,
+                "req %p remote_req_id %" PRIu64 " total_length %zu",
+                req, req->send.rndv.remote_req_id,
+                ucp_proto_rndv_request_total_length(req));
+#endif
     return sizeof(*ack_hdr);
 }
 
