@@ -167,6 +167,9 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_rndv_rts_progress, (self),
                             ucp_tag_rndv_proto_rts_pack, req, max_rts_size,
                             NULL, 0);
     if (status == UCS_OK) {
+
+        req->pack++;
+        req->already_packed = 1;
         ucs_print("rndv_rts: ep_id 0x%"PRIx64" req_id 0x%"PRIx64
                   " tag %" PRIx64 " size %zu",
                   ep_id, req_id, tag, size);

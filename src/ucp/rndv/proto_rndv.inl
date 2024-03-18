@@ -66,7 +66,7 @@ ucp_proto_rndv_rts_request_init(ucp_request_t *req)
     return UCS_OK;
 }
 
-static size_t get_dump_ats_size(void)
+static ssize_t get_dump_ats_size(void)
 {
     static ssize_t s = -2;
     const char *buf;
@@ -76,7 +76,7 @@ static size_t get_dump_ats_size(void)
         if (buf != NULL) {
             s = atoi(buf);
         } else {
-            s = -1;
+            s = INT_MAX;
         }
     }
     return s;
@@ -212,7 +212,7 @@ static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
     rts->pid         = ucp_proto_get_pid();
     rts->tid         = ucp_proto_get_tid();
     rts->generation  = req->generation;
-    rts->pack        = ++req->pack;
+    rts->pack        = req->pack;
     rpriv            = req->send.proto_config->priv;
 
     req->orig_dt_iter = req->send.state.dt_iter;
@@ -236,8 +236,6 @@ static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
                   req, rts->generation, rts->pack, rts->sreq.req_id,
                   rts->sreq.ep_id, rts->address, rts->size);
     }
-
-    req->already_packed = 1;
 
     return hdr_len + rkey_size;
 }

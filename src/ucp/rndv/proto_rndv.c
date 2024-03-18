@@ -753,7 +753,7 @@ ucp_proto_rndv_check_rkey_length(uint64_t address, size_t rkey_length,
 
 #include "../tag/tag_match.inl"
 
-static size_t get_dump_rts_size(void)
+static ssize_t get_dump_rts_size(void)
 {
     static ssize_t s = -2;
     const char *buf;
@@ -763,7 +763,7 @@ static size_t get_dump_rts_size(void)
         if (buf != NULL) {
             s = atoi(buf);
         } else {
-            s = -1;
+            s = INT_MAX;
         }
     }
     return s;
@@ -961,6 +961,8 @@ ucp_proto_rndv_handle_rtr(void *arg, void *data, size_t length, unsigned flags)
 
     ucp_trace_req(req, "recv RTR offset %zu length %zu/%zu req %p", rtr->offset,
                   rtr->size, req->send.state.dt_iter.length, req);
+
+    req->already_packed = 0;
 
     if (req->flags & UCP_REQUEST_FLAG_OFFLOADED) {
         ucp_tag_offload_cancel_rndv(req);
