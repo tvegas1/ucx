@@ -87,6 +87,8 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
         ucp_tag_offload_cancel_rndv(req);
     }
 
+    req->already_packed = 0;
+
     if (length >= sizeof(*ats)) {
         /* ATS message carries a size field */
         ats = ucs_derived_of(rephdr, ucp_rndv_ack_hdr_t);
@@ -163,6 +165,19 @@ static UCS_F_ALWAYS_INLINE uint64_t ucp_proto_get_tid(void)
     return tid;
 }
 
+static int get_fatal_reuse(void)
+{
+    const char *buf;
+    static int s = -1;
+
+    if (s == -1) {
+        buf = getenv("FATAL_REUSE");
+        s = ((buf != NULL) && (*buf == 'y'));
+    }
+
+    return s;
+}
+
 static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
         ucp_request_t *req, ucp_rndv_rts_hdr_t *rts, size_t hdr_len)
 {
@@ -179,8 +194,6 @@ static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
     rts->pack        = ++req->pack;
     rpriv            = req->send.proto_config->priv;
 
-
-
     req->orig_dt_iter = req->send.state.dt_iter;
     req->orig_pid = ucp_proto_get_pid();
     req->orig_tid = ucp_proto_get_tid();
@@ -195,6 +208,15 @@ static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
                                         rpriv->md_map, rpriv->sys_dev_map,
                                         rpriv->sys_dev_distance, rkey_buffer);
     }
+
+    if (req->already_packed && get_fatal_reuse()) {
+        ucs_fatal("rts_pack: req %p is reused: generation %u pack %u req_id %" PRIx64
+                  " ep_id %" PRIx64 " addr %" PRIx64 " size %zu",
+                  req, rts->generation, rts->pack, rts->sreq.req_id,
+                  rts->sreq.ep_id, rts->address, rts->size);
+    }
+
+    req->already_packed = 1;
 
     return hdr_len + rkey_size;
 }

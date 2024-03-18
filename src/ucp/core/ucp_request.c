@@ -281,6 +281,7 @@ ucp_worker_request_init_proxy(ucs_mpool_t *mp, void *obj, void *chunk)
 
     req->generation = 0;
     req->pack       = 0;
+    req->already_packed = 0;
 
     if (context->config.request.init != NULL) {
         context->config.request.init(req + 1);
