@@ -170,6 +170,8 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_rndv_rts_progress, (self),
 
         req->pack++;
         req->already_packed = 1;
+
+        req->rts_packed = req->send.ep->worker->rts_packed++;
         ucs_print("rndv_rts: ep_id 0x%"PRIx64" req_id 0x%"PRIx64
                   " tag %" PRIx64 " size %zu",
                   ep_id, req_id, tag, size);

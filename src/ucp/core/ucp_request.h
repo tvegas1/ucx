@@ -464,6 +464,7 @@ struct ucp_request {
     uint32_t generation;
     uint32_t pack;
     int already_packed;
+    uint64_t rts_packed;
 };
 
 

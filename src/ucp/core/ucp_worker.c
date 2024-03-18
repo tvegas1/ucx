@@ -2436,6 +2436,7 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     worker->num_active_ifaces    = 0;
     worker->num_ifaces           = 0;
     worker->am_message_id        = ucs_generate_uuid(0);
+    worker->rts_packed           = 0;
     worker->rkey_ptr_cb_id       = UCS_CALLBACKQ_ID_NULL;
     worker->num_all_eps          = 0;
     ucp_worker_keepalive_reset(worker);

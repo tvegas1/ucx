@@ -41,6 +41,7 @@ typedef struct {
     uint64_t          tid;
     uint32_t          generation;
     uint32_t          pack;
+    uint64_t          rts_packed; /* worker based */
     /*
      * 1. Packed rkeys follow
      * 2. AM only: User header follows, if am->header_length is not 0

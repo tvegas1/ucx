@@ -822,6 +822,7 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
                   " tid %" PRIu64
                   " generation %u"
                   " pack %u"
+                  " rts_packed %" PRIu64
                   ,
                   rts->size,
                   rts->address,
@@ -837,7 +838,8 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
                   rts->pid,
                   rts->tid,
                   rts->generation,
-                  rts->pack);
+                  rts->pack,
+                  rts->rts_packed);
     }
 
     if (ucs_likely(rts->size <= recv_req->recv.dt_iter.length)) {

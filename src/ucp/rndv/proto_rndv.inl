@@ -131,6 +131,7 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
                       " orig pid/tid %"PRIu64"/%"PRIu64
                       " generation %u"
                       " pack %u"
+                      " rts_pack %" PRIu64
                       ,
                       (ats->super.status == UCS_ERR_MESSAGE_TRUNCATED? " truncated" : ""),
                       req->send.ep, ep_id, req_id, tag, size, ats->size,
@@ -142,7 +143,9 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
                       (uint64_t)getpid(), (uint64_t)pthread_self(),
                       (uint64_t)req->orig_pid, (uint64_t)req->orig_tid,
                       req->generation,
-                      req->pack);
+                      req->pack,
+                      req->rts_packed);
+
         }
 
 
@@ -213,6 +216,7 @@ static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
     rts->tid         = ucp_proto_get_tid();
     rts->generation  = req->generation;
     rts->pack        = req->pack;
+    rts->rts_packed  = req->send.ep->worker->rts_packed;
     rpriv            = req->send.proto_config->priv;
 
     req->orig_dt_iter = req->send.state.dt_iter;
