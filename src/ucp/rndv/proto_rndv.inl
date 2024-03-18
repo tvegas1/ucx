@@ -180,6 +180,7 @@ static UCS_F_ALWAYS_INLINE size_t ucp_proto_rndv_rts_pack(
     rpriv            = req->send.proto_config->priv;
 
 
+
     req->orig_dt_iter = req->send.state.dt_iter;
     req->orig_pid = ucp_proto_get_pid();
     req->orig_tid = ucp_proto_get_tid();

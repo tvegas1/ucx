@@ -39,8 +39,8 @@ typedef struct {
     uint64_t          pid;
     /* TID of the sender */
     uint64_t          tid;
-    uint16_t          generation;
-    uint16_t          pack;
+    uint32_t          generation;
+    uint32_t          pack;
     /*
      * 1. Packed rkeys follow
      * 2. AM only: User header follows, if am->header_length is not 0

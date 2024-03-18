@@ -461,8 +461,9 @@ struct ucp_request {
     ucp_datatype_iter_t  orig_dt_iter;
     pid_t orig_pid;
     pid_t orig_tid;
-    uint16_t generation;
-    uint16_t pack;
+    uint32_t generation;
+    uint32_t pack;
+    int already_packed;
 };
 
 
