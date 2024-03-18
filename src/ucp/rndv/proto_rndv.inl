@@ -66,6 +66,22 @@ ucp_proto_rndv_rts_request_init(ucp_request_t *req)
     return UCS_OK;
 }
 
+static size_t get_dump_ats_size(void)
+{
+    static ssize_t s = -2;
+    const char *buf;
+
+    if (s == -2) {
+        buf = getenv("DUMP_ATS_SIZE");
+        if (buf != NULL) {
+            s = atoi(buf);
+        } else {
+            s = -1;
+        }
+    }
+    return s;
+}
+
 static UCS_F_ALWAYS_INLINE ucs_status_t
 ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
 {
@@ -79,6 +95,7 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
     ucs_ptr_map_key_t req_id;
     size_t size;
     size_t send_length;
+    size_t limit;
 
     UCP_SEND_REQUEST_GET_BY_ID(&req, worker, rephdr->req_id, 0, return UCS_OK,
                                "ATS %p", rephdr);
@@ -93,15 +110,16 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
         /* ATS message carries a size field */
         ats = ucs_derived_of(rephdr, ucp_rndv_ack_hdr_t);
 
-        if (ats->super.status == UCS_ERR_MESSAGE_TRUNCATED) {
+        ep_id  = ucp_send_request_get_ep_remote_id(req);
+        req_id = ucp_send_request_get_id(req);
+        size   = req->send.state.dt_iter.length;
+        tag    = req->send.msg_proto.tag;
+        send_length = req->send.length;
 
-            ep_id  = ucp_send_request_get_ep_remote_id(req);
-            req_id = ucp_send_request_get_id(req);
-            size   = req->send.state.dt_iter.length;
-            tag    = req->send.msg_proto.tag;
-            send_length = req->send.length;
+        limit = get_dump_ats_size();
+        if ((ats->super.status == UCS_ERR_MESSAGE_TRUNCATED) || (size >= limit)) {
 
-            ucs_error("ats message truncated: ep %p remote_ep_id 0x%" PRIx64
+            ucs_error("ats message%s: ep %p remote_ep_id 0x%" PRIx64
                       " req_id 0x%"PRIx64
                       " tag %" PRIx64 " size %zu ats_size %zu"
                       " send_length %zu"
@@ -114,6 +132,7 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
                       " generation %u"
                       " pack %u"
                       ,
+                      (ats->super.status == UCS_ERR_MESSAGE_TRUNCATED? " truncated" : ""),
                       req->send.ep, ep_id, req_id, tag, size, ats->size,
                       send_length,
                       req->orig_dt_iter.dt_class, req->orig_dt_iter.length,
@@ -124,8 +143,10 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
                       (uint64_t)req->orig_pid, (uint64_t)req->orig_tid,
                       req->generation,
                       req->pack);
+        }
 
-        } else {
+
+        if (ats->super.status != UCS_ERR_MESSAGE_TRUNCATED) {
             size = ats->size;
         }
 
