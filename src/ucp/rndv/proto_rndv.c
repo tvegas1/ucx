@@ -801,12 +801,9 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
 
     limit = get_dump_rts_size();
 
-    rkey_length      = 0; /* Override rkey length to disable data fetch */
-    op_id            = UCP_OP_ID_RNDV_RECV_DROP;
-    recv_req->status = UCS_ERR_MESSAGE_TRUNCATED;
-    tag              = ucp_tag_hdr_from_rts(rts)->tag;
-
     if (rts->size >= limit) {
+        tag = ucp_tag_hdr_from_rts(rts)->tag;
+
         ucs_error("RECV RTS rts_size %zu"
                   " rts address %" PRIx64
                   " rts_tag 0x%" PRIx64
@@ -849,6 +846,11 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
         UCS_PROFILE_CALL_VOID(ucp_datatype_iter_move, &req->send.state.dt_iter,
                               &recv_req->recv.dt_iter, rts->size, &sg_count);
     } else {
+        rkey_length      = 0; /* Override rkey length to disable data fetch */
+        op_id            = UCP_OP_ID_RNDV_RECV_DROP;
+        recv_req->status = UCS_ERR_MESSAGE_TRUNCATED;
+        tag              = ucp_tag_hdr_from_rts(rts)->tag;
+
         /* Short receive: complete with error, and send reply to sender */
         ucs_error("ucp_proto_rndv_receive_start rts_size %zu"
                   " rts address %" PRIx64
