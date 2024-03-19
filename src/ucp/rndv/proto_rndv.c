@@ -859,11 +859,13 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
                   " tag_mask 0x%" PRIx64
                   " buffer %p"
                   " length %zu"
+                  " dt_class %d"
                   " sn %" PRIu64
                   " pid %" PRIu64
                   " tid %" PRIu64
                   " generation %u"
                   " pack %u"
+                  " rts_packed %" PRIu64
                   ,
                   rts->size,
                   rts->address,
@@ -874,11 +876,13 @@ void ucp_proto_rndv_receive_start(ucp_worker_h worker, ucp_request_t *recv_req,
                   recv_req->recv.tag.tag_mask,
                   recv_req->recv.dt_iter.type.contig.buffer,
                   recv_req->recv.dt_iter.length,
+                  recv_req->recv.dt_iter.dt_class,
                   recv_req->recv.tag.sn,
                   rts->pid,
                   rts->tid,
                   rts->generation,
-                  rts->pack);
+                  rts->pack,
+                  rts->rts_packed);
 
         ucp_tag_exp_dump(&worker->tm, recv_req->recv.tag.tag);
 

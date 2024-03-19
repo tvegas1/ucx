@@ -145,8 +145,6 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_rndv_rts_progress, (self),
     const ucp_proto_rndv_ctrl_priv_t *rpriv;
     size_t max_rts_size;
     ucs_status_t status;
-    uint64_t req_id, ep_id, tag;
-    size_t size;
 
     rpriv        = req->send.proto_config->priv;
     max_rts_size = sizeof(ucp_rndv_rts_hdr_t) + rpriv->packed_rkey_size;
@@ -156,11 +154,6 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_rndv_rts_progress, (self),
         ucp_proto_request_abort(req, status);
         return UCS_OK;
     }
-
-    req_id = ucp_send_request_get_id(req);
-    ep_id  = ucp_send_request_get_ep_remote_id(req);
-    size   = req->send.state.dt_iter.length;
-    tag    = req->send.msg_proto.tag;
 
     status = UCS_PROFILE_CALL(ucp_proto_am_bcopy_single_progress, req,
                             UCP_AM_ID_RNDV_RTS, rpriv->lane,
@@ -172,9 +165,6 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_rndv_rts_progress, (self),
         req->already_packed = 1;
 
         req->rts_packed = req->send.ep->worker->rts_packed++;
-        ucs_print("rndv_rts: ep_id 0x%"PRIx64" req_id 0x%"PRIx64
-                  " tag %" PRIx64 " size %zu",
-                  ep_id, req_id, tag, size);
 
         if (req->rts.size >= get_dump_rndv_size()) {
             ucs_error("SEND RTS rts_size %zu"
