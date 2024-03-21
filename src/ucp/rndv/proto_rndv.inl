@@ -122,6 +122,7 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
             ucs_error("ats message%s: ep %p remote_ep_id 0x%" PRIx64
                       " req_id 0x%"PRIx64
                       " tag %" PRIx64 " size %zu ats_size %zu"
+                      " rx_req_size %zu"
                       " send_length %zu"
                       " orig { dt_class %u length %zu }"
                       " orig buffer %p"
@@ -135,6 +136,7 @@ ucp_proto_rndv_ats_handler(void *arg, void *data, size_t length, unsigned flags)
                       ,
                       (ats->super.status == UCS_ERR_MESSAGE_TRUNCATED? " truncated" : ""),
                       req->send.ep, ep_id, req_id, tag, size, ats->size,
+                      ats->rts_length,
                       send_length,
                       req->orig_dt_iter.dt_class, req->orig_dt_iter.length,
                       req->orig_dt_iter.type.contig.buffer,
@@ -264,7 +266,8 @@ static size_t UCS_F_ALWAYS_INLINE ucp_proto_rndv_pack_ack(ucp_request_t *req,
         ack_hdr->super.status = UCS_OK;
     }
 
-    ack_hdr->size         = ack_size;
+    ack_hdr->rts_length = req->rts_length;
+    ack_hdr->size       = ack_size;
     return sizeof(*ack_hdr);
 }
 
