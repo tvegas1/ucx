@@ -44,7 +44,7 @@ static ucs_config_field_t uct_cuda_ipc_iface_config_table[] = {
      ucs_offsetof(uct_cuda_ipc_iface_config_t, enable_get_zcopy),
      UCS_CONFIG_TYPE_ON_OFF_AUTO},
 
-    {"MAX_EVENTS", "inf",
+    {"MAX_EVENTS", "1000",
      "Max number of cuda events. -1 is infinite",
      ucs_offsetof(uct_cuda_ipc_iface_config_t, max_cuda_ipc_events), UCS_CONFIG_TYPE_UINT},
 
@@ -521,9 +521,18 @@ static UCS_CLASS_INIT_FUNC(uct_cuda_ipc_iface_t, uct_md_h md, uct_worker_h worke
         return UCS_ERR_IO_ERROR;
     }
 
+    ucs_mpool_grow(&self->event_desc, self->config.max_cuda_ipc_events);
+
     self->streams_initialized = 0;
     self->cuda_context        = 0;
     ucs_queue_head_init(&self->outstanding_d2d_event_q);
+
+    if (!self->streams_initialized) {
+        status = uct_cuda_ipc_iface_init_streams(self);
+        if (UCS_OK != status) {
+            return status;
+        }
+    }
 
     return UCS_OK;
 }

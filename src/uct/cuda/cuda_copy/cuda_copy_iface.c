@@ -33,7 +33,7 @@ static ucs_config_field_t uct_cuda_copy_iface_config_table[] = {
      "Max number of event completions to pick during cuda events polling",
      ucs_offsetof(uct_cuda_copy_iface_config_t, max_poll), UCS_CONFIG_TYPE_UINT},
 
-    {"MAX_EVENTS", "inf",
+    {"MAX_EVENTS", "1000",
      "Max number of cuda events. -1 is infinite",
      ucs_offsetof(uct_cuda_copy_iface_config_t, max_cuda_events), UCS_CONFIG_TYPE_UINT},
 
@@ -48,6 +48,16 @@ static ucs_config_field_t uct_cuda_copy_iface_config_table[] = {
 /* Forward declaration for the delete function */
 static void UCS_CLASS_DELETE_FUNC_NAME(uct_cuda_copy_iface_t)(uct_iface_t*);
 
+
+ucs_status_t uct_cuda_copy_init_stream(CUstream *stream)
+{
+    if (*stream != 0) {
+        return UCS_OK;
+    }
+
+    return UCT_CUDADRV_FUNC_LOG_ERR(
+            cuStreamCreate(stream, CU_STREAM_NON_BLOCKING));
+}
 
 static ucs_status_t uct_cuda_copy_iface_get_address(uct_iface_h tl_iface,
                                                     uct_iface_addr_t *iface_addr)
@@ -468,6 +478,7 @@ static UCS_CLASS_INIT_FUNC(uct_cuda_copy_iface_t, uct_md_h md, uct_worker_h work
     ucs_status_t status;
     ucs_memory_type_t src, dst;
     ucs_mpool_params_t mp_params;
+    CUstream *stream;
 
     UCS_CLASS_CALL_SUPER_INIT(uct_cuda_iface_t, &uct_cuda_copy_iface_ops,
                               &uct_cuda_copy_iface_internal_ops, md, worker,
@@ -496,6 +507,8 @@ static UCS_CLASS_INIT_FUNC(uct_cuda_copy_iface_t, uct_md_h md, uct_worker_h work
         return UCS_ERR_IO_ERROR;
     }
 
+    ucs_mpool_grow(&self->cuda_event_desc, self->config.max_cuda_events);
+
     ucs_queue_head_init(&self->active_queue);
 
     ucs_memory_type_for_each(src) {
@@ -507,6 +520,16 @@ static UCS_CLASS_INIT_FUNC(uct_cuda_copy_iface_t, uct_md_h md, uct_worker_h work
 
     self->short_stream = 0;
     self->cuda_context = 0;
+
+    ucs_memory_type_for_each(src) {
+        ucs_memory_type_for_each(dst) {
+            stream = uct_cuda_copy_get_stream(self, src, dst);
+            if (stream == NULL) {
+              ucs_error("stream creation failed");
+              return UCS_ERR_IO_ERROR;
+            }
+        }
+    }
 
     return UCS_OK;
 }

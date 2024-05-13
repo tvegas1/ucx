@@ -105,4 +105,26 @@ uct_cuda_copy_flush_bitmap_idx(ucs_memory_type_t src_mem_type,
     return (src_mem_type * UCS_MEMORY_TYPE_LAST) + dst_mem_type;
 }
 
+ucs_status_t uct_cuda_copy_init_stream(CUstream *stream);
+
+static UCS_F_ALWAYS_INLINE CUstream *
+uct_cuda_copy_get_stream(uct_cuda_copy_iface_t *iface,
+                         ucs_memory_type_t src_type, ucs_memory_type_t dst_type)
+{
+    CUstream *stream = NULL;
+    ucs_status_t status;
+
+    ucs_assert((src_type < UCS_MEMORY_TYPE_LAST) &&
+               (dst_type < UCS_MEMORY_TYPE_LAST));
+
+    stream = &iface->queue_desc[src_type][dst_type].stream;
+
+    status = uct_cuda_copy_init_stream(stream);
+    if (status != UCS_OK) {
+        return NULL;
+    }
+
+    return stream;
+}
+
 #endif

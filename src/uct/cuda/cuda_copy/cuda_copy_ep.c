@@ -44,36 +44,6 @@ UCS_CLASS_DEFINE_DELETE_FUNC(uct_cuda_copy_ep_t, uct_ep_t);
     ucs_trace_data("%s [ptr %p len %zu] to 0x%" PRIx64, _name, (_iov)->buffer, \
                    (_iov)->length, (_remote_addr))
 
-ucs_status_t uct_cuda_copy_init_stream(CUstream *stream)
-{
-    if (*stream != 0) {
-        return UCS_OK;
-    }
-
-    return UCT_CUDADRV_FUNC_LOG_ERR(
-            cuStreamCreate(stream, CU_STREAM_NON_BLOCKING));
-}
-
-static UCS_F_ALWAYS_INLINE CUstream *
-uct_cuda_copy_get_stream(uct_cuda_copy_iface_t *iface,
-                         ucs_memory_type_t src_type, ucs_memory_type_t dst_type)
-{
-    CUstream *stream = NULL;
-    ucs_status_t status;
-
-    ucs_assert((src_type < UCS_MEMORY_TYPE_LAST) &&
-               (dst_type < UCS_MEMORY_TYPE_LAST));
-
-    stream = &iface->queue_desc[src_type][dst_type].stream;
-
-    status = uct_cuda_copy_init_stream(stream);
-    if (status != UCS_OK) {
-        return NULL;
-    }
-
-    return stream;
-}
-
 static UCS_F_ALWAYS_INLINE ucs_memory_type_t
 uct_cuda_copy_get_mem_type(uct_md_h md, void *address, size_t length)
 {
