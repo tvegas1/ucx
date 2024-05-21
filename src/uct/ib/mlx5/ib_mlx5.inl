@@ -596,7 +596,7 @@ uct_ib_mlx5_post_send(uct_ib_mlx5_txwq_t *wq, struct mlx5_wqe_ctrl_seg *ctrl,
     }
 
     /* We don't want the compiler to reorder instructions and hurt latency */
-    ucs_compiler_fence();
+    ucs_memory_bus_store_fence();
 
     /*
      * Advance queue pointer.
