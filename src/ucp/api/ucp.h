@@ -186,7 +186,8 @@ enum ucp_worker_params_field {
     UCP_WORKER_PARAM_FIELD_NAME         = UCS_BIT(6), /**< Worker name */
     UCP_WORKER_PARAM_FIELD_AM_ALIGNMENT = UCS_BIT(7), /**< Alignment of active
                                                            messages on the receiver */
-    UCP_WORKER_PARAM_FIELD_CLIENT_ID    = UCS_BIT(8)  /**< Client id */
+    UCP_WORKER_PARAM_FIELD_CLIENT_ID    = UCS_BIT(8), /**< Client id */
+    UCP_WORKER_PARAM_FIELD_CALLBACKS    = UCS_BIT(9)  /**< Memory related callbacks */
 };
 
 
@@ -1283,6 +1284,11 @@ typedef struct ucp_rkey_compare_params {
 } ucp_rkey_compare_params_t;
 
 
+typedef struct ucp_worker_mem_callbacks {
+  int dummy;
+
+} ucp_worker_mem_callbacks_t;
+
 /**
  * @ingroup UCP_WORKER
  * @brief Tuning parameters for the UCP worker.
@@ -1387,6 +1393,9 @@ typedef struct ucp_worker_params {
     * using @ref ucp_conn_request_query.
     */
     uint64_t                client_id;
+
+
+    ucp_worker_mem_callbacks_t  callbacks;
 } ucp_worker_params_t;
 
 

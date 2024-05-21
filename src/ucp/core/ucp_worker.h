@@ -376,6 +376,8 @@ typedef struct ucp_worker {
         /* Last round timestamp */
         ucs_time_t                   last_round;
     } usage_tracker;
+
+    ucp_worker_mem_callbacks_t       callbacks;
 } ucp_worker_t;
 
 
