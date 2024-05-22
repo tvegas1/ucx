@@ -211,7 +211,8 @@ ucp_proto_put_offload_zcopy_send_func(ucp_request_t *req,
 
     ucs_assert(iov.count == 1);
     consumed = ucp_mem_external_ep_put(
-                                 req,
+                                 req->send.ep->worker,
+                                 ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
                                  (void *)(req->send.rma.remote_addr + req->send.state.dt_iter.offset),
                                  iov.buffer,
                                  iov.length,

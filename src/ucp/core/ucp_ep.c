@@ -3828,20 +3828,18 @@ void ucp_memcpy_to_cuda_complete(void *completion, ucs_status_t status)
     ucp_invoke_uct_completion(completion, status);
 }
 
-static inline int ucp_ep_is_cuda_ipc(ucp_ep_h ep)
+static inline int ucp_ep_is_cuda_ipc(uct_ep_h ep)
 {
-    return 1; /* TODO Fix it */
+    return ep->mem_callback;
 }
 
 /* Returns true if call was hijacked */
-int ucp_mem_external_ep_put(ucp_request_t *req, void *cuda_dest,
+int ucp_mem_external_ep_put(ucp_worker_h worker, uct_ep_h ep,
+                            void *cuda_dest,
                             const void *src, size_t length,
                             uct_completion_t *comp,
                             ucs_memory_type_t mem_type)
 {
-    ucp_ep_h ep         = req->send.ep;
-    ucp_worker_h worker = ep->worker;
-
     if (!ucp_ep_is_cuda_ipc(ep) ||
         !ucp_mem_type_is_cuda(mem_type) ||
         !worker->callbacks.memcpy_to_cuda_start) {

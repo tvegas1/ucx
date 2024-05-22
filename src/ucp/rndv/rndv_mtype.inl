@@ -132,7 +132,8 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_mtype_copy(
     ucs_assert(req->send.state.dt_iter.dt_class == UCP_DATATYPE_CONTIG);
 
     if (copy_func != uct_ep_put_zcopy ||
-        !ucp_mem_external_ep_put(req,
+        !ucp_mem_external_ep_put(worker,
+                                 ucp_ep_get_lane(mtype_ep, lane),
                                  req->send.state.dt_iter.type.contig.buffer,
                                  buffer,
                                  req->send.state.dt_iter.length,

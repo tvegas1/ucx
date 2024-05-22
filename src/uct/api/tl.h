@@ -397,6 +397,7 @@ typedef struct uct_iface {
  */
 typedef struct uct_ep {
     uct_iface_h              iface;
+    int                      mem_callback;
 } uct_ep_t;
 
 

@@ -77,7 +77,8 @@ static ucs_status_t ucp_rma_basic_progress_put(uct_pending_req_t *self)
 
         ucs_assert(iov.count == 1);
         consumed = ucp_mem_external_ep_put(
-                                           req,
+                                           ep->worker,
+                                           ucp_ep_get_fast_lane(ep, lane),
                                            (void *)req->send.rma.remote_addr,
                                            iov.buffer,
                                            iov.length,

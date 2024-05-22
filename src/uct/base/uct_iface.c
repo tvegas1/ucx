@@ -750,6 +750,7 @@ void uct_ep_set_iface(uct_ep_h ep, uct_iface_t *iface)
 UCS_CLASS_INIT_FUNC(uct_ep_t, uct_iface_t *iface)
 {
     uct_ep_set_iface(self, iface);
+    self->mem_callback = 0;
     return UCS_OK;
 }
 
