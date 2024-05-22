@@ -52,11 +52,15 @@ UCS_PROFILE_FUNC_VOID(ucp_mem_type_unpack,
                   ucs_memory_type_names[mem_type]);
     }
 
-    status = uct_ep_put_short(ucp_ep_get_lane(ep, lane), recv_data, recv_length,
-                              (uint64_t)buffer, rkey_bundle.rkey);
-    if (status != UCS_OK) {
-        ucs_fatal("mem type unpack failed to uct_ep_put_short() %s",
-                  ucs_status_string(status));
+    if (worker->callbacks.memcpy_to_cuda && ucp_mem_type_is_cuda(mem_type)) {
+        worker->callbacks.memcpy_to_cuda(buffer, recv_data, recv_length);
+    } else {
+        status = uct_ep_put_short(ucp_ep_get_lane(ep, lane), recv_data, recv_length,
+                                  (uint64_t)buffer, rkey_bundle.rkey);
+        if (status != UCS_OK) {
+            ucs_fatal("mem type unpack failed to uct_ep_put_short() %s",
+                      ucs_status_string(status));
+        }
     }
 
     ucp_mem_type_unreg_buffers(worker, md_index, memh, &rkey_bundle);
@@ -88,11 +92,15 @@ UCS_PROFILE_FUNC_VOID(ucp_mem_type_pack,
                   ucs_memory_type_names[mem_type]);
     }
 
-    status = uct_ep_get_short(ucp_ep_get_lane(ep, lane), dest, length,
-                              (uint64_t)src, rkey_bundle.rkey);
-    if (status != UCS_OK) {
-        ucs_fatal("mem type pack failed to uct_ep_get_short() %s",
-                  ucs_status_string(status));
+    if (worker->callbacks.memcpy_from_cuda && ucp_mem_type_is_cuda(mem_type)) {
+        worker->callbacks.memcpy_from_cuda(dest, src, length);
+    } else {
+        status = uct_ep_get_short(ucp_ep_get_lane(ep, lane), dest, length,
+                                  (uint64_t)src, rkey_bundle.rkey);
+        if (status != UCS_OK) {
+            ucs_fatal("mem type pack failed to uct_ep_get_short() %s",
+                      ucs_status_string(status));
+        }
     }
 
     ucp_mem_type_unreg_buffers(worker, md_index, memh, &rkey_bundle);
