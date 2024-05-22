@@ -1287,6 +1287,11 @@ typedef struct ucp_rkey_compare_params {
 typedef struct ucp_worker_mem_callbacks {
   void (*memcpy_from_cuda)(void *dest, const void *cuda_src, size_t size);
   void (*memcpy_to_cuda)(void *cuda_dest, const void *src, size_t size);
+
+  /*
+   * ucp_memcpy_to_cuda_complete() can only be called after having first
+   * returned from ->memcpy_to_cuda_start().
+   */
   int  (*memcpy_to_cuda_start)(void *cuda_dest, const void *src, size_t size,
                                void *completion);
 } ucp_worker_mem_callbacks_t;
