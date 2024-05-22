@@ -55,6 +55,19 @@ ucp_proto_rndv_put_common_send(ucp_request_t *req,
                                                    lpriv->super.rkey_index);
     uint64_t remote_address = req->send.rndv.remote_address +
                               req->send.state.dt_iter.offset;
+    int consumed;
+
+    ucs_assert(iov->count == 1);
+    consumed = ucp_mem_external_ep_put(
+                                 req,
+                                 (void *)remote_address,
+                                 (void *)iov->buffer,
+                                 iov->length,
+                                 comp,
+                                 UCS_MEMORY_TYPE_UNKNOWN);
+    if (consumed) {
+        return UCS_INPROGRESS;
+    }
 
     return uct_ep_put_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
                             iov, 1, remote_address, tl_rkey, comp);
