@@ -3821,3 +3821,33 @@ void ucp_ep_set_cfg_index(ucp_ep_h ep, ucp_worker_cfg_index_t cfg_index)
     ep->cfg_index = cfg_index;
     ucp_ep_config_activate_worker_ifaces(ep->worker, cfg_index);
 }
+
+/* Caller must guarantee that no ucp worker is running while calling */
+void ucp_memcpy_to_cuda_complete(void *completion, ucs_status_t status)
+{
+    ucp_invoke_uct_completion(completion, status);
+}
+
+static inline int ucp_ep_is_cuda_ipc(ucp_ep_h ep)
+{
+    return 1; /* TODO Fix it */
+}
+
+/* Returns true if call was hijacked */
+int ucp_mem_external_ep_put(ucp_request_t *req, void *cuda_dest,
+                            const void *src, size_t length,
+                            uct_completion_t *comp,
+                            ucs_memory_type_t mem_type)
+{
+    ucp_ep_h ep         = req->send.ep;
+    ucp_worker_h worker = ep->worker;
+
+    if (!ucp_ep_is_cuda_ipc(ep) ||
+        !ucp_mem_type_is_cuda(mem_type) ||
+        !worker->callbacks.memcpy_to_cuda_start) {
+        return 0;
+    }
+
+    return worker->callbacks.memcpy_to_cuda_start(cuda_dest, src, length, comp);
+}
+

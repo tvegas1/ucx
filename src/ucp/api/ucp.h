@@ -1287,7 +1287,17 @@ typedef struct ucp_rkey_compare_params {
 typedef struct ucp_worker_mem_callbacks {
   void (*memcpy_from_cuda)(void *dest, const void *cuda_src, size_t size);
   void (*memcpy_to_cuda)(void *cuda_dest, const void *src, size_t size);
+  int  (*memcpy_to_cuda_start)(void *cuda_dest, const void *src, size_t size,
+                               void *completion);
 } ucp_worker_mem_callbacks_t;
+
+/**
+ * Can be called under owner worker, but owner worker should not be progressed
+ * by another thread in parallel
+ *
+ * Pass status as UCS_OK
+ */
+void ucp_memcpy_to_cuda_complete(void *completion, ucs_status_t status);
 
 /**
  * @ingroup UCP_WORKER

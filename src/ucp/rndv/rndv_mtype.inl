@@ -130,9 +130,22 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_mtype_copy(
 
     /* Copy from mdesc to user buffer */
     ucs_assert(req->send.state.dt_iter.dt_class == UCP_DATATYPE_CONTIG);
-    status = copy_func(ucp_ep_get_lane(mtype_ep, lane), &iov, 1,
-                       (uintptr_t)req->send.state.dt_iter.type.contig.buffer,
-                       UCT_INVALID_RKEY, &req->send.state.uct_comp);
+
+    if (copy_func != uct_ep_put_zcopy ||
+        !ucp_mem_external_ep_put(req,
+                                 req->send.state.dt_iter.type.contig.buffer,
+                                 buffer,
+                                 req->send.state.dt_iter.length,
+                                 &req->send.state.uct_comp,
+                                 mem_type)) {
+
+        status = copy_func(ucp_ep_get_lane(mtype_ep, lane), &iov, 1,
+                           (uintptr_t)req->send.state.dt_iter.type.contig.buffer,
+                           UCT_INVALID_RKEY, &req->send.state.uct_comp);
+    } else {
+        status = UCS_INPROGRESS;
+    }
+
     ucp_trace_req(req, "buffer %p copy returned %s", buffer,
                   ucs_status_string(status));
     ucs_assert(status != UCS_ERR_NO_RESOURCE);
