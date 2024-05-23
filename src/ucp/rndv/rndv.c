@@ -543,6 +543,9 @@ ucp_rndv_progress_rma_zcopy_common(ucp_request_t *req, ucp_lane_index_t lane,
     size_t max_zcopy;
     double scale;
     int pending_add_res;
+    int consumed;
+    void *src, *dst;
+    int to_dev;
 
     ucs_assert_always(req->send.lane != UCP_NULL_LANE);
     ucs_assert(ucs_popcount(req->send.rndv.zcopy.lanes_map_all) > 0);
@@ -599,6 +602,31 @@ ucp_rndv_progress_rma_zcopy_common(ucp_request_t *req, ucp_lane_index_t lane,
                         ucp_ep_md_index(ep, lane), req->send.rndv.mdesc);
 
     for (;;) {
+        to_dev = (proto == UCP_REQUEST_SEND_PROTO_RNDV_GET);
+        if (to_dev) {
+            src = (void *)iov->buffer;
+            dst = (void *)req->send.rndv.remote_address;
+        } else {
+            dst = (void *)iov->buffer;
+            src = (void *)req->send.rndv.remote_address;
+        }
+
+        consumed = ucp_mem_external_device_copy(
+                                        ep->worker,
+                                        uct_ep,
+                                        dst,
+                                        src,
+                                        iov->length,
+                                        &req->send.state.uct_comp,
+                                        UCS_MEMORY_TYPE_UNKNOWN,
+                                        to_dev);
+        if (consumed) {
+            ucs_assert(iov->count == 1);
+            status = UCS_OK;
+            goto next;
+        }
+
+
         if (proto == UCP_REQUEST_SEND_PROTO_RNDV_GET) {
             status = uct_ep_get_zcopy(uct_ep, iov, iovcnt,
                                       req->send.rndv.remote_address + offset,
@@ -609,6 +637,7 @@ ucp_rndv_progress_rma_zcopy_common(ucp_request_t *req, ucp_lane_index_t lane,
                                       uct_rkey, &req->send.state.uct_comp);
         }
 
+next:
         ucp_request_send_state_advance(req, &state, proto, status);
         if (ucs_likely(!UCS_STATUS_IS_ERR(status))) {
             if (req->send.state.dt.offset == req->send.length) {

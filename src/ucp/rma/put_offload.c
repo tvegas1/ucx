@@ -209,17 +209,18 @@ ucp_proto_put_offload_zcopy_send_func(ucp_request_t *req,
                                lpriv->super.md_index, UCP_DT_MASK_CONTIG_IOV,
                                next_iter, &iov, 1);
 
-    ucs_assert(iov.count == 1);
-    consumed = ucp_mem_external_ep_put(
+    consumed = ucp_mem_external_device_copy(
                                  req->send.ep->worker,
                                  ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
                                  (void *)(req->send.rma.remote_addr + req->send.state.dt_iter.offset),
                                  iov.buffer,
                                  iov.length,
                                  &req->send.state.uct_comp,
-                                 UCS_MEMORY_TYPE_UNKNOWN);
+                                 UCS_MEMORY_TYPE_UNKNOWN,
+                                 1);
     if (consumed) {
-        return UCS_OK;
+        ucs_assert(iov.count == 1);
+        return UCS_INPROGRESS;
     }
 
     return uct_ep_put_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane),

@@ -94,6 +94,21 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_get_common_send(
     uct_rkey_t tl_rkey      = ucp_rkey_get_tl_rkey(req->send.rndv.rkey,
                                                    lpriv->super.rkey_index);
     uint64_t remote_address = req->send.rndv.remote_address + offset;
+    int consumed;
+
+    consumed = 
+         ucp_mem_external_device_copy(req->send.ep->worker,
+                                      ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
+                                      (void *)iov->buffer,
+                                      (void *)remote_address,
+                                      iov->length,
+                                      comp,
+                                      UCS_MEMORY_TYPE_UNKNOWN,
+                                      0);
+    if (consumed) {
+        ucs_assert(iov->count == 1);
+        return UCS_INPROGRESS;
+    }
 
     return uct_ep_get_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
                             iov, 1, remote_address, tl_rkey, comp);

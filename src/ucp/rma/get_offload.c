@@ -148,6 +148,7 @@ ucp_proto_get_offload_zcopy_send_func(ucp_request_t *req,
     size_t offset      = req->send.state.dt_iter.offset;
     const ucp_proto_multi_priv_t *mpriv;
     uct_iov_t iov;
+    int consumed;
 
     ucp_datatype_iter_next_iov(&req->send.state.dt_iter,
                                ucp_proto_multi_max_payload(req, lpriv, 0),
@@ -157,6 +158,22 @@ ucp_proto_get_offload_zcopy_send_func(ucp_request_t *req,
     mpriv = req->send.proto_config->priv;
     ucp_proto_common_zcopy_adjust_min_frag(req, mpriv->min_frag, iov.length,
                                            &iov, 1, &offset);
+
+    consumed = ucp_mem_external_device_copy(
+                                            req->send.ep->worker,
+                                            ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
+                                            iov.buffer,
+                                            (void *)(req->send.rma.remote_addr + offset),
+                                            iov.length,
+                                            &req->send.state.uct_comp,
+                                            UCS_MEMORY_TYPE_UNKNOWN,
+                                            0);
+    if (consumed) {
+        ucs_assert(iov.count == 1);
+        return UCS_INPROGRESS;
+    }
+
+
     return uct_ep_get_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
                             &iov, 1, req->send.rma.remote_addr + offset,
                             tl_rkey, &req->send.state.uct_comp);

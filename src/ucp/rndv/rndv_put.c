@@ -57,16 +57,17 @@ ucp_proto_rndv_put_common_send(ucp_request_t *req,
                               req->send.state.dt_iter.offset;
     int consumed;
 
-    ucs_assert(iov->count == 1);
-    consumed = ucp_mem_external_ep_put(
+    consumed = ucp_mem_external_device_copy(
                                  req->send.ep->worker,
                                  ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
                                  (void *)remote_address,
                                  (void *)iov->buffer,
                                  iov->length,
                                  comp,
-                                 UCS_MEMORY_TYPE_UNKNOWN);
+                                 UCS_MEMORY_TYPE_UNKNOWN,
+                                 1);
     if (consumed) {
+        ucs_assert(iov->count == 1);
         return UCS_INPROGRESS;
     }
 

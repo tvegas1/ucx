@@ -75,16 +75,17 @@ static ucs_status_t ucp_rma_basic_progress_put(uct_pending_req_t *self)
         iov.count  = 1;
         iov.memh   = req->send.state.dt.dt.contig.memh->uct[md_index];
 
-        ucs_assert(iov.count == 1);
-        consumed = ucp_mem_external_ep_put(
+        consumed = ucp_mem_external_device_copy(
                                            ep->worker,
                                            ucp_ep_get_fast_lane(ep, lane),
                                            (void *)req->send.rma.remote_addr,
                                            iov.buffer,
                                            iov.length,
                                            &req->send.state.uct_comp,
-                                           UCS_MEMORY_TYPE_UNKNOWN);
+                                           UCS_MEMORY_TYPE_UNKNOWN,
+                                           1);
         if (consumed) {
+            ucs_assert(iov.count == 1);
             status = UCS_INPROGRESS;
         } else {
             status = UCS_PROFILE_CALL(uct_ep_put_zcopy,
@@ -109,6 +110,7 @@ static ucs_status_t ucp_rma_basic_progress_get(uct_pending_req_t *self)
     ucp_md_index_t md_index;
     ucs_status_t status;
     size_t frag_length;
+    int consumed;
 
     ucs_assert(rkey->cache.ep_cfg_index == ep->cfg_index);
     ucs_assert(rkey->cache.rma_lane == lane);
@@ -132,11 +134,24 @@ static ucs_status_t ucp_rma_basic_progress_get(uct_pending_req_t *self)
         iov.count   = 1;
         iov.memh    = req->send.state.dt.dt.contig.memh->uct[md_index];
 
-        status = UCS_PROFILE_CALL(uct_ep_get_zcopy,
-                                  ucp_ep_get_fast_lane(ep, lane), &iov, 1,
-                                  req->send.rma.remote_addr,
-                                  rkey->cache.rma_rkey,
-                                  &req->send.state.uct_comp);
+        consumed = ucp_mem_external_device_copy(
+                                                req->send.ep->worker,
+                                                ucp_ep_get_fast_lane(ep, lane),
+                                                iov.buffer,
+                                                (void *)(req->send.rma.remote_addr),
+                                                iov.length,
+                                                &req->send.state.uct_comp,
+                                                UCS_MEMORY_TYPE_UNKNOWN,
+                                                0);
+        if (consumed) {
+            status = UCS_INPROGRESS;
+        } else {
+            status = UCS_PROFILE_CALL(uct_ep_get_zcopy,
+                                      ucp_ep_get_fast_lane(ep, lane), &iov, 1,
+                                      req->send.rma.remote_addr,
+                                      rkey->cache.rma_rkey,
+                                      &req->send.state.uct_comp);
+        }
     }
 
     return ucp_rma_request_advance(req, frag_length, status,

@@ -117,6 +117,8 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_mtype_copy(
     ucp_lane_index_t lane      = ucp_ep_config(mtype_ep)->key.rma_bw_lanes[0];
     ucs_status_t status;
     uct_iov_t iov;
+    int to_dev;
+    void *src, *dst;
 
     ucp_trace_req(req, "buffer %p copy-%s %p %s using memtype-ep %p lane[%d]",
                   buffer, mode, req->send.state.dt_iter.type.contig.buffer,
@@ -131,14 +133,29 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_mtype_copy(
     /* Copy from mdesc to user buffer */
     ucs_assert(req->send.state.dt_iter.dt_class == UCP_DATATYPE_CONTIG);
 
-    if (copy_func != uct_ep_put_zcopy ||
-        !ucp_mem_external_ep_put(worker,
+    to_dev = (copy_func == uct_ep_put_zcopy);
+    if (!to_dev) {
+        to_dev = (copy_func == uct_ep_get_zcopy);
+        if (!to_dev) {
+            to_dev = -1;
+        } else {
+            src = req->send.state.dt_iter.type.contig.buffer;
+            dst = buffer;
+        }
+    } else {
+        dst = req->send.state.dt_iter.type.contig.buffer;
+        src = buffer;
+    }
+
+    if ((to_dev == -1) ||
+        !ucp_mem_external_device_copy(worker,
                                  ucp_ep_get_lane(mtype_ep, lane),
-                                 req->send.state.dt_iter.type.contig.buffer,
-                                 buffer,
-                                 req->send.state.dt_iter.length,
+                                 dst,
+                                 src,
+                                 iov.length,
                                  &req->send.state.uct_comp,
-                                 mem_type)) {
+                                 mem_type,
+                                 to_dev)) {
 
         status = copy_func(ucp_ep_get_lane(mtype_ep, lane), &iov, 1,
                            (uintptr_t)req->send.state.dt_iter.type.contig.buffer,
