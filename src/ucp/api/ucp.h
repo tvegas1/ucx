@@ -1284,25 +1284,28 @@ typedef struct ucp_rkey_compare_params {
 } ucp_rkey_compare_params_t;
 
 
+/* to_device=1 means dest is cuda, else src is cuda */
 typedef struct ucp_worker_mem_callbacks {
-  void (*memcpy_from_cuda)(void *dest, const void *cuda_src, size_t size);
-  void (*memcpy_to_cuda)(void *cuda_dest, const void *src, size_t size);
+  /*
+   * copy must be completed by the time function returns
+   */
+  void (*memcpy_device)(void *dest, const void *src, size_t size, int to_dev);
 
   /*
-   * ucp_memcpy_to_cuda_complete() can only be called after having first
-   * returned from ->memcpy_to_cuda_start().
+   * ucp_memcpy_device_complete() can only be called after having first
+   * returned from ->memcpy_device_start().
    */
-  int  (*memcpy_to_cuda_start)(void *cuda_dest, const void *src, size_t size,
-                               void *completion);
+  int  (*memcpy_device_start)(void *dest, const void *src, size_t size,
+                              int to_dev, void *completion);
 } ucp_worker_mem_callbacks_t;
 
 /**
  * Can be called under owner worker, but owner worker should not be progressed
  * by another thread in parallel
  *
- * Pass status as UCS_OK
+ * Pass status as UCS_OK, unless error occured
  */
-void ucp_memcpy_to_cuda_complete(void *completion, ucs_status_t status);
+void ucp_memcpy_device_complete(void *completion, ucs_status_t status);
 
 /**
  * @ingroup UCP_WORKER
