@@ -1284,25 +1284,31 @@ typedef struct ucp_rkey_compare_params {
 } ucp_rkey_compare_params_t;
 
 
-/* to_device=1 means dest is cuda, else src is cuda */
+/* Common: Using to_dev=1 means dest is cuda, else src is cuda */
 typedef struct ucp_worker_mem_callbacks {
   /*
-   * copy must be completed by the time function returns
+   * The coyping must be completed by the time function returns
    */
   void (*memcpy_device)(void *dest, const void *src, size_t size, int to_dev);
 
   /*
-   * ucp_memcpy_device_complete() can only be called after having first
-   * returned from ->memcpy_device_start().
+   * ->memcpy_device_start() must return, before calling ucp_memcpy_device_complete()
+   *
+   * 1. Return 1 if copying was started. Returning 0 will trigger standard UCX behavior.
+   * 2. ucp_memcpy_device_complete() can only be called after having first
+   *    returned from ->memcpy_device_start().
    */
   int  (*memcpy_device_start)(void *dest, const void *src, size_t size,
                               int to_dev, void *completion);
 } ucp_worker_mem_callbacks_t;
 
 /**
- * Can be called under owner worker, but owner worker should not be progressed
- * by another thread in parallel
+ * Usage:
+ * 1. Can be called outside of any worker progress.
+ * 2. Can be called under/inside owner worker progressing,
+ * 3. Can NOT be called if worker is being progressed by separate thread
  *
+ * Pass completion pointer obtained from ->memcpy_device_start()
  * Pass status as UCS_OK, unless error occured
  */
 void ucp_memcpy_device_complete(void *completion, ucs_status_t status);
