@@ -19,7 +19,16 @@ AS_IF([test -d "$with_verbs/lib64"],[libsuff="64"],[libsuff=""])
 
 AC_MSG_NOTICE([Compiling $str])
 
+
 #
+# MLX5 Support, Provides RC/UD accelerated, DC and DV transports
+#
+AC_ARG_WITH([mlx5],
+            [AS_HELP_STRING([--with-mlx5], [Compile with IB MLX5 provider])],
+            [],
+            [with_mlx5=yes])
+
+
 # RC Support
 #
 AC_ARG_WITH([rc],
@@ -139,14 +148,23 @@ AS_IF([test "x$with_ib" = "xyes"],
        AC_CHECK_DECLS([IBV_CREATE_CQ_ATTR_IGNORE_OVERRUN],
                       [have_cq_io=yes], [], [[#include <infiniband/verbs.h>]])
 
+       AS_IF([test "x$with_mlx5" == xyes], [
+              AC_MSG_NOTICE([Checking for MLX5 provider support])
+              AC_CHECK_HEADERS([infiniband/mlx5_api.h], [], [with_mlx5=no])
+              AC_CHECK_LIB([mlx5], [mlx5dv_query_device],
+                           [AC_SUBST(LIB_MLX5, [-lmlx5])],
+                           [with_mlx5=no], [-libverbs])
+              AS_IF([test "x$with_mlx5" == xyes],
+                    [uct_ib_modules="${uct_ib_modules}:mlx5"],
+                    [AC_MSG_ERROR([MLX5 provider not found])])],
+              [with_mlx5_dv=no])
+
        AS_IF([test "x$with_mlx5_dv" != xno], [
               AC_MSG_NOTICE([Checking for DV bare-metal support])
 
               AC_CHECK_LIB([mlx5-rdmav2], [mlx5dv_query_device],
-                                    [AC_SUBST(LIB_MLX5, [-lmlx5-rdmav2])],[
-              AC_CHECK_LIB([mlx5], [mlx5dv_query_device],
-                                    [AC_SUBST(LIB_MLX5, [-lmlx5])],
-                                    [with_mlx5_dv=no], [-libverbs])], [-libverbs])
+                                    [AC_SUBST(LIB_MLX5, [-lmlx5-rdmav2])],
+                                    [], [-libverbs])
 
               AS_IF([test "x$with_mlx5_dv" != xno], [
                        AC_CHECK_HEADERS([infiniband/mlx5dv.h],
@@ -285,6 +303,7 @@ AS_IF([test "x$with_ib" = "xyes"],
        uct_modules="${uct_modules}:ib"
     ],
     [
+        with_mlx5=no
         with_dc=no
         with_rc=no
         with_ud=no
@@ -294,6 +313,7 @@ AS_IF([test "x$with_ib" = "xyes"],
 #
 # For automake
 #
+AM_CONDITIONAL([HAVE_MLX5],    [test "x$with_mlx5" != xno])
 AM_CONDITIONAL([HAVE_IB],      [test "x$with_ib" != xno])
 AM_CONDITIONAL([HAVE_TL_RC],   [test "x$with_rc" != xno])
 AM_CONDITIONAL([HAVE_TL_DC],   [test "x$with_dc" != xno])
@@ -303,7 +323,6 @@ AM_CONDITIONAL([HAVE_MLX5_DV], [test "x$with_mlx5_dv" = xyes])
 AM_CONDITIONAL([HAVE_DEVX],    [test -n "$have_devx"])
 AM_CONDITIONAL([HAVE_MLX5_HW_UD], [test "x$with_mlx5_dv" != xno -a "x$has_get_av" != xno])
 
-uct_ib_modules=""
 m4_include([src/uct/ib/rdmacm/configure.m4])
 m4_include([src/uct/ib/mlx5/configure.m4])
 AC_DEFINE_UNQUOTED([uct_ib_MODULES], ["${uct_ib_modules}"], [IB loadable modules])

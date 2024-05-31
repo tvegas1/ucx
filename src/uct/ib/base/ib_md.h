@@ -221,10 +221,13 @@ typedef struct uct_ib_md_ops {
  * - determine device attributes and flags
  */
 typedef struct uct_ib_md_ops_entry {
+    ucs_list_link_t             list;
     const char                  *name;
     uct_ib_md_ops_t             *ops;
 } uct_ib_md_ops_entry_t;
 
+
+extern ucs_list_link_t uct_ib_ops;
 
 #define UCT_IB_MD_OPS_NAME(_name) uct_ib_md_ops_##_name##_entry
 
