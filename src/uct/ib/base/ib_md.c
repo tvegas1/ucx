@@ -1084,13 +1084,11 @@ uct_ib_md_open(uct_component_t *component, const char *md_name,
 
     ucs_trace("opening IB device %s", md_name);
 
-#if !HAVE_DEVX
-    if (md_config->devx == UCS_YES) {
+    if ((md_config->devx == UCS_YES) && !uct_ib_mlx5_loaded) {
         ucs_error("DEVX requested but not supported");
         status = UCS_ERR_NO_DEVICE;
         goto out;
     }
-#endif
 
     /* Get device list from driver */
     ib_device_list = ibv_get_device_list(&num_devices);
@@ -1499,6 +1497,8 @@ uct_component_t uct_ib_component = {
     .flags              = 0,
     .md_vfs_init        = (uct_component_md_vfs_init_func_t)ucs_empty_function
 };
+
+int uct_ib_mlx5_loaded = 0; /* Populated by IB MLX5 submodule */
 
 void UCS_F_CTOR uct_ib_init()
 {

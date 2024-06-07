@@ -113,6 +113,11 @@ uct_rdmacm_cm_device_context_init(uct_rdmacm_cm_device_context_t *ctx,
     }
 
 #ifdef HAVE_DEVX
+    if (!uct_ib_mlx5_loaded) {
+        /* MLX5 provider module is not loaded */
+        goto dummy_qp_ctx_init;
+    }
+
     if (cm->config.reserved_qpn == UCS_NO) {
         goto dummy_qp_ctx_init;
     }
@@ -297,6 +302,10 @@ uct_rdmacm_cm_reserved_qpn_blk_alloc(uct_rdmacm_cm_device_context_t *ctx,
     uct_rdmacm_cm_reserved_qpn_blk_t *blk;
     void *attr;
 
+    if (!uct_ib_mlx5_loaded) {
+        return UCS_ERR_UNSUPPORTED;
+    }
+
     blk = ucs_calloc(1, sizeof(*blk), "reserved_qpn_blk");
     if (blk == NULL) {
         return UCS_ERR_NO_MEMORY;
@@ -344,12 +353,14 @@ void uct_rdmacm_cm_reserved_qpn_blk_release(
         uct_rdmacm_cm_reserved_qpn_blk_t *blk)
 {
 #ifdef HAVE_DEVX
-    ucs_assert(blk->refcount == 0);
+    if (uct_ib_mlx5_loaded) {
+        ucs_assert(blk->refcount == 0);
 
-    uct_ib_mlx5_devx_obj_destroy(blk->obj, "RESERVED_QPN");
-    ucs_trace("destroyed reserved QPN 0x%x blk %p", blk->first_qpn, blk);
+        uct_ib_mlx5_devx_obj_destroy(blk->obj, "RESERVED_QPN");
+        ucs_trace("destroyed reserved QPN 0x%x blk %p", blk->first_qpn, blk);
 
-    ucs_free(blk);
+        ucs_free(blk);
+    }
 #endif
 }
 

@@ -227,8 +227,6 @@ typedef struct uct_ib_md_ops_entry {
 } uct_ib_md_ops_entry_t;
 
 
-extern ucs_list_link_t uct_ib_ops;
-
 #define UCT_IB_MD_OPS_NAME(_name) uct_ib_md_ops_##_name##_entry
 
 #define UCT_IB_MD_DEFINE_ENTRY(_name, _md_ops) \
@@ -237,7 +235,14 @@ extern ucs_list_link_t uct_ib_ops;
         .ops  = &_md_ops, \
     }
 
+/* Populated by IB module and IB sub-modules */
+
 extern uct_component_t uct_ib_component;
+
+extern int uct_ib_mlx5_loaded;
+
+extern ucs_list_link_t uct_ib_ops;
+
 
 
 static UCS_F_ALWAYS_INLINE uint32_t uct_ib_md_direct_rkey(uct_rkey_t uct_rkey)

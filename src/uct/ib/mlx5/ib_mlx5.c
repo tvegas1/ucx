@@ -1174,9 +1174,13 @@ UCS_STATIC_INIT {
 #if defined (HAVE_TL_UD) && defined (HAVE_MLX5_HW_UD)
     uct_tl_register(&uct_ib_component, &UCT_TL_NAME(ud_mlx5));
 #endif
+
+    uct_ib_mlx5_loaded = 1;
 }
 
 UCS_STATIC_CLEANUP {
+    uct_ib_mlx5_loaded = 0;
+
 #if defined (HAVE_TL_UD) && defined (HAVE_MLX5_HW_UD)
     uct_tl_unregister(&UCT_TL_NAME(ud_mlx5));
 #endif
