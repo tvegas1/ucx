@@ -26,7 +26,7 @@ AC_MSG_NOTICE([Compiling $str])
 AC_ARG_WITH([mlx5],
             [AS_HELP_STRING([--with-mlx5], [Compile with IB MLX5 provider])],
             [],
-            [with_mlx5=yes])
+            [with_mlx5=guess])
 
 
 # RC Support
@@ -136,6 +136,7 @@ AS_IF([test "x$with_ib" = "xyes"],
         CPPFLAGS="$save_CPPFLAGS"
         ],[:])
 
+have_mlx5=no
 AS_IF([test "x$with_ib" = "xyes"],
       [
        save_LDFLAGS="$LDFLAGS"
@@ -148,15 +149,19 @@ AS_IF([test "x$with_ib" = "xyes"],
        AC_CHECK_DECLS([IBV_CREATE_CQ_ATTR_IGNORE_OVERRUN],
                       [have_cq_io=yes], [], [[#include <infiniband/verbs.h>]])
 
-       AS_IF([test "x$with_mlx5" == xyes], [
+       AS_IF([test "x$with_mlx5" != xno], [
+              have_mlx5=yes
               AC_MSG_NOTICE([Checking for MLX5 provider support])
-              AC_CHECK_HEADERS([infiniband/mlx5_api.h], [], [with_mlx5=no])
+              AC_CHECK_HEADERS([infiniband/mlx5_api.h], [], [have_mlx5=no])
               AC_CHECK_LIB([mlx5], [mlx5dv_query_device],
                            [AC_SUBST(LIB_MLX5, [-lmlx5])],
-                           [with_mlx5=no], [-libverbs])
-              AS_IF([test "x$with_mlx5" == xyes],
+                           [have_mlx5=no], [-libverbs])
+
+              AS_IF([test "x$have_mlx5" = xyes],
                     [uct_ib_modules="${uct_ib_modules}:mlx5"],
-                    [AC_MSG_ERROR([MLX5 provider not found])])],
+                    [AS_IF([test "x$with_mlx5" = xguess],
+                           [with_mlx5_dv=no],
+                           [AC_MSG_ERROR([MLX5 provider not found])])])],
               [with_mlx5_dv=no])
 
        AS_IF([test "x$with_mlx5_dv" != xno], [
@@ -303,7 +308,6 @@ AS_IF([test "x$with_ib" = "xyes"],
        uct_modules="${uct_modules}:ib"
     ],
     [
-        with_mlx5=no
         with_dc=no
         with_rc=no
         with_ud=no
@@ -313,7 +317,7 @@ AS_IF([test "x$with_ib" = "xyes"],
 #
 # For automake
 #
-AM_CONDITIONAL([HAVE_MLX5],    [test "x$with_mlx5" != xno])
+AM_CONDITIONAL([HAVE_MLX5],    [test "x$have_mlx5" = xyes])
 AM_CONDITIONAL([HAVE_IB],      [test "x$with_ib" != xno])
 AM_CONDITIONAL([HAVE_TL_RC],   [test "x$with_rc" != xno])
 AM_CONDITIONAL([HAVE_TL_DC],   [test "x$with_dc" != xno])
