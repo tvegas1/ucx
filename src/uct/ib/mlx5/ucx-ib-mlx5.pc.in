@@ -13,4 +13,4 @@ Description: Unified Communication X Library IB MLX5 module
 Version: @VERSION@
 Libs:
 Libs.private: -L${libdir} -luct_ib_mlx5 @IBVERBS_LDFLAGS@
-Requires.private: libmlx5
+Requires.private: libmlx5 libibverbs
