@@ -5,7 +5,7 @@
 
 if HAVE_IB
 
-SUBDIRS = . rdmacm mlx5
+SUBDIRS = . mlx5 rdmacm
 
 module_LTLIBRARIES    = libuct_ib.la
 libuct_ib_la_CPPFLAGS = $(BASE_CPPFLAGS) $(IBVERBS_CPPFLAGS)
