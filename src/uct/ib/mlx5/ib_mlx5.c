@@ -1157,7 +1157,8 @@ extern uct_tl_t UCT_TL_NAME(ud_mlx5);
 extern uct_ib_md_ops_entry_t UCT_IB_MD_OPS_NAME(devx);
 extern uct_ib_md_ops_entry_t UCT_IB_MD_OPS_NAME(dv);
 
-UCS_STATIC_INIT {
+void UCS_F_CTOR uct_mlx5_init(void)
+{
 #if defined (HAVE_MLX5_DV)
     ucs_list_add_head(&uct_ib_ops, &UCT_IB_MD_OPS_NAME(dv).list);
 #endif
@@ -1178,7 +1179,8 @@ UCS_STATIC_INIT {
     uct_ib_mlx5_loaded = 1;
 }
 
-UCS_STATIC_CLEANUP {
+void UCS_F_DTOR uct_mlx5_cleanup(void)
+{
     uct_ib_mlx5_loaded = 0;
 
 #if defined (HAVE_TL_UD) && defined (HAVE_MLX5_HW_UD)
