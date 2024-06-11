@@ -111,6 +111,12 @@ typedef struct {
 } uct_ib_mr_t;
 
 
+typedef struct {
+    uct_ib_mem_t        super;
+    uct_ib_mr_t         mrs[];
+} uct_ib_verbs_mem_t;
+
+
 typedef enum {
     /* Default memory region with either strict or relaxed order */
     UCT_IB_MR_DEFAULT,

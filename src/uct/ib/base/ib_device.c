@@ -548,7 +548,8 @@ ucs_status_t uct_ib_device_init(uct_ib_device_t *dev,
 {
     ucs_status_t status;
 
-    dev->async_events = async_events;
+    dev->async_events    = async_events;
+    dev->mr_access_flags = UCT_IB_MEM_ACCESS_FLAGS;
 
     uct_ib_device_get_locality(ibv_get_device_name(ibv_device),
                                &dev->local_cpus);
