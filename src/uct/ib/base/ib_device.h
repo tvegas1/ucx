@@ -237,6 +237,8 @@ typedef struct uct_ib_device {
     uint8_t                     pci_cswap_arg_sizes;
     uint8_t                     atomic_align;
     uint8_t                     lag_level;
+    uint8_t                     req_notify_cq_support;
+    uint8_t                     ordered_send_comp;
     uint64_t                    mr_access_flags;
     /* AH hash */
     khash_t(uct_ib_ah)          ah_hash;
@@ -457,6 +459,8 @@ void uct_ib_device_async_event_unregister(uct_ib_device_t *dev,
 ucs_status_t uct_ib_device_get_ah_cached(uct_ib_device_t *dev,
                                          struct ibv_ah_attr *ah_attr,
                                          struct ibv_ah **ah_p);
+
+void uct_ib_device_configure(uct_ib_device_t *dev);
 
 int uct_ib_get_cqe_size(int cqe_size_min);
 

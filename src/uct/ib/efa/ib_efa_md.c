@@ -54,7 +54,6 @@ static ucs_status_t uct_ib_efa_md_open(struct ibv_device *ibv_device,
         goto err_free_context;
     }
 
-    md->super.dev.mr_access_flags = uct_ib_efadv_access_flags(&md->efadv);
     md->super.super.ops           = &uct_ib_efa_md_ops.super;
     md->efadv.attr                = attr;
     md->super.name                = UCT_IB_MD_NAME(efa);
@@ -63,6 +62,11 @@ static ucs_status_t uct_ib_efa_md_open(struct ibv_device *ibv_device,
     if (status != UCS_OK) {
         goto err_md_free;
     }
+
+    uct_ib_device_configure(&md->super.dev);
+
+    md->super.dev.mr_access_flags   = uct_ib_efadv_access_flags(&md->efadv);
+    md->super.dev.ordered_send_comp = 0;
 
     status = uct_ib_md_open_common(&md->super, ibv_device, md_config);
     if (status != UCS_OK) {

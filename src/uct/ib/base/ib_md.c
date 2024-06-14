@@ -1422,6 +1422,8 @@ static ucs_status_t uct_ib_verbs_md_open(struct ibv_device *ibv_device,
 
     md->super.ops = &uct_ib_verbs_md_ops.super;
 
+    uct_ib_device_configure(&md->dev);
+
     status = uct_ib_md_open_common(md, ibv_device, md_config);
     if (status != UCS_OK) {
         goto err_md_free;

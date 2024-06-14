@@ -130,6 +130,7 @@ uct_ud_verbs_ep_send_ctl(uct_ud_ep_t *ud_ep, uct_ud_send_skb_t *skb,
 {
     uct_ud_verbs_iface_t *iface = ucs_derived_of(ud_ep->super.super.iface,
                                                  uct_ud_verbs_iface_t);
+    uct_ib_device_t *dev  = uct_ib_iface_device(&iface->super.super);
     uct_ud_verbs_ep_t *ep = ucs_derived_of(ud_ep, uct_ud_verbs_ep_t);
     unsigned send_flags;
     uint16_t iov_index;
@@ -141,7 +142,8 @@ uct_ud_verbs_ep_send_ctl(uct_ud_ep_t *ud_ep, uct_ud_send_skb_t *skb,
     } else {
         ucs_assert(!(flags & UCT_UD_IFACE_SEND_CTL_FLAG_INLINE));
     }
-    if (flags & UCT_UD_IFACE_SEND_CTL_FLAG_SOLICITED) {
+    if ((flags & UCT_UD_IFACE_SEND_CTL_FLAG_SOLICITED) &&
+        dev->req_notify_cq_support) {
         send_flags |= IBV_SEND_SOLICITED;
     }
     if (flags & UCT_UD_IFACE_SEND_CTL_FLAG_SIGNALED) {
@@ -807,11 +809,11 @@ static UCS_CLASS_INIT_FUNC(uct_ud_verbs_iface_t, uct_md_h md, uct_worker_h worke
     if (self->super.async.event_cb != NULL) {
         status = uct_ud_iface_set_event_cb(&self->super,
                                            uct_ud_verbs_iface_async_handler);
-        if (status != UCS_OK) {
-            return status;
+        if (status == UCS_OK) {
+            status = uct_ib_iface_arm_cq(&self->super.super, UCT_IB_DIR_RX, 1);
+        } else if (status == UCS_ERR_UNSUPPORTED) {
+            status = UCS_OK;
         }
-
-        status = uct_ib_iface_arm_cq(&self->super.super, UCT_IB_DIR_RX, 1);
     }
 
     return status;
