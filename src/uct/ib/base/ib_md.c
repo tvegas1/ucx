@@ -1193,6 +1193,7 @@ ucs_status_t uct_ib_md_open_common(uct_ib_md_t *md,
                                    struct ibv_device *ib_device,
                                    const uct_ib_md_config_t *md_config)
 {
+    char filepath[PATH_MAX];
     ucs_status_t status;
 
     md->super.component = &uct_ib_component;
@@ -1239,6 +1240,12 @@ ucs_status_t uct_ib_md_open_common(uct_ib_md_t *md,
 
         /* check if ROCM KFD driver is loaded */
         uct_ib_check_gpudirect_driver(md, "/dev/kfd", UCS_MEMORY_TYPE_ROCM);
+
+        /* check if EFA driver supports GDR */
+        /* TODO Test on platform */
+        ucs_snprintf_safe(filepath, sizeof(filepath), UCT_IB_DEVICE_SYSFS_FMT,
+                          uct_ib_device_name(&md->dev), "gdr");
+        uct_ib_check_gpudirect_driver(md, filepath, UCS_MEMORY_TYPE_CUDA);
 
         /* Check for dma-buf support */
         uct_ib_md_check_dmabuf(md);
