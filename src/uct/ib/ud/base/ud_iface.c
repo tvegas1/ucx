@@ -693,9 +693,14 @@ ucs_status_t uct_ud_iface_query(uct_ud_iface_t *iface,
                                          UCT_IFACE_FLAG_CB_SYNC          |
                                          UCT_IFACE_FLAG_CB_ASYNC         |
                                          UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE;
-    iface_attr->cap.event_flags        = UCT_IFACE_FLAG_EVENT_SEND_COMP |
-                                         UCT_IFACE_FLAG_EVENT_RECV      |
-                                         UCT_IFACE_FLAG_EVENT_ASYNC_CB;
+    /* TODO: ib_dereg_mr() fails when there are existing preposted buffer */
+    /* TODO Fix needed UCX_UD_VERBS_TX_MIN_INLINE=32 UCX_IB_TX_MIN_SGE=1 */
+    /* TODO rename req_notify_cq_support, and can we extract at least some flags */
+    if (uct_ib_iface_device(&iface->super)->req_notify_cq_support) {
+        iface_attr->cap.event_flags        = UCT_IFACE_FLAG_EVENT_SEND_COMP |
+                                             UCT_IFACE_FLAG_EVENT_RECV      |
+                                             UCT_IFACE_FLAG_EVENT_ASYNC_CB;
+    }
 
     iface_attr->cap.am.max_short       = uct_ib_iface_hdr_size(iface->config.max_inline,
                                                                sizeof(uct_ud_neth_t));
