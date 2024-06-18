@@ -546,7 +546,13 @@ UCS_CLASS_INIT_FUNC(uct_ud_iface_t, uct_ud_iface_ops_t *ops,
     self->tx.async_before_pending = 0;
 
     ucs_arbiter_init(&self->tx.pending_q);
-    ucs_queue_head_init(&self->tx.outstanding_q);
+
+    if (uct_ib_iface_device(&self->super)->ordered_send_comp) {
+        ucs_queue_head_init(&self->tx.outstanding.queue);
+    } else {
+        kh_init_inplace(uct_ud_iface_ctl_desc_hash, &self->tx.outstanding.map);
+    }
+
     ucs_queue_head_init(&self->tx.async_comp_q);
     ucs_queue_head_init(&self->rx.pending_q);
 
@@ -611,6 +617,10 @@ static UCS_CLASS_CLEANUP_FUNC(uct_ud_iface_t)
     ucs_arbiter_cleanup(&self->tx.pending_q);
     UCS_STATS_NODE_FREE(self->stats);
     kh_destroy_inplace(uct_ud_iface_gid, &self->gid_table.hash);
+    if (!uct_ib_iface_device(&self->super)->ordered_send_comp) {
+        kh_destroy_inplace(uct_ud_iface_ctl_desc_hash,
+                           &self->tx.outstanding.map);
+    }
     uct_ud_leave(self);
 }
 
@@ -741,6 +751,14 @@ uct_ud_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *iface_addr)
     return UCS_OK;
 }
 
+static UCS_F_ALWAYS_INLINE int
+uct_ud_iface_tx_outstanding_is_empty(uct_ud_iface_t *iface)
+{
+    return uct_ib_iface_device(&iface->super)->ordered_send_comp?
+            ucs_queue_is_empty(&iface->tx.outstanding.queue) :
+            (kh_size(&iface->tx.outstanding.map) == 0);
+}
+
 ucs_status_t uct_ud_iface_flush(uct_iface_h tl_iface, unsigned flags,
                                 uct_completion_t *comp)
 {
@@ -758,7 +776,7 @@ ucs_status_t uct_ud_iface_flush(uct_iface_h tl_iface, unsigned flags,
     uct_ud_enter(iface);
 
     if (ucs_unlikely(uct_ud_iface_has_pending_async_ev(iface) ||
-                     !ucs_queue_is_empty(&iface->tx.outstanding_q))) {
+                     !uct_ud_iface_tx_outstanding_is_empty(iface))) {
         UCT_TL_IFACE_STAT_FLUSH_WAIT(&iface->super.super);
         uct_ud_leave(iface);
         return UCS_INPROGRESS;
@@ -1050,10 +1068,20 @@ void uct_ud_iface_send_completion(uct_ud_iface_t *iface, uint16_t sn,
                                   int is_async)
 {
     uct_ud_ctl_desc_t *cdesc;
+    khiter_t it;
 
-    ucs_queue_for_each_extract(cdesc, &iface->tx.outstanding_q, queue,
-                               UCS_CIRCULAR_COMPARE16(cdesc->sn, <=, sn)) {
-        uct_ud_iface_ctl_skb_complete(iface, cdesc, is_async);
+    if (uct_ib_iface_device(&iface->super)->ordered_send_comp) {
+        ucs_queue_for_each_extract(cdesc, &iface->tx.outstanding.queue, queue,
+                                   UCS_CIRCULAR_COMPARE16(cdesc->sn, <=, sn)) {
+            uct_ud_iface_ctl_skb_complete(iface, cdesc, is_async);
+        }
+    } else {
+        it = kh_get(uct_ud_iface_ctl_desc_hash, &iface->tx.outstanding.map, sn);
+        if (ucs_likely(it != kh_end(&iface->tx.outstanding.map))) {
+            cdesc = kh_value(&iface->tx.outstanding.map, it);
+            uct_ud_iface_ctl_skb_complete(iface, cdesc, is_async);
+            kh_del(uct_ud_iface_ctl_desc_hash, &iface->tx.outstanding.map, it);
+        }
     }
 }
 

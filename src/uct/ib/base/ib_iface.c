@@ -1572,6 +1572,7 @@ UCS_CLASS_INIT_FUNC(uct_ib_iface_t, uct_iface_ops_t *tl_ops,
     if (uct_ib_iface_is_roce(self) || config->is_global ||
         uct_ib_grh_required(uct_ib_iface_port_attr(self)) ||
         uct_ib_address_gid_is_global(&self->gid_info.gid) ||
+        (uct_ib_iface_port_attr(self)->lid == 0) ||
         /* check ADDR_TYPE for backward compatibility */
         (config->addr_type == UCT_IB_ADDRESS_TYPE_SITE_LOCAL) ||
         (config->addr_type == UCT_IB_ADDRESS_TYPE_GLOBAL)) {
