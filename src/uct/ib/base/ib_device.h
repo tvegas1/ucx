@@ -240,6 +240,9 @@ typedef struct uct_ib_device {
     uint8_t                     req_notify_cq_support;
     uint8_t                     ordered_send_comp;
     uint64_t                    mr_access_flags;
+    uint16_t                    max_sq_sge;       /* Send queue SGE count */
+    uint32_t                    max_inline_data;  /* Max inline buffer bytes */
+
     /* AH hash */
     khash_t(uct_ib_ah)          ah_hash;
     ucs_recursive_spinlock_t    ah_lock;

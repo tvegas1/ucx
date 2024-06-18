@@ -185,6 +185,7 @@ static void uct_ud_iface_destroy_qp(uct_ud_iface_t *ud_iface)
 static ucs_status_t
 uct_ud_iface_create_qp(uct_ud_iface_t *self, const uct_ud_iface_config_t *config)
 {
+    uct_ib_device_t *dev    = uct_ib_iface_device(&self->super);
     uct_ud_iface_ops_t *ops = ucs_derived_of(self->super.ops, uct_ud_iface_ops_t);
     uct_ib_qp_attr_t qp_init_attr = {};
     struct ibv_qp_attr qp_attr;
@@ -198,6 +199,22 @@ uct_ud_iface_create_qp(uct_ud_iface_t *self, const uct_ud_iface_config_t *config
     qp_init_attr.cap.max_send_sge    = config->super.tx.min_sge + 1;
     qp_init_attr.cap.max_recv_sge    = 1;
     qp_init_attr.cap.max_inline_data = config->super.tx.min_inline;
+
+    if ((dev->max_inline_data > 0) &&
+        (qp_init_attr.cap.max_inline_data > dev->max_inline_data)) {
+        ucs_diag("create QP: TX inline: using device cap %uB (configured %uB)",
+                 dev->max_inline_data, qp_init_attr.cap.max_inline_data);
+
+        qp_init_attr.cap.max_inline_data = dev->max_inline_data;
+    }
+
+    if ((dev->max_sq_sge > 0) &&
+        (qp_init_attr.cap.max_send_sge > dev->max_sq_sge)) {
+        ucs_diag("create QP: max_sq_sge: using device cap %d (configured %u+1)",
+                 dev->max_sq_sge, qp_init_attr.cap.max_send_sge - 1);
+
+        qp_init_attr.cap.max_send_sge = dev->max_sq_sge;
+    }
 
     status = ops->create_qp(&self->super, &qp_init_attr, &self->qp);
     if (status != UCS_OK) {

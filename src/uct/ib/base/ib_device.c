@@ -565,6 +565,8 @@ static int uct_ib_device_has_req_notify_cq(uct_ib_device_t *dev)
 void uct_ib_device_configure(uct_ib_device_t *dev)
 {
     dev->mr_access_flags       = UCT_IB_MEM_ACCESS_FLAGS;
+    dev->max_sq_sge            = 0;
+    dev->max_inline_data       = 0;
     dev->ordered_send_comp     = 1;
     dev->req_notify_cq_support = uct_ib_device_has_req_notify_cq(dev);
 }
