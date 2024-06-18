@@ -627,8 +627,14 @@ static UCS_CLASS_CLEANUP_FUNC(uct_ud_iface_t)
     ucs_mpool_cleanup(&self->tx.mp, 0);
     /* TODO: qp to error state and cleanup all wqes */
     uct_ud_iface_free_pending_rx(self);
-    ucs_mpool_cleanup(&self->rx.mp, 0);
+
+    /*
+     * Destroy QP before deregistering pre-posted receive buffers from
+     * self->rx.mp, to avoid ibv_dereg_mr() errors on some devices.
+     */
     uct_ud_iface_destroy_qp(self);
+    ucs_mpool_cleanup(&self->rx.mp, 0);
+
     ucs_debug("iface(%p): ptr_array cleanup", self);
     ucs_ptr_array_cleanup(&self->eps, 1);
     ucs_arbiter_cleanup(&self->tx.pending_q);

@@ -1740,6 +1740,7 @@ ucs_status_t uct_ib_iface_query(uct_ib_iface_t *iface, size_t xport_hdr_len,
         break;
     }
 
+    /* TODO Add EFA real latency for UD */
     iface_attr->latency.m  = 0;
 
     /* Wire speed calculation: Width * SignalRate * Encoding * Num_paths */
