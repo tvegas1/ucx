@@ -542,33 +542,13 @@ ucs_status_t uct_ib_device_query(uct_ib_device_t *dev,
     return UCS_OK;
 }
 
-static int uct_ib_device_has_req_notify_cq(uct_ib_device_t *dev)
-{
-    int enabled = 0;
-    struct ibv_cq *cq;
-    struct ibv_comp_channel *channel;
-
-    channel = ibv_create_comp_channel(dev->ibv_context);
-    if (channel) {
-        cq = ibv_create_cq(dev->ibv_context, 1, NULL, channel, 0);
-        if (cq) {
-            enabled = !ibv_req_notify_cq(cq, 1);
-            ibv_destroy_cq(cq);
-        }
-
-        ibv_destroy_comp_channel(channel);
-    }
-
-    return enabled;
-}
-
 void uct_ib_device_configure(uct_ib_device_t *dev)
 {
     dev->mr_access_flags       = UCT_IB_MEM_ACCESS_FLAGS;
     dev->max_sq_sge            = 0;
     dev->max_inline_data       = 0;
     dev->ordered_send_comp     = 1;
-    dev->req_notify_cq_support = uct_ib_device_has_req_notify_cq(dev);
+    dev->req_notify_cq_support = 1;
 }
 
 ucs_status_t uct_ib_device_init(uct_ib_device_t *dev,
