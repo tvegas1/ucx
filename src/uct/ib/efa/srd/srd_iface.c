@@ -1,0 +1,247 @@
+/**
+ * Copyright (c) NVIDIA CORPORATION & AFFILIATES, 2024. ALL RIGHTS RESERVED.
+ *
+ * See file LICENSE for terms.
+ */
+
+#ifdef HAVE_CONFIG_H
+#  include "config.h"
+#endif
+
+#include "srd_def.h"
+#include "srd_iface.h"
+#include "srd_ep.h"
+
+#include "../ib_efa.h"
+
+static uct_iface_ops_t uct_srd_iface_tl_ops;
+
+
+static ucs_status_t
+uct_srd_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *iface_addr)
+{
+    uct_srd_iface_t *iface = ucs_derived_of(tl_iface, uct_srd_iface_t);
+    uct_srd_iface_addr_t *addr = (uct_srd_iface_addr_t *)iface_addr;
+
+    uct_ib_pack_uint24(addr->qp_num, iface->qp->qp_num);
+
+    return UCS_OK;
+}
+
+static ucs_status_t
+uct_srd_iface_estimate_perf(uct_iface_h iface, uct_perf_attr_t *perf_attr)
+{
+    return UCS_ERR_UNSUPPORTED;
+}
+
+static void uct_srd_iface_vfs_refresh(uct_iface_h iface)
+{
+}
+
+static ucs_status_t uct_srd_ep_invalidate(uct_ep_h tl_ep, unsigned flags)
+{
+    return UCS_ERR_UNSUPPORTED;
+}
+
+static uct_ib_iface_ops_t uct_srd_iface_ops = {
+    .super = {
+        .iface_estimate_perf = uct_srd_iface_estimate_perf,
+        .iface_vfs_refresh   = uct_srd_iface_vfs_refresh,
+        .ep_query            = (uct_ep_query_func_t)
+            ucs_empty_function_return_unsupported,
+        .ep_invalidate       = uct_srd_ep_invalidate
+    },
+    .create_cq      = uct_ib_verbs_create_cq,
+    .destroy_cq     = uct_ib_verbs_destroy_cq,
+    .event_cq       = (uct_ib_iface_event_cq_func_t)ucs_empty_function,
+    .handle_failure = (uct_ib_iface_handle_failure_func_t)
+        ucs_empty_function_do_assert
+};
+
+static ucs_status_t
+uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
+                         unsigned *num_tl_devices_p)
+{
+    uct_ib_md_t *ib_md = ucs_derived_of(md, uct_ib_md_t);
+
+    if (!uct_ib_efadv_is_supported(ib_md->dev.ibv_context->device)) {
+        return UCS_ERR_UNSUPPORTED;
+    }
+
+    return uct_ib_device_query_ports(&ib_md->dev, 0, tl_devices_p,
+                                     num_tl_devices_p);
+}
+
+static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
+                           const uct_iface_params_t *params,
+                           const uct_iface_config_t *tl_config)
+{
+    uct_srd_iface_config_t *config      = ucs_derived_of(tl_config,
+                                                    uct_srd_iface_config_t);
+    //uct_ib_efadv_md_t *efa_md           = ucs_derived_of(md, uct_ib_efadv_md_t);
+    uct_ib_iface_init_attr_t init_attr;
+    ucs_status_t status;
+    int mtu;
+
+    UCT_CHECK_PARAM(params->field_mask & UCT_IFACE_PARAM_FIELD_OPEN_MODE,
+                    "UCT_IFACE_PARAM_FIELD_OPEN_MODE not set");
+    if (!(params->open_mode & UCT_IFACE_OPEN_MODE_DEVICE)) {
+        ucs_error("only UCT_IFACE_OPEN_MODE_DEVICE is supported");
+        return UCS_ERR_UNSUPPORTED;
+    }
+
+    status = uct_ib_device_mtu(params->mode.device.dev_name, md, &mtu);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    init_attr.cq_len[UCT_IB_DIR_TX] = config->super.tx.queue_len;
+    init_attr.cq_len[UCT_IB_DIR_RX] = config->super.rx.queue_len;
+    init_attr.rx_priv_len           = sizeof(uct_srd_recv_desc_t) -
+        sizeof(uct_ib_iface_recv_desc_t);
+    init_attr.rx_hdr_len            = sizeof(uct_srd_neth_t);
+    init_attr.seg_size              = ucs_min(mtu, config->super.seg_size);
+    init_attr.qp_type               = IBV_QPT_DRIVER;
+
+    UCS_CLASS_CALL_SUPER_INIT(uct_ib_iface_t, &uct_srd_iface_tl_ops,
+                              &uct_srd_iface_ops, md, worker,
+                              params, &config->super, &init_attr);
+
+    return UCS_OK;
+}
+
+static UCS_CLASS_CLEANUP_FUNC(uct_srd_iface_t)
+{
+}
+
+UCS_CLASS_DEFINE(uct_srd_iface_t, uct_ib_iface_t);
+
+static UCS_CLASS_DEFINE_NEW_FUNC(uct_srd_iface_t, uct_iface_t, uct_md_h,
+                                 uct_worker_h, const uct_iface_params_t*,
+                                 const uct_iface_config_t*);
+
+
+static UCS_CLASS_DEFINE_DELETE_FUNC(uct_srd_iface_t, uct_iface_t);
+
+ucs_config_field_t uct_srd_iface_config_table[] = {
+    {UCT_IB_CONFIG_PREFIX, "", NULL,
+     ucs_offsetof(uct_srd_iface_config_t, super),
+     UCS_CONFIG_TYPE_TABLE(uct_ib_iface_config_table)},
+
+    {"SRD_", "", NULL,
+     ucs_offsetof(uct_srd_iface_config_t, ud_common),
+     UCS_CONFIG_TYPE_TABLE(uct_ud_iface_common_config_table)},
+
+    {NULL}
+};
+
+static ucs_status_t uct_srd_iface_flush(uct_iface_h tl_iface, unsigned flags,
+                                        uct_completion_t *comp)
+{
+    return UCS_ERR_UNSUPPORTED;
+}
+
+static void uct_srd_iface_progress_enable(uct_iface_h tl_iface, unsigned flags)
+{
+}
+
+static unsigned uct_srd_iface_progress(uct_iface_h tl_iface)
+{
+    return 0;
+}
+
+static ucs_status_t
+uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
+{
+    uct_srd_iface_t *iface = ucs_derived_of(tl_iface, uct_srd_iface_t);
+    uct_ib_md_t *md        = uct_ib_iface_md(&iface->super);
+    uct_ib_efadv_md_t *efa_md = ucs_derived_of(md, uct_ib_efadv_md_t);
+    size_t active_mtu      =
+        uct_ib_mtu_value(uct_ib_iface_port_attr(&iface->super)->active_mtu);
+    ucs_status_t status;
+    size_t max_rdma_size;
+
+    /* Common */
+    status = uct_ib_iface_query(&iface->super,
+                                UCT_IB_DETH_LEN + sizeof(uct_srd_neth_t),
+                                iface_attr);
+
+    /* General */
+    iface_attr->cap.am.align_mtu        = active_mtu;
+    iface_attr->cap.get.align_mtu       = active_mtu;
+    iface_attr->cap.am.opt_zcopy_align  = UCS_SYS_PCI_MAX_PAYLOAD;
+    iface_attr->cap.get.opt_zcopy_align = UCS_SYS_PCI_MAX_PAYLOAD;
+
+    iface_attr->cap.flags      = UCT_IFACE_FLAG_AM_BCOPY         |
+                                 UCT_IFACE_FLAG_AM_ZCOPY         |
+                                 UCT_IFACE_FLAG_CONNECT_TO_EP    |
+                                 UCT_IFACE_FLAG_CONNECT_TO_IFACE |
+                                 UCT_IFACE_FLAG_PENDING          |
+                                 UCT_IFACE_FLAG_EP_CHECK         |
+                                 UCT_IFACE_FLAG_CB_SYNC          |
+                                 UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE;
+    iface_attr->iface_addr_len = sizeof(uct_srd_iface_addr_t);
+    iface_attr->ep_addr_len    = sizeof(uct_srd_ep_addr_t);
+    iface_attr->max_conn_priv  = 0;
+
+    iface_attr->latency.c += 30e-9; /* TODO: set the correct values for SRD */
+    iface_attr->overhead   = 105e-9;
+
+    /* TODO don't use MD */
+    /* AM */
+    iface_attr->cap.am.max_short = uct_ib_iface_hdr_size(md->dev.max_inline_data,
+                                                         sizeof(uct_srd_neth_t));
+    if (iface_attr->cap.am.max_short) {
+        iface_attr->cap.flags |= UCT_IFACE_FLAG_AM_SHORT;
+    }
+
+    max_rdma_size = efa_md->efadv.attr.max_rdma_size;
+    if (max_rdma_size > 2 * UCS_MBYTE) {
+        max_rdma_size = 2 * UCS_MBYTE;
+    }
+
+    iface_attr->cap.am.max_bcopy = iface->super.config.seg_size - sizeof(uct_srd_neth_t);
+    iface_attr->cap.am.min_zcopy = 0;
+    iface_attr->cap.am.max_zcopy = max_rdma_size;
+    iface_attr->cap.am.max_iov   = md->dev.max_sq_sge;
+    iface_attr->cap.am.max_hdr   = uct_ib_iface_hdr_size(iface->super.config.seg_size,
+                                                         sizeof(uct_srd_neth_t));
+
+    /* GET */
+    iface_attr->cap.get.max_bcopy = iface->super.config.seg_size;
+    iface_attr->cap.get.min_zcopy = iface->super.config.max_inl_cqe[UCT_IB_DIR_TX] + 1;
+    iface_attr->cap.am.max_zcopy  = max_rdma_size; /* TODO wrapper */
+    iface_attr->cap.get.max_iov   = md->dev.max_sq_sge;
+
+    if (iface_attr->cap.get.max_bcopy) {
+        iface_attr->cap.flags |= UCT_IFACE_FLAG_GET_BCOPY;
+    }
+    if (iface_attr->cap.get.max_zcopy) {
+        iface_attr->cap.flags |= UCT_IFACE_FLAG_GET_ZCOPY;
+    }
+    return status;
+}
+
+static uct_iface_ops_t uct_srd_iface_tl_ops = {
+    .ep_flush                 = uct_srd_ep_flush,
+    .ep_fence                 = uct_base_ep_fence,
+    .ep_destroy               = uct_srd_ep_destroy,
+    .iface_flush              = uct_srd_iface_flush,
+    .iface_fence              = uct_base_iface_fence,
+    .iface_progress_enable    = uct_srd_iface_progress_enable,
+    .iface_progress_disable   = uct_base_iface_progress_disable,
+    .iface_progress           = uct_srd_iface_progress,
+    .iface_query              = uct_srd_iface_query,
+    .iface_get_address        = uct_srd_iface_get_address,
+    .iface_is_reachable       = uct_base_iface_is_reachable,
+    .iface_event_fd_get       = (uct_iface_event_fd_get_func_t)
+        ucs_empty_function_return_unsupported,
+    .iface_event_arm          = (uct_iface_event_arm_func_t)
+        ucs_empty_function_return_unsupported,
+    .iface_close              = UCS_CLASS_DELETE_FUNC_NAME(uct_srd_iface_t),
+    .iface_get_device_address = uct_ib_iface_get_device_address
+};
+
+UCT_TL_DEFINE_ENTRY(&uct_ib_component, srd, uct_srd_query_tl_devices,
+                    uct_srd_iface_t,  "SRD_",
+                    uct_srd_iface_config_table, uct_srd_iface_config_t);

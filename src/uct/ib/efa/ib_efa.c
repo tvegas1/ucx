@@ -31,7 +31,7 @@ int uct_ib_efadv_is_supported(struct ibv_device *ibv_device)
     int ret;
 
     ctx = ibv_open_device(ibv_device);
-    if (ctx != NULL) {
+    if (ctx == NULL) {
         ucs_diag("ibv_open_device(%s) failed: %m",
                  ibv_get_device_name(ibv_device));
         return 0;
@@ -42,12 +42,16 @@ int uct_ib_efadv_is_supported(struct ibv_device *ibv_device)
     return !ret;
 }
 
+extern uct_tl_t UCT_TL_NAME(srd);
+
 void UCS_F_CTOR uct_efa_init(void)
 {
     ucs_list_add_head(&uct_ib_ops, &UCT_IB_MD_OPS_NAME(efa).list);
+    uct_tl_register(&uct_ib_component, &UCT_TL_NAME(srd));
 }
 
 void UCS_F_DTOR uct_efa_cleanup(void)
 {
+    uct_tl_unregister(&UCT_TL_NAME(srd));
     ucs_list_del(&UCT_IB_MD_OPS_NAME(efa).list);
 }
