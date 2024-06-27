@@ -24,6 +24,10 @@ const char *uct_ib_qp_type_str(int qp_type)
     case UCT_IB_QPT_DCI:
         return "DCI";
 #endif
+#if HAVE_EFA
+    case UCT_IB_QPT_SRD:
+        return "SRD";
+#endif
     default:
         ucs_bug("invalid qp type: %d", qp_type);
         return "unknown";

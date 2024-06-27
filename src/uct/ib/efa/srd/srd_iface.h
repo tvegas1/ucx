@@ -16,12 +16,20 @@ BEGIN_C_DECLS
 
 /** @file srd_iface.h */
 
-
 typedef struct uct_srd_iface_config {
-    uct_ib_iface_config_t        super;
-    uct_ud_iface_common_config_t ud_common;
-} uct_srd_iface_config_t;
+    uct_ib_iface_config_t         super;
+    uct_ud_iface_common_config_t  ud_common;
+    struct {
+        size_t max_get_zcopy;
+    } tx;
 
+    struct {
+        double               soft_thresh;
+        double               hard_thresh;
+        unsigned             wnd_size;
+    } fc;
+
+} uct_srd_iface_config_t;
 
 typedef struct uct_srd_iface {
     uct_ib_iface_t             super;

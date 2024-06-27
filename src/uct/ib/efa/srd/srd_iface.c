@@ -51,7 +51,8 @@ static uct_ib_iface_ops_t uct_srd_iface_ops = {
         .iface_vfs_refresh   = uct_srd_iface_vfs_refresh,
         .ep_query            = (uct_ep_query_func_t)
             ucs_empty_function_return_unsupported,
-        .ep_invalidate       = uct_srd_ep_invalidate
+        .ep_invalidate       = uct_srd_ep_invalidate,
+        .iface_is_reachable_v2 = uct_ib_iface_is_reachable_v2,
     },
     .create_cq      = uct_ib_verbs_create_cq,
     .destroy_cq     = uct_ib_verbs_destroy_cq,
@@ -74,82 +75,8 @@ uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
                                      num_tl_devices_p);
 }
 
-static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
-                           const uct_iface_params_t *params,
-                           const uct_iface_config_t *tl_config)
+static void uct_srd_iface_release_recv_desc(uct_recv_desc_t *self, void *desc)
 {
-    uct_srd_iface_config_t *config      = ucs_derived_of(tl_config,
-                                                    uct_srd_iface_config_t);
-    //uct_ib_efadv_md_t *efa_md           = ucs_derived_of(md, uct_ib_efadv_md_t);
-    uct_ib_iface_init_attr_t init_attr;
-    ucs_status_t status;
-    int mtu;
-
-    UCT_CHECK_PARAM(params->field_mask & UCT_IFACE_PARAM_FIELD_OPEN_MODE,
-                    "UCT_IFACE_PARAM_FIELD_OPEN_MODE not set");
-    if (!(params->open_mode & UCT_IFACE_OPEN_MODE_DEVICE)) {
-        ucs_error("only UCT_IFACE_OPEN_MODE_DEVICE is supported");
-        return UCS_ERR_UNSUPPORTED;
-    }
-
-    status = uct_ib_device_mtu(params->mode.device.dev_name, md, &mtu);
-    if (status != UCS_OK) {
-        return status;
-    }
-
-    init_attr.cq_len[UCT_IB_DIR_TX] = config->super.tx.queue_len;
-    init_attr.cq_len[UCT_IB_DIR_RX] = config->super.rx.queue_len;
-    init_attr.rx_priv_len           = sizeof(uct_srd_recv_desc_t) -
-        sizeof(uct_ib_iface_recv_desc_t);
-    init_attr.rx_hdr_len            = sizeof(uct_srd_neth_t);
-    init_attr.seg_size              = ucs_min(mtu, config->super.seg_size);
-    init_attr.qp_type               = IBV_QPT_DRIVER;
-
-    UCS_CLASS_CALL_SUPER_INIT(uct_ib_iface_t, &uct_srd_iface_tl_ops,
-                              &uct_srd_iface_ops, md, worker,
-                              params, &config->super, &init_attr);
-
-    return UCS_OK;
-}
-
-static UCS_CLASS_CLEANUP_FUNC(uct_srd_iface_t)
-{
-}
-
-UCS_CLASS_DEFINE(uct_srd_iface_t, uct_ib_iface_t);
-
-static UCS_CLASS_DEFINE_NEW_FUNC(uct_srd_iface_t, uct_iface_t, uct_md_h,
-                                 uct_worker_h, const uct_iface_params_t*,
-                                 const uct_iface_config_t*);
-
-
-static UCS_CLASS_DEFINE_DELETE_FUNC(uct_srd_iface_t, uct_iface_t);
-
-ucs_config_field_t uct_srd_iface_config_table[] = {
-    {UCT_IB_CONFIG_PREFIX, "", NULL,
-     ucs_offsetof(uct_srd_iface_config_t, super),
-     UCS_CONFIG_TYPE_TABLE(uct_ib_iface_config_table)},
-
-    {"SRD_", "", NULL,
-     ucs_offsetof(uct_srd_iface_config_t, ud_common),
-     UCS_CONFIG_TYPE_TABLE(uct_ud_iface_common_config_table)},
-
-    {NULL}
-};
-
-static ucs_status_t uct_srd_iface_flush(uct_iface_h tl_iface, unsigned flags,
-                                        uct_completion_t *comp)
-{
-    return UCS_ERR_UNSUPPORTED;
-}
-
-static void uct_srd_iface_progress_enable(uct_iface_h tl_iface, unsigned flags)
-{
-}
-
-static unsigned uct_srd_iface_progress(uct_iface_h tl_iface)
-{
-    return 0;
 }
 
 static ucs_status_t
@@ -181,8 +108,7 @@ uct_srd_iface_create_qp(uct_srd_iface_t *iface,
     qp_init_attr.cap.max_send_sge    = 1 + ucs_min(config->super.tx.min_sge,
                                                    (uct_ib_efadv_max_sq_sge(efadv) - 1));
     qp_init_attr.cap.max_recv_sge    = 1;
-    qp_init_attr.cap.max_inline_data = ucs_min(config->super.tx.min_inline,
-                                               uct_ib_efadv_inline_buf_size(efadv));
+    qp_init_attr.cap.max_inline_data = uct_ib_efadv_inline_buf_size(efadv);
 
 #ifdef HAVE_DECL_EFA_DV_RDMA_READ
     qp_init_attr.pd                  = efadv_md->super.pd;
@@ -218,10 +144,13 @@ uct_srd_iface_create_qp(uct_srd_iface_t *iface,
         return UCS_ERR_IO_ERROR;
     }
 
+#if 0
+    /* TODO: Use common configuration */
     iface->config.max_inline = qp_init_attr.cap.max_inline_data;
     iface->config.tx_qp_len  = qp_init_attr.cap.max_send_wr;
     iface->tx.available      = qp_init_attr.cap.max_send_wr;
     iface->rx.available      = qp_init_attr.cap.max_recv_wr;
+#endif
 
     ucs_debug("iface=%p: created %s QP 0x%x on "UCT_IB_IFACE_FMT
               " TX wr:%d sge:%d inl:%d resp:%d RX wr:%d sge:%d resp:%d",
@@ -270,6 +199,92 @@ uct_srd_iface_create_qp(uct_srd_iface_t *iface,
 err_destroy_qp:
     uct_ib_destroy_qp(iface->qp);
     return UCS_ERR_INVALID_PARAM;
+}
+
+static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
+                           const uct_iface_params_t *params,
+                           const uct_iface_config_t *tl_config)
+{
+    uct_srd_iface_config_t *config      = ucs_derived_of(tl_config,
+                                                    uct_srd_iface_config_t);
+//    uct_ib_efadv_md_t *efa_md           = ucs_derived_of(md, uct_ib_efadv_md_t);
+    uct_ib_iface_init_attr_t init_attr;
+    ucs_status_t status;
+    int mtu;
+
+    UCT_CHECK_PARAM(params->field_mask & UCT_IFACE_PARAM_FIELD_OPEN_MODE,
+                    "UCT_IFACE_PARAM_FIELD_OPEN_MODE not set");
+    if (!(params->open_mode & UCT_IFACE_OPEN_MODE_DEVICE)) {
+        ucs_error("only UCT_IFACE_OPEN_MODE_DEVICE is supported");
+        return UCS_ERR_UNSUPPORTED;
+    }
+
+    status = uct_ib_device_mtu(params->mode.device.dev_name, md, &mtu);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    init_attr.cq_len[UCT_IB_DIR_TX] = config->super.tx.queue_len;
+    init_attr.cq_len[UCT_IB_DIR_RX] = config->super.rx.queue_len;
+    init_attr.rx_priv_len           = sizeof(uct_srd_recv_desc_t) -
+                                      sizeof(uct_ib_iface_recv_desc_t);
+    init_attr.rx_hdr_len            = sizeof(uct_srd_neth_t);
+    init_attr.seg_size              = ucs_min(mtu, config->super.seg_size);
+    init_attr.qp_type               = IBV_QPT_DRIVER;
+
+    UCS_CLASS_CALL_SUPER_INIT(uct_ib_iface_t, &uct_srd_iface_tl_ops,
+                              &uct_srd_iface_ops, md, worker,
+                              params, &config->super, &init_attr);
+
+    self->super.release_desc.cb = uct_srd_iface_release_recv_desc;
+
+    status = uct_srd_iface_create_qp(self, config);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    return UCS_OK;
+}
+
+static UCS_CLASS_CLEANUP_FUNC(uct_srd_iface_t)
+{
+    /* TODO Cleanups here and valgrind checks */
+}
+
+UCS_CLASS_DEFINE(uct_srd_iface_t, uct_ib_iface_t);
+
+static UCS_CLASS_DEFINE_NEW_FUNC(uct_srd_iface_t, uct_iface_t, uct_md_h,
+                                 uct_worker_h, const uct_iface_params_t*,
+                                 const uct_iface_config_t*);
+
+
+static UCS_CLASS_DEFINE_DELETE_FUNC(uct_srd_iface_t, uct_iface_t);
+
+ucs_config_field_t uct_srd_iface_config_table[] = {
+    {UCT_IB_CONFIG_PREFIX, "", NULL,
+     ucs_offsetof(uct_srd_iface_config_t, super),
+     UCS_CONFIG_TYPE_TABLE(uct_ib_iface_config_table)},
+
+    {"SRD_", "", NULL,
+     ucs_offsetof(uct_srd_iface_config_t, ud_common),
+     UCS_CONFIG_TYPE_TABLE(uct_ud_iface_common_config_table)},
+
+    {NULL}
+};
+
+static ucs_status_t uct_srd_iface_flush(uct_iface_h tl_iface, unsigned flags,
+                                        uct_completion_t *comp)
+{
+    return UCS_ERR_UNSUPPORTED;
+}
+
+static void uct_srd_iface_progress_enable(uct_iface_h tl_iface, unsigned flags)
+{
+}
+
+static unsigned uct_srd_iface_progress(uct_iface_h tl_iface)
+{
+    return 0;
 }
 
 static ucs_status_t
