@@ -92,6 +92,10 @@ enum {
 #else
     UCT_IB_QPT_DCI = UCT_IB_QPT_UNKNOWN,
 #endif
+#if HAVE_EFA
+#error "EFA defined"
+    UCT_IB_QPT_SRD
+#endif
 };
 
 

@@ -42,6 +42,7 @@ AS_IF([test "x$with_efa" != xno],
                      AC_SUBST(EFA_CPPFLAGS, ["-I$efa_dir/include"])
                      AC_SUBST(EFA_LDFLAGS, ["-L$efa_dir/lib$suff"])])
               AC_SUBST(EFA_LIBS, [-lefa])
+              AC_DEFINE([HAVE_EFA], 1, [EFA DV support])
               uct_ib_modules="${uct_ib_modules}:efa"
              ],
              [AS_IF([test "x$with_efa" != xguess],

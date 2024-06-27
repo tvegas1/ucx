@@ -14,6 +14,8 @@
 
 #include "../ib_efa.h"
 
+#include <uct/ib/base/ib_log.h>
+
 static uct_iface_ops_t uct_srd_iface_tl_ops;
 
 
@@ -148,6 +150,126 @@ static void uct_srd_iface_progress_enable(uct_iface_h tl_iface, unsigned flags)
 static unsigned uct_srd_iface_progress(uct_iface_h tl_iface)
 {
     return 0;
+}
+
+static ucs_status_t
+uct_srd_iface_create_qp(uct_srd_iface_t *iface,
+                        const uct_srd_iface_config_t *config)
+{
+    uct_ib_efadv_md_t *efadv_md =
+        ucs_derived_of(uct_ib_iface_md(&iface->super), uct_ib_efadv_md_t);
+    const uct_ib_efadv_t *efadv = &efadv_md->efadv;
+    struct ibv_pd *pd           = efadv_md->super.pd;
+    struct ibv_qp_attr qp_attr;
+    int ret;
+
+#ifdef HAVE_DECL_EFA_DV_RDMA_READ
+    struct efadv_qp_init_attr  efa_qp_init_attr  = { 0 };
+    struct ibv_qp_init_attr_ex qp_init_attr      = { 0 };
+#else
+    struct ibv_qp_init_attr    qp_init_attr      = { 0 };
+#endif
+
+    qp_init_attr.qp_type             = IBV_QPT_DRIVER;
+    qp_init_attr.sq_sig_all          = 1;
+    qp_init_attr.send_cq             = iface->super.cq[UCT_IB_DIR_TX];
+    qp_init_attr.recv_cq             = iface->super.cq[UCT_IB_DIR_RX];
+    qp_init_attr.cap.max_send_wr     = ucs_min(config->super.tx.queue_len,
+                                               uct_ib_efadv_max_sq_wr(efadv));
+    qp_init_attr.cap.max_recv_wr     = ucs_min(config->super.rx.queue_len,
+                                               uct_ib_efadv_max_rq_wr(efadv));
+    qp_init_attr.cap.max_send_sge    = 1 + ucs_min(config->super.tx.min_sge,
+                                                   (uct_ib_efadv_max_sq_sge(efadv) - 1));
+    qp_init_attr.cap.max_recv_sge    = 1;
+    qp_init_attr.cap.max_inline_data = ucs_min(config->super.tx.min_inline,
+                                               uct_ib_efadv_inline_buf_size(efadv));
+
+#ifdef HAVE_DECL_EFA_DV_RDMA_READ
+    qp_init_attr.pd                  = efadv_md->super.pd;
+    qp_init_attr.comp_mask           = IBV_QP_INIT_ATTR_PD |
+                                       IBV_QP_INIT_ATTR_SEND_OPS_FLAGS;
+    qp_init_attr.send_ops_flags      = IBV_QP_EX_WITH_SEND;
+    if (uct_ib_efadv_has_rdma_read(efadv)) {
+        qp_init_attr.send_ops_flags |= IBV_QP_EX_WITH_RDMA_READ;
+    }
+    efa_qp_init_attr.driver_qp_type  = EFADV_QP_DRIVER_TYPE_SRD;
+
+    iface->qp    = efadv_create_qp_ex(pd->context, &qp_init_attr,
+                                      &efa_qp_init_attr,
+                                      sizeof(efa_qp_init_attr));
+    iface->qp_ex = ibv_qp_to_qp_ex(iface->qp);
+#else
+    iface->qp = efadv_create_driver_qp(pd, &qp_init_attr,
+                                       EFADV_QP_DRIVER_TYPE_SRD);
+#endif
+
+    if (iface->qp == NULL) {
+        ucs_error("iface=%p: failed to create %s QP on "UCT_IB_IFACE_FMT
+                  " TX wr:%d sge:%d inl:%d resp:%d RX wr:%d sge:%d resp:%d: %m",
+                  iface, uct_ib_qp_type_str(UCT_IB_QPT_SRD),
+                  UCT_IB_IFACE_ARG(&iface->super),
+                  qp_init_attr.cap.max_send_wr,
+                  qp_init_attr.cap.max_send_sge,
+                  qp_init_attr.cap.max_inline_data,
+                  iface->super.config.max_inl_cqe[UCT_IB_DIR_TX],
+                  qp_init_attr.cap.max_recv_wr,
+                  qp_init_attr.cap.max_recv_sge,
+                  iface->super.config.max_inl_cqe[UCT_IB_DIR_RX]);
+        return UCS_ERR_IO_ERROR;
+    }
+
+    iface->config.max_inline = qp_init_attr.cap.max_inline_data;
+    iface->config.tx_qp_len  = qp_init_attr.cap.max_send_wr;
+    iface->tx.available      = qp_init_attr.cap.max_send_wr;
+    iface->rx.available      = qp_init_attr.cap.max_recv_wr;
+
+    ucs_debug("iface=%p: created %s QP 0x%x on "UCT_IB_IFACE_FMT
+              " TX wr:%d sge:%d inl:%d resp:%d RX wr:%d sge:%d resp:%d",
+              iface, uct_ib_qp_type_str(UCT_IB_QPT_SRD),
+              iface->qp->qp_num, UCT_IB_IFACE_ARG(&iface->super),
+              qp_init_attr.cap.max_send_wr,
+              qp_init_attr.cap.max_send_sge,
+              qp_init_attr.cap.max_inline_data,
+              iface->super.config.max_inl_cqe[UCT_IB_DIR_TX],
+              qp_init_attr.cap.max_recv_wr,
+              qp_init_attr.cap.max_recv_sge,
+              iface->super.config.max_inl_cqe[UCT_IB_DIR_RX]);
+
+
+    memset(&qp_attr, 0, sizeof(qp_attr));
+    /* Modify QP to INIT state */
+    qp_attr.qp_state   = IBV_QPS_INIT;
+    qp_attr.pkey_index = iface->super.pkey_index;
+    qp_attr.port_num   = iface->super.config.port_num;
+    qp_attr.qkey       = UCT_IB_KEY;
+    ret = ibv_modify_qp(iface->qp, &qp_attr,
+                        IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_QKEY);
+    if (ret) {
+        ucs_error("Failed to modify SRD QP to INIT: %m");
+        goto err_destroy_qp;
+    }
+
+    /* Modify to RTR */
+    qp_attr.qp_state = IBV_QPS_RTR;
+    ret = ibv_modify_qp(iface->qp, &qp_attr, IBV_QP_STATE);
+    if (ret) {
+        ucs_error("Failed to modify SRD QP to RTR: %m");
+        goto err_destroy_qp;
+    }
+
+    /* Modify to RTS */
+    qp_attr.qp_state = IBV_QPS_RTS;
+    qp_attr.sq_psn = 0;
+    ret = ibv_modify_qp(iface->qp, &qp_attr, IBV_QP_STATE | IBV_QP_SQ_PSN);
+    if (ret) {
+        ucs_error("Failed to modify SRD QP to RTS: %m");
+        goto err_destroy_qp;
+    }
+
+    return UCS_OK;
+err_destroy_qp:
+    uct_ib_destroy_qp(iface->qp);
+    return UCS_ERR_INVALID_PARAM;
 }
 
 static ucs_status_t
