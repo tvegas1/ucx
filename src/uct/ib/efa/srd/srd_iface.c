@@ -16,8 +16,117 @@
 
 #include <uct/ib/base/ib_log.h>
 
+
 static uct_iface_ops_t uct_srd_iface_tl_ops;
 
+
+uct_srd_ep_t *uct_srd_iface_cep_get_ep(uct_srd_iface_t *iface,
+                                       const uct_ib_address_t *ib_addr,
+                                       const uct_srd_iface_addr_t *if_addr,
+                                       int path_index,
+                                       uct_srd_ep_conn_sn_t conn_sn,
+                                       int is_private)
+{
+    uct_srd_ep_t *ep                        = NULL;
+    ucs_conn_match_queue_type_t queue_type = is_private ?
+                                             UCS_CONN_MATCH_QUEUE_UNEXP :
+                                             UCS_CONN_MATCH_QUEUE_ANY;
+    ucs_conn_match_elem_t *conn_match;
+    void *peer_address;
+
+    peer_address = ucs_alloca(iface->conn_match_ctx.address_length);
+    uct_srd_iface_cep_get_peer_address(iface, ib_addr, if_addr,
+                                       path_index, peer_address);
+
+    conn_match = ucs_conn_match_get_elem(&iface->conn_match_ctx, peer_address,
+                                         conn_sn, queue_type, is_private);
+    if (conn_match == NULL) {
+        return NULL;
+    }
+
+    ep = ucs_container_of(conn_match, uct_srd_ep_t, conn_match);
+    ucs_assert(ep->flags & UCT_SRD_EP_FLAG_ON_CEP);
+
+    if (is_private) {
+        ep->flags &= ~UCT_SRD_EP_FLAG_ON_CEP;
+    }
+
+    return ep;
+}
+
+static UCS_F_ALWAYS_INLINE ucs_conn_match_queue_type_t
+uct_srd_iface_cep_ep_queue_type(uct_srd_ep_t *ep)
+{
+    return (ep->flags & UCT_SRD_EP_FLAG_PRIVATE) ?
+           UCS_CONN_MATCH_QUEUE_UNEXP :
+           UCS_CONN_MATCH_QUEUE_EXP;
+}
+
+
+ucs_status_t
+uct_srd_iface_unpack_peer_address(uct_srd_iface_t *iface,
+                                  const uct_ib_address_t *ib_addr,
+                                  const uct_srd_iface_addr_t *if_addr,
+                                  int path_index, void *address_p)
+{
+    uct_ib_iface_t *ib_iface                = &iface->super;
+    uct_srd_ep_peer_address_t *peer_address =
+        (uct_srd_ep_peer_address_t*)address_p;
+    struct ibv_ah_attr ah_attr;
+    enum ibv_mtu path_mtu;
+    ucs_status_t status;
+
+    memset(peer_address, 0, sizeof(*peer_address));
+
+    uct_ib_iface_fill_ah_attr_from_addr(ib_iface, ib_addr, path_index,
+                                        &ah_attr, &path_mtu);
+    status = uct_ib_iface_create_ah(ib_iface, &ah_attr, "SRD connect",
+                                    &peer_address->ah);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    peer_address->dest_qpn = uct_ib_unpack_uint24(if_addr->qp_num);
+
+    return UCS_OK;
+}
+
+void *
+uct_srd_iface_cep_get_peer_address(uct_srd_iface_t *iface,
+                                   const uct_ib_address_t *ib_addr,
+                                   const uct_srd_iface_addr_t *if_addr,
+                                   int path_index, void *address_p)
+{
+    ucs_status_t status = uct_srd_iface_unpack_peer_address(iface, ib_addr,
+                                                            if_addr, path_index,
+                                                            address_p);
+
+    if (status != UCS_OK) {
+        ucs_fatal("iface %p: failed to get peer address", iface);
+    }
+
+    return address_p;
+}
+
+void uct_srd_iface_cep_insert_ep(uct_srd_iface_t *iface,
+                                 const uct_ib_address_t *ib_addr,
+                                 const uct_srd_iface_addr_t *if_addr,
+                                 int path_index, uct_srd_ep_conn_sn_t conn_sn,
+                                 uct_srd_ep_t *ep)
+{
+    ucs_conn_match_queue_type_t queue_type;
+    void *peer_address;
+
+    queue_type   = uct_srd_iface_cep_ep_queue_type(ep);
+    peer_address = ucs_alloca(iface->conn_match_ctx.address_length);
+    uct_srd_iface_cep_get_peer_address(iface, ib_addr, if_addr, path_index,
+                                       peer_address);
+
+    ucs_assert(!(ep->flags & UCT_SRD_EP_FLAG_ON_CEP));
+    ucs_conn_match_insert(&iface->conn_match_ctx, peer_address,
+                          conn_sn, &ep->conn_match, queue_type);
+    ep->flags |= UCT_SRD_EP_FLAG_ON_CEP;
+}
 
 static ucs_status_t
 uct_srd_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *iface_addr)
@@ -28,12 +137,6 @@ uct_srd_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *iface_addr)
     uct_ib_pack_uint24(addr->qp_num, iface->qp->qp_num);
 
     return UCS_OK;
-}
-
-static ucs_status_t
-uct_srd_iface_estimate_perf(uct_iface_h iface, uct_perf_attr_t *perf_attr)
-{
-    return UCS_ERR_UNSUPPORTED;
 }
 
 static void uct_srd_iface_vfs_refresh(uct_iface_h iface)
@@ -47,7 +150,7 @@ static ucs_status_t uct_srd_ep_invalidate(uct_ep_h tl_ep, unsigned flags)
 
 static uct_ib_iface_ops_t uct_srd_iface_ops = {
     .super = {
-        .iface_estimate_perf = uct_srd_iface_estimate_perf,
+        .iface_estimate_perf = uct_base_iface_estimate_perf,
         .iface_vfs_refresh   = uct_srd_iface_vfs_refresh,
         .ep_query            = (uct_ep_query_func_t)
             ucs_empty_function_return_unsupported,
@@ -77,6 +180,19 @@ uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
 
 static void uct_srd_iface_release_recv_desc(uct_recv_desc_t *self, void *desc)
 {
+}
+
+void uct_srd_iface_add_ep(uct_srd_iface_t *iface, uct_srd_ep_t *ep)
+{
+    ep->ep_id = ucs_ptr_array_insert(&iface->eps, ep);
+}
+
+void uct_srd_iface_remove_ep(uct_srd_iface_t *iface, uct_srd_ep_t *ep)
+{
+    if (ep->ep_id != UCT_SRD_EP_NULL_ID) {
+        ucs_trace("iface(%p) remove ep: %p id %d", iface, ep, ep->ep_id);
+        ucs_ptr_array_remove(&iface->eps, ep->ep_id);
+    }
 }
 
 static ucs_status_t
@@ -201,6 +317,63 @@ err_destroy_qp:
     return UCS_ERR_INVALID_PARAM;
 }
 
+
+static const char*
+uct_srd_iface_peer_address_str(const uct_srd_iface_t *iface,
+                               const void *address,
+                               char *str, size_t max_size)
+{
+    const uct_srd_ep_peer_address_t *peer_address =
+        (const uct_srd_ep_peer_address_t*)address;
+
+    ucs_snprintf_zero(str, max_size, "ah=%p dest_qpn=%u",
+                      peer_address->ah, peer_address->dest_qpn);
+    return str;
+}
+
+static const void *
+uct_srd_ep_get_conn_address(const ucs_conn_match_elem_t *elem)
+{
+    uct_srd_ep_t *ep = ucs_container_of(elem, uct_srd_ep_t, conn_match);
+
+    return &ep->peer_address;
+}
+
+static ucs_conn_sn_t
+uct_srd_iface_conn_match_get_conn_sn(const ucs_conn_match_elem_t *elem)
+{
+    uct_srd_ep_t *ep = ucs_container_of(elem, uct_srd_ep_t, conn_match);
+    return ep->conn_sn;
+}
+
+static const char *
+uct_srd_iface_conn_match_peer_address_str(const ucs_conn_match_ctx_t *conn_match_ctx,
+                                          const void *address,
+                                          char *str, size_t max_size)
+{
+    uct_srd_iface_t *iface = ucs_container_of(conn_match_ctx,
+                                              uct_srd_iface_t,
+                                              conn_match_ctx);
+    return uct_srd_iface_peer_address_str(iface, address, str, max_size);
+}
+
+static void
+uct_srd_iface_conn_match_purge_cb(ucs_conn_match_ctx_t *conn_match_ctx,
+                                  ucs_conn_match_elem_t *elem)
+{
+    uct_srd_ep_t *ep = ucs_container_of(elem, uct_srd_ep_t, conn_match);
+
+    ep->flags &= ~UCT_SRD_EP_FLAG_ON_CEP;
+    return UCS_CLASS_DELETE_FUNC_NAME(uct_srd_ep_t)(&ep->super.super);
+}
+
+static ucs_conn_match_ops_t conn_match_ops = {
+    .get_address = uct_srd_ep_get_conn_address,
+    .get_conn_sn = uct_srd_iface_conn_match_get_conn_sn,
+    .address_str = uct_srd_iface_conn_match_peer_address_str,
+    .purge_cb    = uct_srd_iface_conn_match_purge_cb
+};
+
 static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
                            const uct_iface_params_t *params,
                            const uct_iface_config_t *tl_config)
@@ -243,12 +416,21 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
         return status;
     }
 
+    ucs_ptr_array_init(&self->eps, "srd_eps");
+
+
+    self->super.config.sl = uct_ib_iface_config_select_sl(&config->super);
+    ucs_conn_match_init(&self->conn_match_ctx,
+                        sizeof(uct_srd_ep_peer_address_t),
+                        UCT_SRD_IFACE_CEP_CONN_SN_MAX, &conn_match_ops);
     return UCS_OK;
 }
 
 static UCS_CLASS_CLEANUP_FUNC(uct_srd_iface_t)
 {
     /* TODO Cleanups here and valgrind checks */
+    ucs_ptr_array_cleanup(&self->eps, 1);
+    ucs_conn_match_cleanup(&self->conn_match_ctx);
 }
 
 UCS_CLASS_DEFINE(uct_srd_iface_t, uct_ib_iface_t);
@@ -347,7 +529,7 @@ uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
     /* GET */
     iface_attr->cap.get.max_bcopy = iface->super.config.seg_size;
     iface_attr->cap.get.min_zcopy = iface->super.config.max_inl_cqe[UCT_IB_DIR_TX] + 1;
-    iface_attr->cap.am.max_zcopy  = max_rdma_size; /* TODO wrapper */
+    iface_attr->cap.get.max_zcopy = max_rdma_size; /* TODO wrapper */
     iface_attr->cap.get.max_iov   = md->dev.max_sq_sge;
 
     if (iface_attr->cap.get.max_bcopy) {
@@ -362,6 +544,7 @@ uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
 static uct_iface_ops_t uct_srd_iface_tl_ops = {
     .ep_flush                 = uct_srd_ep_flush,
     .ep_fence                 = uct_base_ep_fence,
+    .ep_create                = uct_srd_ep_create,
     .ep_destroy               = uct_srd_ep_destroy,
     .iface_flush              = uct_srd_iface_flush,
     .iface_fence              = uct_base_iface_fence,

@@ -37,6 +37,12 @@ AS_IF([test "x$with_efa" != xno],
                       [#include <infiniband/efadv.h>])
 
        AS_IF([test "x$have_efa" = xyes],
+             AC_CHECK_DECLS([EFADV_DEVICE_ATTR_CAPS_RDMA_READ,
+                              IBV_QP_INIT_ATTR_SEND_OPS_FLAGS,
+                              efadv_create_qp_ex],
+                             [AC_DEFINE([HAVE_DECL_EFA_DV_RDMA_READ], [1],
+                                        [HAVE EFA device with RDMA READ support])],
+                             [], [[#include <infiniband/efadv.h>]])
              [AS_IF([test "x$efa_dir" != x/usr],
                     [AC_SUBST(EFA_CFLAGS, ["-I$efa_dir/include"])
                      AC_SUBST(EFA_CPPFLAGS, ["-I$efa_dir/include"])
