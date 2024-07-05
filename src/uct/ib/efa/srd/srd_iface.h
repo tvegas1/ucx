@@ -17,36 +17,13 @@
 BEGIN_C_DECLS
 
 #include "srd_def.h"
+#include "srd_ep.h"
 
 /** @file srd_iface.h */
 
-/* TODO: optimize endpoint memory footprint */
 enum {
-    UCT_SRD_EP_FLAG_DISCONNECTED      = UCS_BIT(0),  /* EP was disconnected */
-    UCT_SRD_EP_FLAG_PRIVATE           = UCS_BIT(1),  /* EP was created as internal */
-    UCT_SRD_EP_FLAG_HAS_PENDING       = UCS_BIT(2),  /* EP has some pending requests */
-    UCT_SRD_EP_FLAG_CONNECTED         = UCS_BIT(3),  /* EP was connected to the peer */
-    UCT_SRD_EP_FLAG_ON_CEP            = UCS_BIT(4),  /* EP was inserted to connection
-                                                        matching context */
-
-    /* ep should piggy-back a credit grant on the next outgoing AM */
-    UCT_SRD_EP_FLAG_FC_GRANT          = UCS_BIT(5),
-
-    /* debug flags */
-    UCT_SRD_EP_FLAG_CREQ_RCVD         = UCS_BIT(6),  /* CREQ message was received */
-    UCT_SRD_EP_FLAG_CREP_RCVD         = UCS_BIT(7),  /* CREP message was received */
-    UCT_SRD_EP_FLAG_CREQ_SENT         = UCS_BIT(8),  /* CREQ message was sent */
-    UCT_SRD_EP_FLAG_CREP_SENT         = UCS_BIT(9),  /* CREP message was sent */
-    UCT_SRD_EP_FLAG_CREQ_NOTSENT      = UCS_BIT(10), /* CREQ message is NOT sent, because
-                                                        connection establishment process
-                                                        is driven by remote side. */
-
-    /* Endpoint is currently executing the pending queue */
-#if UCS_ENABLE_ASSERT
-    UCT_SRD_EP_FLAG_IN_PENDING        = UCS_BIT(11)
-#else
-    UCT_SRD_EP_FLAG_IN_PENDING        = 0
-#endif
+    UCT_SRD_IFACE_STAT_RX_DROP,
+    UCT_SRD_IFACE_STAT_LAST
 };
 
 typedef struct uct_srd_iface_config {
@@ -109,6 +86,8 @@ typedef struct uct_srd_iface {
         uint16_t             fc_wnd_size;
     } config;
 
+
+    UCS_STATS_NODE_DECLARE(stats);
     ucs_conn_match_ctx_t       conn_match_ctx;
 } uct_srd_iface_t;
 
@@ -178,6 +157,8 @@ uct_srd_iface_cep_get_peer_address(uct_srd_iface_t *iface,
                                    int path_index, void *address_p);
 
 
+void uct_srd_ep_process_rx(uct_srd_iface_t *iface, uct_srd_neth_t *neth,
+                           unsigned byte_len, uct_srd_recv_desc_t *desc);
 void uct_srd_dump_packet(uct_base_iface_t *iface, uct_am_trace_type_t type,
                          void *data, size_t length, size_t valid_length,
                          char *buffer, size_t max);
@@ -283,6 +264,16 @@ uct_srd_iface_complete_tx_op(uct_srd_iface_t *iface, uct_srd_ep_t *ep,
 {
         ucs_assert(!(send_op->flags & UCT_SRD_SEND_OP_FLAG_INVALID));
             iface->tx.send_op = ucs_mpool_get(&iface->tx.send_op_mp);
+}
+
+static UCS_F_ALWAYS_INLINE void
+uct_srd_iface_progress_pending(uct_srd_iface_t *iface)
+{
+    if (!uct_srd_iface_can_tx(iface)) {
+        return;
+    }
+
+    ucs_arbiter_dispatch(&iface->tx.pending_q, 1, uct_srd_ep_do_pending, NULL);
 }
 
 static inline uct_ib_address_t* uct_srd_creq_ib_addr(uct_srd_ctl_hdr_t *conn_req)

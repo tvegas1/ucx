@@ -75,11 +75,15 @@ typedef struct uct_srd_neth {
     uct_srd_psn_t        psn;
 } UCS_S_PACKED uct_srd_neth_t;
 
+
+
 typedef struct uct_srd_recv_desc {
     uct_ib_iface_recv_desc_t super;
-
+    struct {
+        ucs_frag_list_elem_t     elem;
+    } ooo;
+    uint32_t                     data_len;
 } uct_srd_recv_desc_t;
-
 
 
 

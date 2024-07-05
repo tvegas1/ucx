@@ -5,6 +5,7 @@
  */
 
 #include "srd_def.h"
+#include "srd_iface.h"
 #include <uct/ib/base/ib_log.h>
 
 

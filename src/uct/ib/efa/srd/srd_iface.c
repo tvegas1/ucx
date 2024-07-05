@@ -180,60 +180,6 @@ uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
 
 
 
-ucs_status_t uct_srd_ep_flush_nolock(uct_srd_iface_t *iface, uct_srd_ep_t *ep,
-                                     uct_completion_t *comp)
-{
-    uct_srd_send_op_t *send_op;
-
-    if (ucs_unlikely(!uct_srd_ep_is_connected(ep))) {
-        /* check for CREQ either being scheduled or sent and waiting for CREP ack */
-        if (uct_srd_ep_ctl_op_check(ep, UCT_SRD_EP_OP_CREQ) ||
-            !ucs_queue_is_empty(&ep->tx.outstanding_q)) {
-
-            return UCS_ERR_NO_RESOURCE; /* connection in progress */
-        }
-
-        return UCS_OK; /* Nothing was ever sent */
-    }
-
-    if (!uct_srd_iface_has_all_tx_resources(iface) ||
-        !uct_srd_ep_has_fc_resources(ep)) {
-        /* iface/ep does not have all tx resources. Prevent reordering
-         * with possible pending operations by not starting the flush.
-         */
-        return UCS_ERR_NO_RESOURCE;
-    }
-
-    if (ucs_queue_is_empty(&ep->tx.outstanding_q)) {
-        /* No outstanding operations */
-        return UCS_OK;
-    }
-
-    /* If the user requested a callback, allocate a dummy send_op which
-     * will be released and will call the user completion callback when
-     * all the sequence numbers posted before it are completed.
-     */
-    if (comp != NULL) {
-        ucs_assert(comp->count > 0);
-
-        /* Add a dummy send op to the outstanding desc queue */
-        send_op = ucs_mpool_get(&iface->tx.send_op_mp);
-        ucs_assert(send_op != NULL);
-
-        send_op->ep           = ep;
-        send_op->flags        = UCT_SRD_SEND_OP_FLAG_FLUSH;
-        send_op->user_comp    = comp;
-        send_op->comp_handler = uct_srd_iface_send_op_ucomp_release;
-
-        ucs_queue_push(&ep->tx.outstanding_q, &send_op->out_queue);
-
-        ucs_trace_data("added dummy flush send op %p with user_comp %p",
-                       send_op, comp);
-    }
-
-    return UCS_INPROGRESS;
-}
-
 ucs_status_t uct_srd_iface_flush(uct_iface_h tl_iface, unsigned flags,
                                  uct_completion_t *comp)
 {
@@ -502,13 +448,75 @@ static ucs_mpool_ops_t uct_srd_send_op_mpool_ops = {
     .obj_cleanup   = NULL
 };
 
+static UCS_F_NOINLINE void
+uct_srd_iface_post_recv_always(uct_srd_iface_t *iface, int max)
+{
+    struct ibv_recv_wr *bad_wr;
+    uct_ib_recv_wr_t *wrs;
+    unsigned count;
+    int ret;
+
+    wrs  = ucs_alloca(sizeof *wrs  * max);
+
+    count = uct_ib_iface_prepare_rx_wrs(&iface->super, &iface->rx.mp, wrs, max);
+    if (count == 0) {
+        return;
+    }
+
+    ret = ibv_post_recv(iface->qp, &wrs[0].ibwr, &bad_wr);
+    if (ret != 0) {
+        ucs_fatal("ibv_post_recv() returned %d: %m", ret);
+    }
+    iface->rx.available -= count;
+}
+
+static UCS_F_ALWAYS_INLINE void
+uct_srd_iface_post_recv(uct_srd_iface_t *iface)
+{
+    unsigned batch = iface->super.config.rx_max_batch;
+
+    if (iface->rx.available < batch) {
+        return;
+    }
+
+    uct_srd_iface_post_recv_always(iface, batch);
+}
+
+static ucs_status_t
+uct_srd_iface_init_fc_thresh(uct_srd_iface_t *iface,
+                             uct_srd_iface_config_t *config)
+{
+    iface->config.fc_wnd_size = ucs_min(config->fc.wnd_size,
+                                        config->super.rx.queue_len);
+
+    if (config->fc.hard_thresh >= 1) {
+        ucs_error("The factor for hard FC threshold should be less than 1");
+        return UCS_ERR_INVALID_PARAM;
+    }
+
+    iface->config.fc_hard_thresh = iface->config.fc_wnd_size *
+        config->fc.hard_thresh;
+
+    if ((config->fc.soft_thresh <= config->fc.hard_thresh) ||
+        (config->fc.soft_thresh >= 1)) {
+        ucs_error("The factor for soft FC threshold should be bigger"
+                  " than FC_HARD_THRESH value and less than 1 (s=%f, h=%f)",
+                  config->fc.soft_thresh, config->fc.hard_thresh);
+        return UCS_ERR_INVALID_PARAM;
+    }
+
+    iface->config.fc_soft_thresh = iface->config.fc_wnd_size *
+        config->fc.soft_thresh;
+    return UCS_OK;
+}
+
 static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
                            const uct_iface_params_t *params,
                            const uct_iface_config_t *tl_config)
 {
     uct_srd_iface_config_t *config      = ucs_derived_of(tl_config,
                                                     uct_srd_iface_config_t);
-//    uct_ib_efadv_md_t *efa_md           = ucs_derived_of(md, uct_ib_efadv_md_t);
+    uct_ib_efadv_md_t *efa_md           = ucs_derived_of(md, uct_ib_efadv_md_t);
     uct_ib_iface_init_attr_t init_attr;
     ucs_status_t status;
     int mtu;
@@ -563,6 +571,18 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
     ucs_arbiter_init(&self->tx.pending_q);
     ucs_ptr_array_init(&self->eps, "srd_eps");
 
+    status = uct_ib_iface_recv_mpool_init(&self->super, &config->super, params,
+                                          "srd_recv_desc", &self->rx.mp);
+    if (status != UCS_OK) {
+        goto err_qp;
+    }
+
+    self->rx.quota =
+        self->rx.available - ucs_min(self->rx.available,
+                                     config->ud_common.rx_queue_len_init);
+    self->rx.available -= self->rx.quota;
+
+    ucs_mpool_grow(&self->rx.mp, self->rx.available);
 
     memset(&self->tx.wr_inl, 0, sizeof(self->tx.wr_inl));
     self->tx.wr_inl.opcode               = IBV_WR_SEND;
@@ -593,7 +613,7 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
                                   self->config.tx_qp_len,
                                   uct_srd_iface_send_desc_init, "srd_send_desc");
     if (status != UCS_OK) {
-        goto err_rx_mpool;
+        goto err_tx_desc_mpool;
     }
 
     self->super.config.sl = uct_ib_iface_config_select_sl(&config->super);
@@ -601,14 +621,29 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
                         sizeof(uct_srd_ep_peer_address_t),
                         UCT_SRD_IFACE_CEP_CONN_SN_MAX, &conn_match_ops);
 
+    self->config.max_send_sge = uct_ib_efadv_max_sq_sge(&efa_md->efadv);
+
+    self->config.max_get_zcopy = efa_md->efadv.attr.max_rdma_size;
+
+    /* Check and set FC parameters */
+    status = uct_srd_iface_init_fc_thresh(self, config);
+    if (status != UCS_OK) {
+        goto err_rx_mpool;
+    }
+
+    while (self->rx.available >= self->super.config.rx_max_batch) {
+        uct_srd_iface_post_recv(self);
+    }
+
     return UCS_OK;
 
-err_tx_send_op_mpool:
-    ucs_mpool_cleanup(&self->tx.send_op_mp, 1);
-err_tx_desc_mpool:
-    ucs_mpool_cleanup(&self->tx.desc_mp, 1);
+    /* TODO Fix goto labels */
 err_rx_mpool:
     ucs_mpool_cleanup(&self->rx.mp, 1);
+err_tx_desc_mpool:
+    ucs_mpool_cleanup(&self->tx.desc_mp, 1);
+err_tx_send_op_mpool:
+    ucs_mpool_cleanup(&self->tx.send_op_mp, 1);
 err_qp:
     uct_ib_destroy_qp(self->qp);
     ucs_ptr_array_cleanup(&self->eps, 1);
@@ -641,44 +676,112 @@ ucs_config_field_t uct_srd_iface_config_table[] = {
      ucs_offsetof(uct_srd_iface_config_t, ud_common),
      UCS_CONFIG_TYPE_TABLE(uct_ud_iface_common_config_table)},
 
+    {"FC_WND_SIZE", "512",
+        "The size of flow control window per endpoint. limits the number of AM\n"
+            "which can be sent w/o acknowledgment.",
+        ucs_offsetof(uct_srd_iface_config_t, fc.wnd_size), UCS_CONFIG_TYPE_UINT},
+
+    {"FC_SOFT_THRESH", "0.5",
+        "Threshold for sending soft request for FC credits to the peer. This value\n"
+            "refers to the percentage of the FC_WND_SIZE value. (must be > HARD_THRESH and < 1)",
+        ucs_offsetof(uct_srd_iface_config_t, fc.soft_thresh), UCS_CONFIG_TYPE_DOUBLE},
+
+    {"FC_HARD_THRESH", "0.25",
+        "Threshold for sending hard request for FC credits to the peer. This value\n"
+            "refers to the percentage of the FC_WND_SIZE value. (must be > 0 and < 1)",
+        ucs_offsetof(uct_srd_iface_config_t, fc.hard_thresh), UCS_CONFIG_TYPE_DOUBLE},
+
     {NULL}
 };
 
+
 static void uct_srd_iface_progress_enable(uct_iface_h tl_iface, unsigned flags)
 {
+    uct_srd_iface_t *iface = ucs_derived_of(tl_iface, uct_srd_iface_t);
+
+    if (flags & UCT_PROGRESS_RECV) {
+        iface->rx.available += iface->rx.quota;
+        iface->rx.quota      = 0;
+        /* let progress post the missing receives */
+    }
+
+    uct_base_iface_progress_enable(tl_iface, flags);
+}
+
+
+static void uct_srd_iface_send_completion(uct_srd_iface_t *iface,
+                                          uct_srd_send_op_t *send_op)
+{
+    ucs_assert(!(send_op->flags & UCT_SRD_SEND_OP_FLAG_INVALID));
+    uct_srd_ep_send_completion(send_op);
+}
+
+
+static UCS_F_ALWAYS_INLINE unsigned
+uct_srd_iface_poll_rx(uct_srd_iface_t *iface)
+{
+    unsigned num_wcs = iface->super.config.rx_max_poll;
+    struct ibv_wc wc[num_wcs];
+    ucs_status_t status;
+    void *packet;
+    int i;
+
+    status = uct_ib_poll_cq(iface->super.cq[UCT_IB_DIR_RX], &num_wcs, wc);
+    if (status != UCS_OK) {
+        num_wcs = 0;
+        goto out;
+    }
+
+    UCT_IB_IFACE_VERBS_FOREACH_RXWQE(&iface->super, i, packet, wc, num_wcs) {
+        uct_ib_log_recv_completion(&iface->super, &wc[i], packet,
+                                   wc[i].byte_len, uct_srd_dump_packet);
+        uct_srd_ep_process_rx(iface, (uct_srd_neth_t *)packet, wc[i].byte_len,
+                              (uct_srd_recv_desc_t *)wc[i].wr_id);
+    }
+    iface->rx.available += num_wcs;
+out:
+    uct_srd_iface_post_recv(iface);
+    return num_wcs;
+}
+
+static UCS_F_ALWAYS_INLINE unsigned
+uct_srd_iface_poll_tx(uct_srd_iface_t *iface)
+{
+    unsigned num_wcs = iface->super.config.tx_max_poll;
+    struct ibv_wc wc[num_wcs];
+    ucs_status_t status;
+    int i;
+
+    status = uct_ib_poll_cq(iface->super.cq[UCT_IB_DIR_TX], &num_wcs, wc);
+    if (status != UCS_OK) {
+        num_wcs = 0;
+    }
+
+    for (i = 0; i < num_wcs; i++) {
+        if (ucs_unlikely(wc[i].status != IBV_WC_SUCCESS)) {
+            UCT_IB_IFACE_VERBS_COMPLETION_ERR("send", &iface->super, i, wc);
+            continue;
+        }
+
+        uct_srd_iface_send_completion(iface, (uct_srd_send_op_t*)wc[i].wr_id);
+    }
+
+    iface->tx.available += num_wcs;
+    return num_wcs;
 }
 
 static unsigned uct_srd_iface_progress(uct_iface_h tl_iface)
 {
-    return 0;
-}
+    uct_srd_iface_t *iface = ucs_derived_of(tl_iface, uct_srd_iface_t);
+    unsigned count;
 
-ucs_status_t
-uct_srd_iface_init_fc_thresh(uct_srd_iface_t *iface,
-                             uct_srd_iface_config_t *config)
-{
-    iface->config.fc_wnd_size = ucs_min(config->fc.wnd_size,
-                                        config->super.rx.queue_len);
-
-    if (config->fc.hard_thresh >= 1) {
-        ucs_error("The factor for hard FC threshold should be less than 1");
-        return UCS_ERR_INVALID_PARAM;
+    count = uct_srd_iface_poll_rx(iface);
+    if (count == 0) {
+        count = uct_srd_iface_poll_tx(iface);
     }
 
-    iface->config.fc_hard_thresh = iface->config.fc_wnd_size *
-        config->fc.hard_thresh;
-
-    if ((config->fc.soft_thresh <= config->fc.hard_thresh) ||
-        (config->fc.soft_thresh >= 1)) {
-        ucs_error("The factor for soft FC threshold should be bigger"
-                  " than FC_HARD_THRESH value and less than 1 (s=%f, h=%f)",
-                  config->fc.soft_thresh, config->fc.hard_thresh);
-        return UCS_ERR_INVALID_PARAM;
-    }
-
-    iface->config.fc_soft_thresh = iface->config.fc_wnd_size *
-        config->fc.soft_thresh;
-    return UCS_OK;
+    uct_srd_iface_progress_pending(iface);
+    return count;
 }
 
 ucs_status_t
@@ -731,17 +834,21 @@ uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
         max_rdma_size = 2 * UCS_MBYTE;
     }
 
+        /* AM */
+    iface_attr->cap.am.max_short = uct_ib_iface_hdr_size(iface->config.max_inline,
+                                                         sizeof(uct_srd_neth_t));
     iface_attr->cap.am.max_bcopy = iface->super.config.seg_size - sizeof(uct_srd_neth_t);
     iface_attr->cap.am.min_zcopy = 0;
-    iface_attr->cap.am.max_zcopy = max_rdma_size;
-    iface_attr->cap.am.max_iov   = md->dev.max_sq_sge;
+    iface_attr->cap.am.max_zcopy = iface->super.config.seg_size - sizeof(uct_srd_neth_t);
+    iface_attr->cap.am.max_iov   = iface->config.max_send_sge;
     iface_attr->cap.am.max_hdr   = uct_ib_iface_hdr_size(iface->super.config.seg_size,
                                                          sizeof(uct_srd_neth_t));
+    iface_attr->cap.tag.rndv.max_zcopy = max_rdma_size;
 
     /* GET */
     iface_attr->cap.get.max_bcopy = iface->super.config.seg_size;
     iface_attr->cap.get.min_zcopy = iface->super.config.max_inl_cqe[UCT_IB_DIR_TX] + 1;
-    iface_attr->cap.get.max_zcopy = max_rdma_size; /* TODO wrapper */
+    iface_attr->cap.get.max_zcopy = iface->config.max_get_zcopy;
     iface_attr->cap.get.max_iov   = md->dev.max_sq_sge;
 
     if (iface_attr->cap.get.max_bcopy) {
@@ -759,6 +866,8 @@ static uct_iface_ops_t uct_srd_iface_tl_ops = {
     .ep_create                = uct_srd_ep_create,
     .ep_destroy               = uct_srd_ep_destroy,
     .ep_am_bcopy              = uct_srd_ep_am_bcopy,
+    .ep_am_zcopy              = uct_srd_ep_am_zcopy,
+    .ep_get_zcopy             = uct_srd_ep_get_zcopy,
     .ep_am_short              = uct_srd_ep_am_short,
     .ep_pending_add           = uct_srd_ep_pending_add,
     .ep_pending_purge         = uct_srd_ep_pending_purge,
