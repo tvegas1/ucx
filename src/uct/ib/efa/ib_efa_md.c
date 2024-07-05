@@ -63,8 +63,6 @@ static ucs_status_t uct_ib_efa_md_open(struct ibv_device *ibv_device,
         goto err_md_free;
     }
 
-    uct_ib_device_configure(&md->super.dev);
-
     md->super.dev.mr_access_flags       = uct_ib_efadv_access_flags(&md->efadv);
     md->super.dev.max_sq_sge            = md->efadv.attr.max_sq_sge;
     md->super.dev.max_inline_data       = md->efadv.attr.inline_buf_size;

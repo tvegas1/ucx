@@ -37,15 +37,84 @@ enum {
     UCT_SRD_PACKET_AM_ID_SHIFT     = 27,
 };
 
+
+enum {
+    UCT_SRD_PACKET_FLAG_AM        = UCS_BIT(24),
+    UCT_SRD_PACKET_FLAG_PUT       = UCS_BIT(25),
+    UCT_SRD_PACKET_FLAG_CTLX      = UCS_BIT(26),
+
+    /* Pure credit grant: empty control message indicating credit grant */
+    UCT_SRD_PACKET_FLAG_FC_PGRANT = UCS_BIT(27),
+
+    UCT_SRD_PACKET_AM_ID_MASK     = UCS_MASK(UCT_SRD_PACKET_AM_ID_SHIFT),
+    UCT_SRD_PACKET_DEST_ID_MASK   = UCS_MASK(UCT_SRD_PACKET_DEST_ID_SHIFT),
+};
+
+
+/* Used for the fc member in uct_srd_neth */
+enum {
+    /* Piggy-backed credit Grant: ep should update its FC wnd as soon as iteceives AM with
+     * this bit set. Can be bundled with either soft or hard request bits */
+    UCT_SRD_PACKET_FLAG_FC_GRANT = UCS_BIT(0),
+
+    /* Soft Credit Request: indicates that receiving peer needs to piggy-back credits
+     * grant to counter AM (if any). Can be bundled with
+     * UCT_SRD_PACKET_FLAG_FC_GRANT  */
+    UCT_SRD_PACKET_FLAG_FC_SREQ  = UCS_BIT(1),
+
+    /* Hard Credit Request: indicates that sender wnd is close to be exhausted.
+     * The receiving peer must send a pure fc grant control message as soon as it
+     * receives AM  with this bit set. Can be bundled with
+     * UCT_SRD_PACKET_FLAG_FC_GRANT */
+    UCT_SRD_PACKET_FLAG_FC_HREQ  = UCS_BIT(2),
+};
+
 typedef struct uct_srd_neth {
     uint32_t             packet_type;
     uint8_t              fc;
+    uct_srd_psn_t        psn;
 } UCS_S_PACKED uct_srd_neth_t;
 
 typedef struct uct_srd_recv_desc {
     uct_ib_iface_recv_desc_t super;
 
 } uct_srd_recv_desc_t;
+
+
+
+
+enum {
+    UCT_SRD_SEND_OP_FLAG_FLUSH   = UCS_BIT(0), /* dummy send op for flush */
+    UCT_SRD_SEND_OP_FLAG_RMA     = UCS_BIT(1), /* send op is for an RMA op */
+    UCT_SRD_SEND_OP_FLAG_PURGED  = UCS_BIT(2), /* send op has been purged */
+
+#if UCS_ENABLE_ASSERT
+    UCT_SRD_SEND_OP_FLAG_INVALID = UCS_BIT(7), /* send op has been released */
+#else
+    UCT_SRD_SEND_OP_FLAG_INVALID = 0,
+#endif
+};
+
+
+enum {
+    UCT_SRD_PACKET_CREQ = 1,
+    UCT_SRD_PACKET_CREP = 2,
+};
+
+typedef struct uct_srd_ep_peer_address {
+    uint32_t                          dest_qpn;
+    struct ibv_ah                     *ah;
+} uct_srd_ep_peer_address_t;
+
+typedef struct uct_srd_peer_name {
+    char name[16];
+    int  pid;
+} uct_srd_peer_name_t;
+
+typedef struct uct_srd_iface_addr {
+    uct_ib_uint24_t     qp_num;
+} uct_srd_iface_addr_t;
+
 
 
 typedef struct uct_srd_am_short_hdr {
@@ -58,6 +127,27 @@ typedef struct uct_srd_put_hdr {
     uct_srd_neth_t neth;
     uint64_t       rva;
 } UCS_S_PACKED uct_srd_put_hdr_t;
+
+typedef struct uct_srd_ep_addr {
+    uct_srd_iface_addr_t iface_addr;
+    uct_ib_uint24_t      ep_id;
+} uct_srd_ep_addr_t;
+
+struct uct_srd_ctl_hdr {
+    uint8_t                         type;
+    union {
+        struct {
+            uct_srd_ep_addr_t       ep_addr;
+            uct_srd_ep_conn_sn_t    conn_sn;
+            uint8_t                 path_index;
+        } conn_req;
+        struct {
+            uint32_t                src_ep_id;
+        } conn_rep;
+    };
+    uct_srd_peer_name_t             peer;
+    /* For CREQ packet, IB address follows */
+} UCS_S_PACKED;
 
 typedef void (*uct_srd_send_op_comp_handler_t)(uct_srd_send_op_t *send_op);
 
@@ -98,13 +188,49 @@ struct uct_srd_send_desc {
     uint32_t                         lkey;
 } UCS_S_PACKED UCS_V_ALIGNED(UCT_SRD_SEND_DESC_ALIGN);
 
-typedef struct uct_srd_iface_addr {
-    uct_ib_uint24_t     qp_num;
-} uct_srd_iface_addr_t;
 
-typedef struct uct_srd_ep_addr {
-    uct_srd_iface_addr_t iface_addr;
-    uct_ib_uint24_t      ep_id;
-} uct_srd_ep_addr_t;
 
+static inline uint32_t uct_srd_neth_get_dest_id(uct_srd_neth_t *neth)
+{
+        return neth->packet_type & UCT_SRD_PACKET_DEST_ID_MASK;
+}
+
+static inline void uct_srd_neth_set_dest_id(uct_srd_neth_t *neth, uint32_t id)
+{
+        neth->packet_type |= id;
+}
+
+static inline uint8_t uct_srd_neth_get_am_id(uct_srd_neth_t *neth)
+{
+        return neth->packet_type >> UCT_SRD_PACKET_AM_ID_SHIFT;
+}
+
+static inline void uct_srd_neth_set_am_id(uct_srd_neth_t *neth, uint8_t id)
+{
+        neth->packet_type |= (id << UCT_SRD_PACKET_AM_ID_SHIFT);
+}
+
+static inline uct_srd_neth_t*
+uct_srd_send_desc_neth(uct_srd_send_desc_t *desc)
+{
+        return (uct_srd_neth_t*)(desc + 1);
+}
+
+static inline uint32_t
+uct_srd_neth_is_am(uct_srd_neth_t *neth)
+{
+        return neth->packet_type & UCT_SRD_PACKET_FLAG_AM;
+}
+
+static inline uint32_t
+uct_srd_neth_is_pure_grant(uct_srd_neth_t *neth)
+{
+        return neth->packet_type & UCT_SRD_PACKET_FLAG_FC_PGRANT;
+}
+
+static inline uint32_t
+uct_srd_neth_is_put(uct_srd_neth_t *neth)
+{
+        return neth->packet_type & UCT_SRD_PACKET_FLAG_PUT;
+}
 #endif

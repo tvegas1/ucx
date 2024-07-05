@@ -18,12 +18,14 @@ libuct_ib_efa_la_LIBADD   = $(top_builddir)/src/ucs/libucs.la \
 libuct_ib_efa_la_SOURCES  = ib_efa.c \
 							ib_efa_md.c \
 							srd/srd_iface.c \
-							srd/srd_ep.c
+							srd/srd_ep.c \
+							srd/srd_log.c
 
 noinst_HEADERS            = ib_efa.h \
 							srd/srd_def.h \
 							srd/srd_iface.h \
-							srd/srd_ep.h
+							srd/srd_ep.h \
+							srd/srd_inl.h
 
 PKG_CONFIG_NAME=ib-efa
 
