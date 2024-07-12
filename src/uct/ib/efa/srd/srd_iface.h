@@ -9,6 +9,7 @@
 
 #include <uct/ib/base/ib_iface.h>
 #include <uct/ib/ud/base/ud_iface_common.h>
+#include <uct/ib/ud/verbs/ud_verbs.h>
 
 #include <ucs/datastruct/ptr_array.h>
 #include <ucs/datastruct/conn_match.h>
@@ -42,19 +43,12 @@ typedef struct uct_srd_iface_config {
 } uct_srd_iface_config_t;
 
 typedef struct uct_srd_iface {
-    uct_ib_iface_t             super;
-    struct ibv_qp              *qp;
-    ucs_ptr_array_t            eps;
+    uct_ud_verbs_iface_t       super;
 
 #ifdef HAVE_DECL_EFA_DV_RDMA_READ
     struct ibv_qp_ex           *qp_ex;
 #endif
 
-    struct {
-        ucs_mpool_t            mp;
-        unsigned               available;
-        unsigned               quota;
-    } rx;
     struct {
         uct_srd_am_short_hdr_t am_inl_hdr;
         uct_srd_put_hdr_t      put_hdr;     /* to emulate put with send/recv */
@@ -85,10 +79,6 @@ typedef struct uct_srd_iface {
 
         uint16_t             fc_wnd_size;
     } config;
-
-
-    UCS_STATS_NODE_DECLARE(stats);
-    ucs_conn_match_ctx_t       conn_match_ctx;
 } uct_srd_iface_t;
 
 struct uct_srd_ep;

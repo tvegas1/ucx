@@ -90,7 +90,7 @@ static UCS_F_ALWAYS_INLINE void
 uct_srd_zcopy_op_set_comp(uct_srd_send_op_t *send_op, uct_completion_t *comp)
 {
     if (comp == NULL) {
-        send_op->comp_handler = uct_srd_iface_send_op_release;
+        send_op->comp_handler = NULL; //uct_srd_iface_send_op_release;
     } else {
         send_op->comp_handler = uct_srd_iface_send_op_ucomp_release;
         send_op->user_comp = comp;
@@ -102,14 +102,14 @@ uct_srd_post_send(uct_srd_iface_t *iface, uct_srd_ep_t *ep,
                   struct ibv_send_wr *wr, unsigned send_flags,
                   unsigned max_log_sge)
 {
-    struct ibv_send_wr *bad_wr;
+    //struct ibv_send_wr *bad_wr;
     int ret;
 
     wr->wr.ud.remote_qpn = ep->peer_address.dest_qpn;
     wr->wr.ud.ah         = ep->peer_address.ah;
     wr->send_flags       = send_flags;
 
-    ret = ibv_post_send(iface->qp, wr, &bad_wr);
+    //ret = ibv_post_send(iface->qp, wr, &bad_wr);
     if (ret != 0) {
         ucs_fatal("ibv_post_send() returned %d (%m)", ret);
     }
@@ -117,8 +117,9 @@ uct_srd_post_send(uct_srd_iface_t *iface, uct_srd_ep_t *ep,
     iface->tx.available--;
     ep->tx.psn++;
 
-    uct_ib_log_post_send(&iface->super, iface->qp, wr, max_log_sge,
+    /*uct_ib_log_post_send(&iface->super, iface->qp, wr, max_log_sge,
                          uct_srd_dump_packet);
+                         */
 }
 
 static UCS_F_ALWAYS_INLINE void

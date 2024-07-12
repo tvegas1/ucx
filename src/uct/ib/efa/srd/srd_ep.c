@@ -101,7 +101,7 @@ static void uct_srd_ep_purge(uct_srd_ep_t *ep, ucs_status_t status)
     }
 }
 
-static ucs_status_t uct_srd_ep_disconnect_from_iface(uct_ep_h tl_ep)
+ucs_status_t uct_srd_ep_disconnect_from_iface(uct_ep_h tl_ep)
 {
     uct_srd_ep_t *ep = ucs_derived_of(tl_ep, uct_srd_ep_t);
 
@@ -158,12 +158,14 @@ uct_srd_ep_fc_get_request(uct_srd_ep_t *ep, uct_srd_iface_t *iface)
             UCT_SRD_PACKET_FLAG_FC_SREQ: 0;
 }
 
+#if 0
 static void uct_srd_peer_name(uct_srd_peer_name_t *peer)
 {
     ucs_strncpy_zero(peer->name, ucs_get_host_name(), sizeof(peer->name));
     peer->pid = getpid();
 }
 
+#endif
 static void uct_srd_ep_set_state(uct_srd_ep_t *ep, uint32_t state)
 {
     ep->flags |= state;
@@ -215,7 +217,7 @@ static UCS_CLASS_INIT_FUNC(uct_srd_ep_t, const uct_ep_params_t* params)
     uct_srd_iface_t *iface = ucs_derived_of(params->iface, uct_srd_iface_t);
 
     memset(self, 0, sizeof(*self));
-    UCS_CLASS_CALL_SUPER_INIT(uct_base_ep_t, &iface->super.super);
+    UCS_CLASS_CALL_SUPER_INIT(uct_base_ep_t, &iface->super.super.super.super);
 
     self->dest_ep_id         = UCT_SRD_EP_NULL_ID;
     self->path_index         = UCT_EP_PARAMS_GET_PATH_INDEX(params);
@@ -465,7 +467,7 @@ static uct_srd_ep_t *uct_srd_ep_create_passive(uct_srd_iface_t *iface, uct_srd_c
 
     /* create new endpoint */
     params.field_mask = UCT_EP_PARAM_FIELD_IFACE;
-    params.iface      = &iface->super.super.super;
+    params.iface      = &iface->super.super.super.super.super;
     status            = uct_ep_create(&params, &ep_h);
     ucs_assert_always(status == UCS_OK);
     ep = ucs_derived_of(ep_h, uct_srd_ep_t);
@@ -485,7 +487,7 @@ static uct_srd_ep_t *uct_srd_ep_create_passive(uct_srd_iface_t *iface, uct_srd_c
     return ep;
 }
 
-static uct_srd_ep_t *uct_srd_ep_rx_creq(uct_srd_iface_t *iface,
+uct_srd_ep_t *uct_srd_ep_rx_creq(uct_srd_iface_t *iface,
                                         uct_srd_neth_t *neth)
 {
     uct_srd_ctl_hdr_t *ctl = (uct_srd_ctl_hdr_t *)(neth + 1);
@@ -582,7 +584,7 @@ uct_srd_ep_process_rx_desc(uct_srd_iface_t *iface, uct_srd_ep_t *ep,
 {
     if (ucs_likely(uct_srd_neth_is_am(neth))) {
         uct_srd_ep_fc_handler(iface, ep, neth);
-        uct_ib_iface_invoke_am_desc(&iface->super, uct_srd_neth_get_am_id(neth),
+        uct_ib_iface_invoke_am_desc(&iface->super.super.super, uct_srd_neth_get_am_id(neth),
                                     neth + 1, desc->data_len, &desc->super);
     } else if (uct_srd_neth_is_put(neth)) {
         uct_srd_ep_fc_handler(iface, ep, neth);
@@ -599,6 +601,7 @@ uct_srd_ep_process_rx_desc(uct_srd_iface_t *iface, uct_srd_ep_t *ep,
     }
 }
 
+#if 0
 void uct_srd_ep_process_rx(uct_srd_iface_t *iface, uct_srd_neth_t *neth,
                            unsigned byte_len, uct_srd_recv_desc_t *desc)
 {
@@ -664,7 +667,9 @@ pull_ooo_pkts:
 out:
     ucs_mpool_put(desc);
 }
+#endif
 
+#if 0
 static ucs_status_t uct_srd_ep_connect_to_iface(uct_srd_ep_t *ep,
                                                 const uct_ib_address_t *ib_addr,
                                                 const uct_srd_iface_addr_t *if_addr)
@@ -1320,3 +1325,4 @@ ucs_status_t uct_srd_ep_get_zcopy(uct_ep_h tl_ep, const uct_iov_t *iov,
 void uct_srd_ep_destroy(uct_ep_h ep)
 {
 }
+#endif
