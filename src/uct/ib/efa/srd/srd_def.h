@@ -155,6 +155,7 @@ struct uct_srd_ctl_hdr {
 
 typedef void (*uct_srd_send_op_comp_handler_t)(uct_srd_send_op_t *send_op);
 
+/* TODO VEG: uct_srd_send_op derives directly from RC uct_rc_iface_send_op */
 /*
  * Send descriptor
  * - used for any send op (including RDMA READ) that

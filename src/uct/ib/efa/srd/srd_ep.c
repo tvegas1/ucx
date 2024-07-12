@@ -409,6 +409,7 @@ out:
     return status;
 }
 
+/* TODO: VEG This might be different from RC implementation */
 static void inline
 uct_srd_ep_fc_handler(uct_srd_iface_t *iface, uct_srd_ep_t *ep,
                       uct_srd_neth_t *neth)

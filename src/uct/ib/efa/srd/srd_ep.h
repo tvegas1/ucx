@@ -97,15 +97,8 @@ enum {
 
 typedef struct uct_srd_ep {
     uct_base_ep_t                     super;
-
-    ucs_conn_match_elem_t             conn_match;
-    uct_srd_ep_conn_sn_t              conn_sn;
-
-    uint16_t                          flags;
     uint32_t                          ep_id;
     uint32_t                          dest_ep_id;
-    uint8_t                           path_index;
-    uct_srd_ep_peer_address_t         peer_address;
 
     struct {
         int16_t                       fc_wnd; /* Not more than fc_wnd active messages
@@ -125,7 +118,14 @@ typedef struct uct_srd_ep {
     } rx;
 
     /* connection sequence number. assigned in connect_to_iface() */
+    ucs_conn_match_elem_t             conn_match;
+    uct_srd_ep_conn_sn_t              conn_sn;
+
+    uint16_t                          flags;
     uint8_t                           rx_creq_count;
+    uint8_t                           path_index;
+    uct_srd_ep_peer_address_t         peer_address;
+
 
 #if ENABLE_DEBUG_DATA
     uct_srd_peer_name_t               peer;

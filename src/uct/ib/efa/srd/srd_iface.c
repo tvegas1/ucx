@@ -20,6 +20,7 @@
 static uct_iface_ops_t uct_srd_iface_tl_ops;
 
 
+/*TODO VEG: UD copy paste */
 uct_srd_ep_t *uct_srd_iface_cep_get_ep(uct_srd_iface_t *iface,
                                        const uct_ib_address_t *ib_addr,
                                        const uct_srd_iface_addr_t *if_addr,
@@ -54,6 +55,7 @@ uct_srd_ep_t *uct_srd_iface_cep_get_ep(uct_srd_iface_t *iface,
     return ep;
 }
 
+/*TODO VEG: UD copy paste */
 static UCS_F_ALWAYS_INLINE ucs_conn_match_queue_type_t
 uct_srd_iface_cep_ep_queue_type(uct_srd_ep_t *ep)
 {
@@ -63,6 +65,7 @@ uct_srd_iface_cep_ep_queue_type(uct_srd_ep_t *ep)
 }
 
 
+/*TODO VEG: UD copy paste */
 ucs_status_t
 uct_srd_iface_unpack_peer_address(uct_srd_iface_t *iface,
                                   const uct_ib_address_t *ib_addr,
@@ -91,6 +94,7 @@ uct_srd_iface_unpack_peer_address(uct_srd_iface_t *iface,
     return UCS_OK;
 }
 
+/* TODO VEG: UD copy paste */
 void *
 uct_srd_iface_cep_get_peer_address(uct_srd_iface_t *iface,
                                    const uct_ib_address_t *ib_addr,
@@ -108,6 +112,7 @@ uct_srd_iface_cep_get_peer_address(uct_srd_iface_t *iface,
     return address_p;
 }
 
+/* TODO VEG: UD copy paste */
 void uct_srd_iface_cep_insert_ep(uct_srd_iface_t *iface,
                                  const uct_ib_address_t *ib_addr,
                                  const uct_srd_iface_addr_t *if_addr,
@@ -128,6 +133,7 @@ void uct_srd_iface_cep_insert_ep(uct_srd_iface_t *iface,
     ep->flags |= UCT_SRD_EP_FLAG_ON_CEP;
 }
 
+/* TODO VEG: UD copy paste */
 ucs_status_t
 uct_srd_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *iface_addr)
 {
@@ -164,6 +170,7 @@ static uct_ib_iface_ops_t uct_srd_iface_ops = {
         ucs_empty_function_do_assert
 };
 
+/* TODO VEG: Main TL gating function */
 static ucs_status_t
 uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
                          unsigned *num_tl_devices_p)
@@ -179,7 +186,7 @@ uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
 }
 
 
-
+/* TODO: VEG uct_srd_iface_flush very probably the same might have to differ from UD */
 ucs_status_t uct_srd_iface_flush(uct_iface_h tl_iface, unsigned flags,
                                  uct_completion_t *comp)
 {
@@ -212,11 +219,14 @@ ucs_status_t uct_srd_iface_flush(uct_iface_h tl_iface, unsigned flags,
     return UCS_OK;
 }
 
+
+/*TODO VEG: UD copy paste */
 void uct_srd_iface_add_ep(uct_srd_iface_t *iface, uct_srd_ep_t *ep)
 {
     ep->ep_id = ucs_ptr_array_insert(&iface->eps, ep);
 }
 
+/*TODO VEG: UD copy paste */
 void uct_srd_iface_remove_ep(uct_srd_iface_t *iface, uct_srd_ep_t *ep)
 {
     if (ep->ep_id != UCT_SRD_EP_NULL_ID) {
@@ -225,6 +235,7 @@ void uct_srd_iface_remove_ep(uct_srd_iface_t *iface, uct_srd_ep_t *ep)
     }
 }
 
+/*TODO VEG: Partially differs fromm UD: efadv_create_driver_qp() */
 static ucs_status_t
 uct_srd_iface_create_qp(uct_srd_iface_t *iface,
                         const uct_srd_iface_config_t *config)
@@ -345,7 +356,7 @@ err_destroy_qp:
     return UCS_ERR_INVALID_PARAM;
 }
 
-
+/*TODO VEG: UD copy paste */
 static const char*
 uct_srd_iface_peer_address_str(const uct_srd_iface_t *iface,
                                const void *address,
@@ -359,6 +370,7 @@ uct_srd_iface_peer_address_str(const uct_srd_iface_t *iface,
     return str;
 }
 
+/*TODO VEG: UD copy paste */
 static const void *
 uct_srd_ep_get_conn_address(const ucs_conn_match_elem_t *elem)
 {
@@ -367,6 +379,7 @@ uct_srd_ep_get_conn_address(const ucs_conn_match_elem_t *elem)
     return &ep->peer_address;
 }
 
+/*TODO VEG: UD copy paste */
 static ucs_conn_sn_t
 uct_srd_iface_conn_match_get_conn_sn(const ucs_conn_match_elem_t *elem)
 {
@@ -374,6 +387,7 @@ uct_srd_iface_conn_match_get_conn_sn(const ucs_conn_match_elem_t *elem)
     return ep->conn_sn;
 }
 
+/*TODO VEG: UD copy paste */
 static const char *
 uct_srd_iface_conn_match_peer_address_str(const ucs_conn_match_ctx_t *conn_match_ctx,
                                           const void *address,
@@ -385,6 +399,7 @@ uct_srd_iface_conn_match_peer_address_str(const ucs_conn_match_ctx_t *conn_match
     return uct_srd_iface_peer_address_str(iface, address, str, max_size);
 }
 
+/*TODO VEG: UD copy paste */
 static void
 uct_srd_iface_conn_match_purge_cb(ucs_conn_match_ctx_t *conn_match_ctx,
                                   ucs_conn_match_elem_t *elem)
@@ -402,11 +417,15 @@ static ucs_conn_match_ops_t conn_match_ops = {
     .purge_cb    = uct_srd_iface_conn_match_purge_cb
 };
 
+
+/*TODO VEG: UD copy paste */
 void uct_srd_iface_release_recv_desc(uct_recv_desc_t *self, void *desc)
 {
     uct_ib_iface_release_desc(self, desc);
 }
 
+/* TODO VEG: uct_srd_send_op_t derives from RC */
+/* TODO VEG: RC */
 void uct_srd_iface_send_op_release(uct_srd_send_op_t *send_op)
 {
     ucs_assert(!(send_op->flags & UCT_SRD_SEND_OP_FLAG_INVALID));
@@ -424,6 +443,7 @@ void uct_srd_iface_send_op_ucomp_release(uct_srd_send_op_t *send_op)
 }
 
 
+/* TODO VEG: uct_srd_send_op_t derives from RC */
 static void uct_srd_iface_send_op_init(ucs_mpool_t *mp, void *obj, void *chunk)
 {
     uct_srd_send_op_t *send_op = obj;
@@ -431,6 +451,7 @@ static void uct_srd_iface_send_op_init(ucs_mpool_t *mp, void *obj, void *chunk)
     send_op->flags = UCT_SRD_SEND_OP_FLAG_INVALID;
 }
 
+/* TODO VEG: uct_srd_send_op_t derives from RC */
 static void uct_srd_iface_send_desc_init(uct_iface_h tl_iface, void *obj,
                                          uct_mem_h memh)
 {
@@ -441,6 +462,7 @@ static void uct_srd_iface_send_desc_init(uct_iface_h tl_iface, void *obj,
 }
 
 
+/* TODO VEG: uct_srd_send_op_t derives from RC */
 static ucs_mpool_ops_t uct_srd_send_op_mpool_ops = {
     .chunk_alloc   = ucs_mpool_chunk_malloc,
     .chunk_release = ucs_mpool_chunk_free,
@@ -448,6 +470,7 @@ static ucs_mpool_ops_t uct_srd_send_op_mpool_ops = {
     .obj_cleanup   = NULL
 };
 
+/* TODO VEG: Same as UD verbs */
 static UCS_F_NOINLINE void
 uct_srd_iface_post_recv_always(uct_srd_iface_t *iface, int max)
 {
@@ -470,6 +493,7 @@ uct_srd_iface_post_recv_always(uct_srd_iface_t *iface, int max)
     iface->rx.available -= count;
 }
 
+/* TODO VEG: Same as UD verbs */
 static UCS_F_ALWAYS_INLINE void
 uct_srd_iface_post_recv(uct_srd_iface_t *iface)
 {
@@ -482,6 +506,7 @@ uct_srd_iface_post_recv(uct_srd_iface_t *iface)
     uct_srd_iface_post_recv_always(iface, batch);
 }
 
+/* TODO VEG: Same as RC base iface */
 static ucs_status_t
 uct_srd_iface_init_fc_thresh(uct_srd_iface_t *iface,
                              uct_srd_iface_config_t *config)
@@ -510,6 +535,7 @@ uct_srd_iface_init_fc_thresh(uct_srd_iface_t *iface,
     return UCS_OK;
 }
 
+/* TODO: VEG: needs to merge some part from UD iface file (extract common init) */
 static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
                            const uct_iface_params_t *params,
                            const uct_iface_config_t *tl_config)
@@ -695,6 +721,7 @@ ucs_config_field_t uct_srd_iface_config_table[] = {
 };
 
 
+/* TODO: VEG: Use UD implementation instead */
 static void uct_srd_iface_progress_enable(uct_iface_h tl_iface, unsigned flags)
 {
     uct_srd_iface_t *iface = ucs_derived_of(tl_iface, uct_srd_iface_t);
@@ -709,6 +736,7 @@ static void uct_srd_iface_progress_enable(uct_iface_h tl_iface, unsigned flags)
 }
 
 
+/* TODO: VEG: RC compatible */
 static void uct_srd_iface_send_completion(uct_srd_iface_t *iface,
                                           uct_srd_send_op_t *send_op)
 {
@@ -717,6 +745,7 @@ static void uct_srd_iface_send_completion(uct_srd_iface_t *iface,
 }
 
 
+/* TODO: VEG: UD same, but uct_srd_ep_process_rx() might have to be different */
 static UCS_F_ALWAYS_INLINE unsigned
 uct_srd_iface_poll_rx(uct_srd_iface_t *iface)
 {
@@ -784,6 +813,7 @@ static unsigned uct_srd_iface_progress(uct_iface_h tl_iface)
     return count;
 }
 
+/* TODO: VEG reuse uct_ud_iface_query() and amend */
 ucs_status_t
 uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
 {
