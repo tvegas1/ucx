@@ -349,7 +349,7 @@ uct_srd_iface_init_fc_thresh(uct_srd_iface_t *iface,
                              uct_srd_iface_config_t *config)
 {
     iface->config.fc_wnd_size = ucs_min(config->fc.wnd_size,
-                                        config->super.rx.queue_len);
+                                        config->super.super.rx.queue_len);
 
     if (config->fc.hard_thresh >= 1) {
         ucs_error("The factor for hard FC threshold should be less than 1");
@@ -373,7 +373,7 @@ uct_srd_iface_init_fc_thresh(uct_srd_iface_t *iface,
 }
 
 static uct_ud_iface_ops_t uct_srd_ud_iface_ops = {
-#if 0
+#if 1
     .super = {
         .super = {
             .iface_estimate_perf   = uct_ib_iface_estimate_perf,
@@ -408,7 +408,7 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
                            const uct_iface_config_t *tl_config)
 {
     uct_ib_iface_t *ib_iface       = &self->super.super.super;
-    uct_ud_iface_t *ud_iface       = &self->super.super;
+    //uct_ud_iface_t *ud_iface       = &self->super.super;
     uct_ib_efadv_md_t *efa_md      = ucs_derived_of(md, uct_ib_efadv_md_t);
     uct_srd_iface_config_t *config = ucs_derived_of(tl_config,
                                                     uct_srd_iface_config_t);
@@ -419,7 +419,10 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
     self->config.max_send_sge  = uct_ib_efadv_max_sq_sge(&efa_md->efadv);
     self->config.max_get_zcopy = efa_md->efadv.attr.max_rdma_size;
 
-    ud_iface->config.max_window = 2;
+    config->super.max_window       = 2;
+    config->super.timer_tick       = 1;
+    config->super.timer_backoff    = 1;
+    config->super.event_timer_tick = 1024;
 
     UCS_CLASS_CALL_SUPER_INIT(uct_ud_verbs_iface_t, md, worker, params,
                               tl_config);
@@ -447,11 +450,11 @@ static UCS_CLASS_DEFINE_NEW_FUNC(uct_srd_iface_t, uct_iface_t, uct_md_h,
 UCS_CLASS_DEFINE_DELETE_FUNC(uct_srd_iface_t, uct_iface_t);
 
 ucs_config_field_t uct_srd_iface_config_table[] = {
-    {UCT_IB_CONFIG_PREFIX, "", NULL,
+    {"UD_", "", NULL,
      ucs_offsetof(uct_srd_iface_config_t, super),
-     UCS_CONFIG_TYPE_TABLE(uct_ib_iface_config_table)},
+     UCS_CONFIG_TYPE_TABLE(uct_ud_iface_config_table)},
 
-    {"SRD_", "", NULL,
+    {"UD_COMMON_", "", NULL,
      ucs_offsetof(uct_srd_iface_config_t, ud_common),
      UCS_CONFIG_TYPE_TABLE(uct_ud_iface_common_config_table)},
 

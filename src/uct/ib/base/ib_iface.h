@@ -631,6 +631,7 @@ void uct_ib_iface_set_reverse_sl(uct_ib_iface_t *ib_iface,
 uint16_t uct_ib_iface_resolve_remote_flid(uct_ib_iface_t *iface,
                                           const union ibv_gid *gid);
 
+
 #define UCT_IB_IFACE_FMT \
     "%s:%d/%s"
 #define UCT_IB_IFACE_ARG(_iface) \

@@ -28,7 +28,7 @@ enum {
 };
 
 typedef struct uct_srd_iface_config {
-    uct_ib_iface_config_t         super;
+    uct_ud_iface_config_t         super;
     uct_ud_iface_common_config_t  ud_common;
     struct {
         size_t max_get_zcopy;
