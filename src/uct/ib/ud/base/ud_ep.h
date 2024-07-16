@@ -261,6 +261,7 @@ struct uct_ud_ep {
     uint8_t               path_index;
     ucs_wtimer_t          timer;
     ucs_time_t            close_time;   /* timestamp of closure */
+    uint8_t               srd;
     UCS_STATS_NODE_DECLARE(stats)
     UCT_UD_EP_HOOK_DECLARE(timer_hook)
 #if ENABLE_DEBUG_DATA
@@ -411,7 +412,7 @@ uct_ud_ep_is_connected_and_no_pending(uct_ud_ep_t *ep)
 static UCS_F_ALWAYS_INLINE int uct_ud_ep_no_window(uct_ud_ep_t *ep)
 {
     /* max_psn can be decreased by CA, so check >= */
-    return UCT_UD_PSN_COMPARE(ep->tx.psn, >=, ep->tx.max_psn);
+    return !ep->srd && UCT_UD_PSN_COMPARE(ep->tx.psn, >=, ep->tx.max_psn);
 }
 
 /*

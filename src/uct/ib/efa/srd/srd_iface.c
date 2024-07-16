@@ -509,10 +509,10 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
     self->config.max_send_sge  = uct_ib_efadv_max_sq_sge(&efa_md->efadv);
     self->config.max_get_zcopy = efa_md->efadv.attr.max_rdma_size;
 
-    config->super.max_window       = 2;
-    config->super.timer_tick       = 1;
-    config->super.timer_backoff    = 1;
-    config->super.event_timer_tick = 1024;
+    config->super.max_window       = 1024;
+    //config->super.timer_tick       = 1;
+    //onfig->super.timer_backoff    = 1;
+    //config->super.event_timer_tick = 1024;
 
     UCS_CLASS_CALL_SUPER_INIT(uct_ud_verbs_iface_t, md,
                               &uct_srd_ud_iface_ops,

@@ -363,11 +363,12 @@ ucs_status_t uct_ud_verbs_ep_put_short(uct_ep_h tl_ep,
 static UCS_F_ALWAYS_INLINE unsigned
 uct_ud_verbs_iface_poll_tx(uct_ud_verbs_iface_t *iface, int is_async)
 {
+    unsigned num_wcs = iface->super.super.config.rx_max_poll;
+    struct ibv_wc wc[num_wcs];
     unsigned num_completed;
-    struct ibv_wc wc;
-    int ret;
+    int i, ret;
 
-    ret = ibv_poll_cq(iface->super.super.cq[UCT_IB_DIR_TX], 1, &wc);
+    ret = ibv_poll_cq(iface->super.super.cq[UCT_IB_DIR_TX], num_wcs, wc);
     if (ucs_unlikely(ret < 0)) {
         ucs_fatal("Failed to poll send CQ");
         return 0;
@@ -377,29 +378,32 @@ uct_ud_verbs_iface_poll_tx(uct_ud_verbs_iface_t *iface, int is_async)
         return 0;
     }
 
-    if (ucs_unlikely(wc.status != IBV_WC_SUCCESS)) {
-        ucs_fatal("Send completion (wr_id=0x%0X with error: %s ",
-                  (unsigned)wc.wr_id, ibv_wc_status_str(wc.status));
-        return 0;
+    for (i = 0; i < ret; i++) {
+        if (ucs_unlikely(wc[i].status != IBV_WC_SUCCESS)) {
+            ucs_fatal("Send completion (wr_id=0x%0X with error: %s ",
+                      (unsigned)wc[i].wr_id, ibv_wc_status_str(wc[i].status));
+            return 0;
+        }
+
+        UCS_STATS_UPDATE_COUNTER(iface->super.super.stats,
+                                 UCT_IB_IFACE_STAT_TX_COMPLETION, 1);
+
+        if (uct_ib_iface_device(&iface->super.super)->ordered_send_comp) {
+            num_completed      = wc[i].wr_id + 1;
+            iface->tx.comp_sn += num_completed;
+
+            ucs_assertv(num_completed <= UCT_UD_TX_MODERATION, "num_completed=%u",
+                        num_completed);
+        } else {
+            num_completed     = 1;
+            iface->tx.comp_sn = wc[i].wr_id + 1;
+        }
+
+        iface->super.tx.available += num_completed;
+
+        uct_ud_iface_send_completion(&iface->super, iface->tx.comp_sn, is_async);
     }
 
-    UCS_STATS_UPDATE_COUNTER(iface->super.super.stats,
-                             UCT_IB_IFACE_STAT_TX_COMPLETION, 1);
-
-    if (uct_ib_iface_device(&iface->super.super)->ordered_send_comp) {
-        num_completed      = wc.wr_id + 1;
-        iface->tx.comp_sn += num_completed;
-
-        ucs_assertv(num_completed <= UCT_UD_TX_MODERATION, "num_completed=%u",
-                    num_completed);
-    } else {
-        num_completed     = 1;
-        iface->tx.comp_sn = wc.wr_id + 1;
-    }
-
-    iface->super.tx.available += num_completed;
-
-    uct_ud_iface_send_completion(&iface->super, iface->tx.comp_sn, is_async);
     return 1;
 }
 
