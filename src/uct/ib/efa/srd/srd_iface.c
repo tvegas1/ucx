@@ -424,7 +424,7 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
     config->super.timer_backoff    = 1;
     config->super.event_timer_tick = 1024;
 
-    UCS_CLASS_CALL_SUPER_INIT(uct_ud_verbs_iface_t, md, worker, params,
+    UCS_CLASS_CALL_SUPER_INIT(uct_ud_verbs_iface_t, md, &uct_srd_ud_iface_ops, NULL, worker, params,
                               tl_config);
 
     ib_iface->ops = &uct_srd_ud_iface_ops.super;

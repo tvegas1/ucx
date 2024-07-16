@@ -51,6 +51,8 @@ int uct_ud_verbs_ep_is_connected(const uct_ep_h tl_ep,
                                  const uct_ep_is_connected_params_t *params);
 
 UCS_CLASS_DECLARE(uct_ud_verbs_iface_t, uct_md_h md,
+                  uct_ud_iface_ops_t *iface_ops,
+                  uct_iface_ops_t *iface_tl_ops,
                   uct_worker_h worker,
                   const uct_iface_params_t *params,
                   const uct_iface_config_t *tl_config);
