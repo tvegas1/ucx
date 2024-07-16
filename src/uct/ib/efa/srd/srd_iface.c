@@ -17,8 +17,8 @@
 #include <uct/ib/base/ib_log.h>
 
 
-#if 0
 static uct_iface_ops_t uct_srd_iface_tl_ops;
+#if 0
 
 
 static void uct_srd_iface_vfs_refresh(uct_iface_h iface)
@@ -62,6 +62,96 @@ uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
                                      num_tl_devices_p);
 }
 
+ucs_status_t uct_srd_iface_create_qp(uct_ib_iface_t *iface,
+                                     uct_ib_qp_attr_t *attr,
+                                     struct ibv_qp **qp_p)
+{
+    uct_ib_efadv_md_t *efadv_md =
+        ucs_derived_of(uct_ib_iface_md(iface), uct_ib_efadv_md_t);
+    uct_ud_iface_t *ud_iface = ucs_derived_of(iface, uct_ud_iface_t);
+
+    uct_ud_verbs_iface_t *verbs_iface = ucs_derived_of(ud_iface, uct_ud_verbs_iface_t);
+    uct_srd_iface_t *srd_iface      = ucs_derived_of(verbs_iface, uct_srd_iface_t);
+    const uct_ib_efadv_t *efadv = &efadv_md->efadv;
+    struct ibv_pd *pd           = efadv_md->super.pd;
+
+#ifdef HAVE_DECL_EFA_DV_RDMA_READ
+    struct efadv_qp_init_attr  efa_qp_init_attr  = { 0 };
+    struct ibv_qp_init_attr_ex qp_init_attr      = { 0 };
+#else
+    struct ibv_qp_init_attr    qp_init_attr      = { 0 };
+#endif
+
+    qp_init_attr.qp_type             = IBV_QPT_DRIVER;
+    qp_init_attr.sq_sig_all          = 1;
+    qp_init_attr.send_cq             = iface->cq[UCT_IB_DIR_TX];
+    qp_init_attr.recv_cq             = iface->cq[UCT_IB_DIR_RX];
+
+    qp_init_attr.cap.max_send_wr     = uct_ib_efadv_max_sq_wr(efadv);
+    qp_init_attr.cap.max_recv_wr     = uct_ib_efadv_max_rq_wr(efadv);
+    qp_init_attr.cap.max_send_sge    = 1 + (uct_ib_efadv_max_sq_sge(efadv) - 1);
+    qp_init_attr.cap.max_recv_sge    = 1;
+    qp_init_attr.cap.max_inline_data = uct_ib_efadv_inline_buf_size(efadv);
+
+#ifdef HAVE_DECL_EFA_DV_RDMA_READ
+    qp_init_attr.pd                  = efadv_md->super.pd;
+    qp_init_attr.comp_mask           = IBV_QP_INIT_ATTR_PD |
+                                       IBV_QP_INIT_ATTR_SEND_OPS_FLAGS;
+    qp_init_attr.send_ops_flags      = IBV_QP_EX_WITH_SEND;
+    if (uct_ib_efadv_has_rdma_read(efadv)) {
+        qp_init_attr.send_ops_flags |= IBV_QP_EX_WITH_RDMA_READ;
+    }
+    efa_qp_init_attr.driver_qp_type  = EFADV_QP_DRIVER_TYPE_SRD;
+
+    ud_iface->qp    = efadv_create_qp_ex(pd->context, &qp_init_attr,
+                                      &efa_qp_init_attr,
+                                      sizeof(efa_qp_init_attr));
+    srd_iface->qp_ex = ibv_qp_to_qp_ex(ud_iface->qp);
+#else
+    ud_iface->qp = efadv_create_driver_qp(pd, &qp_init_attr,
+                                       EFADV_QP_DRIVER_TYPE_SRD);
+#endif
+
+    if (ud_iface->qp == NULL) {
+        ucs_error("iface=%p: failed to create %s QP on "UCT_IB_IFACE_FMT
+                  " TX wr:%d sge:%d inl:%d resp:%d RX wr:%d sge:%d resp:%d: %m",
+                  iface, uct_ib_qp_type_str(UCT_IB_QPT_SRD),
+                  UCT_IB_IFACE_ARG(&ud_iface->super),
+                  qp_init_attr.cap.max_send_wr,
+                  qp_init_attr.cap.max_send_sge,
+                  qp_init_attr.cap.max_inline_data,
+                  ud_iface->super.config.max_inl_cqe[UCT_IB_DIR_TX],
+                  qp_init_attr.cap.max_recv_wr,
+                  qp_init_attr.cap.max_recv_sge,
+                  ud_iface->super.config.max_inl_cqe[UCT_IB_DIR_RX]);
+        return UCS_ERR_IO_ERROR;
+    }
+
+    /* TODO: Use common configuration */
+    srd_iface->config.max_inline = qp_init_attr.cap.max_inline_data;
+    srd_iface->config.tx_qp_len  = qp_init_attr.cap.max_send_wr;
+#if 0
+    srd_iface->tx.available      = qp_init_attr.cap.max_send_wr;
+    srd_iface->rx.available      = qp_init_attr.cap.max_recv_wr;
+#endif
+
+    ucs_debug("iface=%p: created %s QP 0x%x on "UCT_IB_IFACE_FMT
+              " TX wr:%d sge:%d inl:%d resp:%d RX wr:%d sge:%d resp:%d",
+              iface, uct_ib_qp_type_str(UCT_IB_QPT_SRD),
+              ud_iface->qp->qp_num, UCT_IB_IFACE_ARG(&ud_iface->super),
+              qp_init_attr.cap.max_send_wr,
+              qp_init_attr.cap.max_send_sge,
+              qp_init_attr.cap.max_inline_data,
+              ud_iface->super.config.max_inl_cqe[UCT_IB_DIR_TX],
+              qp_init_attr.cap.max_recv_wr,
+              qp_init_attr.cap.max_recv_sge,
+              ud_iface->super.config.max_inl_cqe[UCT_IB_DIR_RX]);
+
+    return UCS_OK;
+err_destroy_qp:
+    uct_ib_destroy_qp(ud_iface->qp);
+    return UCS_ERR_INVALID_PARAM;
+}
 
 #if 0
 /*TODO VEG: Partially differs fromm UD: efadv_create_driver_qp() */
@@ -393,7 +483,7 @@ static uct_ud_iface_ops_t uct_srd_ud_iface_ops = {
     .send_ctl                = uct_ud_verbs_ep_send_ctl,
     .ep_new                  = uct_ud_verbs_ep_t_new,
     .ep_free                 = UCS_CLASS_DELETE_FUNC_NAME(uct_ud_verbs_ep_t),
-    .create_qp               = uct_ib_iface_create_qp,
+    .create_qp               = uct_srd_iface_create_qp,
     .destroy_qp              = uct_ud_verbs_iface_destroy_qp,
     .unpack_peer_address     = uct_ud_verbs_iface_unpack_peer_address,
     .ep_get_peer_address     = uct_ud_verbs_ep_get_peer_address,
@@ -424,7 +514,10 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
     config->super.timer_backoff    = 1;
     config->super.event_timer_tick = 1024;
 
-    UCS_CLASS_CALL_SUPER_INIT(uct_ud_verbs_iface_t, md, &uct_srd_ud_iface_ops, NULL, worker, params,
+    UCS_CLASS_CALL_SUPER_INIT(uct_ud_verbs_iface_t, md,
+                              &uct_srd_ud_iface_ops,
+                              &uct_srd_iface_tl_ops,
+                              worker, params,
                               tl_config);
 
     ib_iface->ops = &uct_srd_ud_iface_ops.super;
@@ -630,32 +723,36 @@ uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
     return status;
 }
 
-#if 0
+#if 1
 static uct_iface_ops_t uct_srd_iface_tl_ops = {
-    .ep_flush                 = uct_srd_ep_flush,
+    .ep_put_short             = uct_ud_verbs_ep_put_short,
+    .ep_am_short              = uct_ud_verbs_ep_am_short,
+    .ep_am_short_iov          = uct_ud_verbs_ep_am_short_iov,
+    .ep_am_bcopy              = uct_ud_verbs_ep_am_bcopy,
+    .ep_am_zcopy              = uct_ud_verbs_ep_am_zcopy,
+    .ep_pending_add           = uct_ud_ep_pending_add,
+    .ep_pending_purge         = uct_ud_ep_pending_purge,
+    .ep_flush                 = uct_ud_ep_flush,
     .ep_fence                 = uct_base_ep_fence,
-    .ep_create                = uct_srd_ep_create,
-    .ep_destroy               = uct_srd_ep_destroy,
-    .ep_am_bcopy              = uct_srd_ep_am_bcopy,
-    .ep_am_zcopy              = uct_srd_ep_am_zcopy,
-    .ep_get_zcopy             = uct_srd_ep_get_zcopy,
-    .ep_am_short              = uct_srd_ep_am_short,
-    .ep_pending_add           = uct_srd_ep_pending_add,
-    .ep_pending_purge         = uct_srd_ep_pending_purge,
+    .ep_check                 = uct_ud_ep_check,
+    .ep_create                = uct_ud_ep_create,
+    .ep_destroy               = uct_ud_ep_disconnect,
+    .ep_get_address           = uct_ud_ep_get_address,
+    .ep_connect_to_ep         = uct_base_ep_connect_to_ep,
     .iface_flush              = uct_ud_iface_flush,
     .iface_fence              = uct_base_iface_fence,
-    .iface_progress_enable    = uct_srd_iface_progress_enable,
-    .iface_progress_disable   = uct_base_iface_progress_disable,
-    .iface_progress           = uct_srd_iface_progress,
-    .iface_query              = uct_srd_iface_query,
-    .iface_get_address        = uct_srd_iface_get_address,
-    .iface_is_reachable       = uct_base_iface_is_reachable,
+    .iface_progress_enable    = uct_ud_iface_progress_enable,
+    .iface_progress_disable   = uct_ud_iface_progress_disable,
+    .iface_progress           = uct_ud_verbs_iface_progress,
     .iface_event_fd_get       = (uct_iface_event_fd_get_func_t)
-        ucs_empty_function_return_unsupported,
-    .iface_event_arm          = (uct_iface_event_arm_func_t)
-        ucs_empty_function_return_unsupported,
-    .iface_close              = UCS_CLASS_DELETE_FUNC_NAME(uct_srd_iface_t),
-    .iface_get_device_address = uct_ib_iface_get_device_address
+                                ucs_empty_function_return_unsupported,
+    .iface_event_arm          = uct_ud_verbs_iface_event_arm,
+    .iface_close              = UCS_CLASS_DELETE_FUNC_NAME(uct_ud_verbs_iface_t),
+    .iface_query              = uct_ud_verbs_iface_query,
+    .iface_get_device_address = uct_ib_iface_get_device_address,
+    .iface_get_address        = uct_ud_iface_get_address,
+    .iface_is_reachable       = uct_base_iface_is_reachable
+
 };
 #endif
 

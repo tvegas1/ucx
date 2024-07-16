@@ -168,7 +168,6 @@ uct_ud_verbs_ep_send_ctl(uct_ud_ep_t *ud_ep, uct_ud_send_skb_t *skb,
     return iface->tx.send_sn;
 }
 
-static
 ucs_status_t uct_ud_verbs_ep_am_short(uct_ep_h tl_ep, uint8_t id, uint64_t hdr,
                                       const void *buffer, unsigned length)
 {
@@ -206,7 +205,7 @@ ucs_status_t uct_ud_verbs_ep_am_short(uct_ep_h tl_ep, uint8_t id, uint64_t hdr,
     return UCS_OK;
 }
 
-static ucs_status_t uct_ud_verbs_ep_am_short_iov(uct_ep_h tl_ep, uint8_t id,
+ucs_status_t uct_ud_verbs_ep_am_short_iov(uct_ep_h tl_ep, uint8_t id,
                                                  const uct_iov_t *iov, size_t iovcnt)
 {
     uct_ud_verbs_ep_t *ep       = ucs_derived_of(tl_ep, uct_ud_verbs_ep_t);
@@ -242,7 +241,7 @@ static ucs_status_t uct_ud_verbs_ep_am_short_iov(uct_ep_h tl_ep, uint8_t id,
     return UCS_OK;
 }
 
-static ssize_t uct_ud_verbs_ep_am_bcopy(uct_ep_h tl_ep, uint8_t id,
+ssize_t uct_ud_verbs_ep_am_bcopy(uct_ep_h tl_ep, uint8_t id,
                                         uct_pack_callback_t pack_cb, void *arg,
                                         unsigned flags)
 {
@@ -272,7 +271,7 @@ static ssize_t uct_ud_verbs_ep_am_bcopy(uct_ep_h tl_ep, uint8_t id,
     return length;
 }
 
-static ucs_status_t
+ucs_status_t
 uct_ud_verbs_ep_am_zcopy(uct_ep_h tl_ep, uint8_t id, const void *header,
                          unsigned header_length, const uct_iov_t *iov,
                          size_t iovcnt, unsigned flags, uct_completion_t *comp)
@@ -318,7 +317,6 @@ uct_ud_verbs_ep_am_zcopy(uct_ep_h tl_ep, uint8_t id, const void *header,
     return UCS_INPROGRESS;
 }
 
-static
 ucs_status_t uct_ud_verbs_ep_put_short(uct_ep_h tl_ep,
                                        const void *buffer, unsigned length,
                                        uint64_t remote_addr, uct_rkey_t rkey)
@@ -484,7 +482,7 @@ unsigned uct_ud_verbs_iface_progress(uct_iface_h tl_iface)
     return count;
 }
 
-static ucs_status_t
+ucs_status_t
 uct_ud_verbs_iface_event_arm(uct_iface_h tl_iface, unsigned events)
 {
     uct_ud_iface_t *iface = ucs_derived_of(tl_iface, uct_ud_iface_t);
@@ -533,7 +531,7 @@ static void uct_ud_verbs_iface_async_handler(int fd,
     iface->async.event_cb(iface->async.event_arg, 0);
 }
 
-static ucs_status_t
+ucs_status_t
 uct_ud_verbs_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
 {
     uct_ud_verbs_iface_t *iface = ucs_derived_of(tl_iface, uct_ud_verbs_iface_t);
@@ -642,7 +640,7 @@ void uct_ud_verbs_iface_destroy_qp(uct_ud_iface_t *ud_iface)
     uct_ib_destroy_qp(ud_iface->qp);
 }
 
-static void UCS_CLASS_DELETE_FUNC_NAME(uct_ud_verbs_iface_t)(uct_iface_t*);
+void UCS_CLASS_DELETE_FUNC_NAME(uct_ud_verbs_iface_t)(uct_iface_t*);
 
 static uct_ud_iface_ops_t uct_ud_verbs_iface_ops = {
     .super = {

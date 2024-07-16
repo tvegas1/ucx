@@ -74,7 +74,26 @@ const char*
 uct_ud_verbs_iface_peer_address_str(const uct_ud_iface_t *iface,
                                     const void *address,
                                     char *str, size_t max_size);
+ucs_status_t uct_ud_verbs_ep_put_short(uct_ep_h tl_ep,
+                                       const void *buffer, unsigned length,
+                                       uint64_t remote_addr, uct_rkey_t rkey);
+ucs_status_t
+uct_ud_verbs_ep_am_zcopy(uct_ep_h tl_ep, uint8_t id, const void *header,
+                         unsigned header_length, const uct_iov_t *iov,
+                         size_t iovcnt, unsigned flags, uct_completion_t *comp);
+ucs_status_t uct_ud_verbs_ep_am_short(uct_ep_h tl_ep, uint8_t id, uint64_t hdr,
+                                      const void *buffer, unsigned length);
+ucs_status_t uct_ud_verbs_ep_am_short_iov(uct_ep_h tl_ep, uint8_t id,
+                                                 const uct_iov_t *iov, size_t iovcnt);
+ssize_t uct_ud_verbs_ep_am_bcopy(uct_ep_h tl_ep, uint8_t id,
+                                        uct_pack_callback_t pack_cb, void *arg,
+                                        unsigned flags);
+ucs_status_t
+uct_ud_verbs_iface_event_arm(uct_iface_h tl_iface, unsigned events);
+ucs_status_t
+uct_ud_verbs_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr);
 UCS_CLASS_DECLARE_NEW_FUNC(uct_ud_verbs_ep_t, uct_ep_t,
                            const uct_ep_params_t *);
 UCS_CLASS_DECLARE_DELETE_FUNC(uct_ud_verbs_ep_t, uct_ep_t);
+UCS_CLASS_DECLARE_DELETE_FUNC(uct_ud_verbs_iface_t, uct_iface_t);
 #endif
