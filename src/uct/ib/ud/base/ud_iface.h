@@ -155,7 +155,7 @@ uct_ud_iface_kh_gid_hash_equal(union ibv_gid a, union ibv_gid b)
 KHASH_IMPL(uct_ud_iface_gid, union ibv_gid, char, 0,
            uct_ud_iface_kh_gid_hash_func, uct_ud_iface_kh_gid_hash_equal)
 
-KHASH_MAP_INIT_INT(uct_ud_iface_ctl_desc_hash, uct_ud_ctl_desc_t *);
+KHASH_MAP_INIT_INT(uct_ud_iface_ctl_desc_hash, uct_ud_ctl_desc_t*);
 
 struct uct_ud_iface {
     uct_ib_iface_t           super;

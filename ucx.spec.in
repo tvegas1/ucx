@@ -46,6 +46,7 @@ BuildRequires: libibverbs-devel
 %endif
 %if %{with mlx5}
 BuildRequires: rdma-core-devel
+%endif
 %if %{with efa}
 BuildRequires: rdma-core-devel
 %endif
@@ -197,6 +198,7 @@ Provides static libraries required for developing with UCX.
 %endif
 %if %{with mlx5}
 %{_libdir}/pkgconfig/ucx-ib-mlx5.pc
+%endif
 %if %{with efa}
 %{_libdir}/pkgconfig/ucx-ib-efa.pc
 %endif
@@ -284,15 +286,15 @@ devices.
 %endif
 
 %if %{with efa}
-%package efa
+%package ib-efa
 Requires: %{name}%{?_isa} = %{version}-%{release}
 Summary: UCX EFA device RDMA support
 Group: System Environment/Libraries
 
-%description efa
+%description ib-efa
 Provides support for EFA device as an IBTA tranport for UCX.
 
-%files efa
+%files ib-efa
 %{_libdir}/ucx/libuct_ib_efa.so.*
 %endif
 

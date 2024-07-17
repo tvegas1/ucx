@@ -81,7 +81,7 @@ uct_ud_verbs_post_send(uct_ud_verbs_iface_t *iface, uct_ud_verbs_ep_t *ep,
         wr->send_flags             = send_flags | IBV_SEND_SIGNALED;
         wr->wr_id                  = iface->tx.send_sn;
     } else if ((send_flags & IBV_SEND_SIGNALED) ||
-        (iface->super.tx.unsignaled >= (UCT_UD_TX_MODERATION - 1))) {
+               (iface->super.tx.unsignaled >= (UCT_UD_TX_MODERATION - 1))) {
         wr->send_flags             = send_flags | IBV_SEND_SIGNALED;
         wr->wr_id                  = iface->super.tx.unsignaled;
         iface->super.tx.unsignaled = 0;
@@ -366,8 +366,9 @@ static UCS_F_ALWAYS_INLINE unsigned
 uct_ud_verbs_iface_poll_tx(uct_ud_verbs_iface_t *iface, int is_async)
 {
     unsigned num_wcs =
-        uct_ib_iface_device(&iface->super.super)->ordered_send_comp?
-        1 : iface->super.super.config.tx_max_poll;
+            uct_ib_iface_device(&iface->super.super)->ordered_send_comp ?
+                    1 :
+                    iface->super.super.config.tx_max_poll;
     struct ibv_wc wc[num_wcs];
     unsigned num_completed;
     int i, ret;
@@ -396,8 +397,8 @@ uct_ud_verbs_iface_poll_tx(uct_ud_verbs_iface_t *iface, int is_async)
             num_completed      = wc[i].wr_id + 1;
             iface->tx.comp_sn += num_completed;
 
-            ucs_assertv(num_completed <= UCT_UD_TX_MODERATION, "num_completed=%u",
-                        num_completed);
+            ucs_assertv(num_completed <= UCT_UD_TX_MODERATION,
+                        "num_completed=%u", num_completed);
         } else {
             num_completed     = 1;
             iface->tx.comp_sn = wc[i].wr_id + 1;
@@ -405,7 +406,8 @@ uct_ud_verbs_iface_poll_tx(uct_ud_verbs_iface_t *iface, int is_async)
 
         iface->super.tx.available += num_completed;
 
-        uct_ud_iface_send_completion(&iface->super, iface->tx.comp_sn, is_async);
+        uct_ud_iface_send_completion(&iface->super, iface->tx.comp_sn,
+                                     is_async);
     }
 
     return 1;

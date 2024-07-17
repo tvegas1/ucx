@@ -732,9 +732,9 @@ ucs_status_t uct_ud_iface_query(uct_ud_iface_t *iface,
                                          UCT_IFACE_FLAG_CB_ASYNC         |
                                          UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE;
     if (uct_ib_iface_device(&iface->super)->req_notify_cq_support) {
-        iface_attr->cap.event_flags        = UCT_IFACE_FLAG_EVENT_SEND_COMP |
-                                             UCT_IFACE_FLAG_EVENT_RECV      |
-                                             UCT_IFACE_FLAG_EVENT_ASYNC_CB;
+        iface_attr->cap.event_flags = UCT_IFACE_FLAG_EVENT_SEND_COMP |
+                                      UCT_IFACE_FLAG_EVENT_RECV |
+                                      UCT_IFACE_FLAG_EVENT_ASYNC_CB;
     }
 
     iface_attr->cap.am.max_short       = uct_ib_iface_hdr_size(iface->config.max_inline,
@@ -779,9 +779,9 @@ uct_ud_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *iface_addr)
 static UCS_F_ALWAYS_INLINE int
 uct_ud_iface_tx_outstanding_is_empty(uct_ud_iface_t *iface)
 {
-    return uct_ib_iface_device(&iface->super)->ordered_send_comp?
-            ucs_queue_is_empty(&iface->tx.outstanding.queue) :
-            (kh_size(&iface->tx.outstanding.map) == 0);
+    return uct_ib_iface_device(&iface->super)->ordered_send_comp ?
+                   ucs_queue_is_empty(&iface->tx.outstanding.queue) :
+                   (kh_size(&iface->tx.outstanding.map) == 0);
 }
 
 ucs_status_t uct_ud_iface_flush(uct_iface_h tl_iface, unsigned flags,

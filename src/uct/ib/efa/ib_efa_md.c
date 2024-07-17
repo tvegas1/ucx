@@ -55,9 +55,9 @@ static ucs_status_t uct_ib_efa_md_open(struct ibv_device *ibv_device,
 
     uct_ib_device_configure(&md->super.dev);
 
-    md->super.dev.mr_access_flags       = IBV_ACCESS_LOCAL_WRITE;
+    md->super.dev.mr_access_flags = IBV_ACCESS_LOCAL_WRITE;
     if (uct_ib_efadv_has_rdma_read(&md->efadv)) {
-        md->super.dev.mr_access_flags  |= IBV_ACCESS_REMOTE_READ;
+        md->super.dev.mr_access_flags |= IBV_ACCESS_REMOTE_READ;
     }
 
     md->super.dev.max_sq_sge            = md->efadv.attr.max_sq_sge;
