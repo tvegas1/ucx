@@ -759,8 +759,11 @@ static const char *uct_ib_device_transport_type_name(struct ibv_device *device)
 static int uct_ib_device_is_supported(struct ibv_device *device)
 {
     /* TODO: enable additional transport types when ready */
-    int ret = (device->transport_type == IBV_TRANSPORT_IB) ||
-              (device->transport_type == IBV_TRANSPORT_UNSPECIFIED);
+    int ret =
+#if HAVE_DECL_IBV_TRANSPORT_UNSPECIFIED
+              (device->transport_type == IBV_TRANSPORT_UNSPECIFIED) ||
+#endif
+              (device->transport_type == IBV_TRANSPORT_IB);
     if (!ret) {
         ucs_debug("device %s of type %s is not supported",
                   device->dev_name, uct_ib_device_transport_type_name(device));
