@@ -83,19 +83,9 @@ err_free_context:
     return status;
 }
 
-static void uct_ib_efa_md_close(uct_md_h tl_md)
-{
-    uct_ib_md_t *ib_md      = ucs_derived_of(tl_md, uct_ib_md_t);
-    struct ibv_context *ctx = ib_md->dev.ibv_context;
-
-    uct_ib_md_close_common(ib_md);
-    uct_ib_md_free(ib_md);
-    uct_ib_md_device_context_close(ctx);
-}
-
 static uct_ib_md_ops_t uct_ib_efa_md_ops = {
     .super = {
-        .close              = uct_ib_efa_md_close,
+        .close              = uct_ib_md_close,
         .query              = uct_ib_md_query,
         .mem_reg            = uct_ib_verbs_mem_reg,
         .mem_dereg          = uct_ib_verbs_mem_dereg,

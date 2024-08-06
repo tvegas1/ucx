@@ -292,7 +292,7 @@ Summary: UCX EFA device RDMA support
 Group: System Environment/Libraries
 
 %description ib-efa
-Provides support for EFA device as an IBTA tranport for UCX.
+Provides support for EFA device as an IBTA transport for UCX.
 
 %files ib-efa
 %{_libdir}/ucx/libuct_ib_efa.so.*
