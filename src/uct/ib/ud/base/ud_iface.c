@@ -200,16 +200,14 @@ uct_ud_iface_create_qp(uct_ud_iface_t *self, const uct_ud_iface_config_t *config
     qp_init_attr.cap.max_recv_sge    = 1;
     qp_init_attr.cap.max_inline_data = config->super.tx.min_inline;
 
-    if ((dev->max_inline_data > 0) &&
-        (qp_init_attr.cap.max_inline_data > dev->max_inline_data)) {
+    if (qp_init_attr.cap.max_inline_data > dev->max_inline_data) {
         ucs_diag("create QP: TX inline: using device cap %uB (configured %uB)",
                  dev->max_inline_data, qp_init_attr.cap.max_inline_data);
 
         qp_init_attr.cap.max_inline_data = dev->max_inline_data;
     }
 
-    if ((dev->max_sq_sge > 0) &&
-        (qp_init_attr.cap.max_send_sge > dev->max_sq_sge)) {
+    if (qp_init_attr.cap.max_send_sge > dev->max_sq_sge) {
         ucs_diag("create QP: max_sq_sge: using device cap %d (configured %u+1)",
                  dev->max_sq_sge, qp_init_attr.cap.max_send_sge - 1);
 
@@ -467,6 +465,8 @@ UCS_CLASS_INIT_FUNC(uct_ud_iface_t, uct_ud_iface_ops_t *ops,
 
     self->tx.unsignaled         = 0;
     self->tx.available          = config->super.tx.queue_len;
+    self->tx.ordered_send_comp =
+            uct_ib_iface_device(&self->super)->ordered_send_comp;
     self->tx.timer_sweep_count  = 0;
     self->async.disable         = 0;
 
@@ -1095,7 +1095,7 @@ void uct_ud_iface_send_completion(uct_ud_iface_t *iface, uint16_t sn,
     uct_ud_ctl_desc_t *cdesc;
     khiter_t it;
 
-    if (uct_ib_iface_device(&iface->super)->ordered_send_comp) {
+    if (iface->tx.ordered_send_comp) {
         ucs_queue_for_each_extract(cdesc, &iface->tx.outstanding.queue, queue,
                                    UCS_CIRCULAR_COMPARE16(cdesc->sn, <=, sn)) {
             uct_ud_iface_ctl_skb_complete(iface, cdesc, is_async);
