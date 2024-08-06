@@ -9,7 +9,6 @@
 #endif
 
 #include <uct/ib/efa/ib_efa.h>
-#include <uct/ib/base/ib_md.h>
 #include <ucs/type/status.h>
 #include <ucs/debug/log.h>
 
@@ -24,6 +23,7 @@ static ucs_status_t uct_ib_efa_md_open(struct ibv_device *ibv_device,
     uct_ib_efadv_md_t *md;
     struct efadv_device_attr attr;
     ucs_status_t status;
+    int ret;
 
     ctx = ibv_open_device(ibv_device);
     if (ctx == NULL) {
@@ -32,7 +32,10 @@ static ucs_status_t uct_ib_efa_md_open(struct ibv_device *ibv_device,
         return UCS_ERR_IO_ERROR;
     }
 
-    if (efadv_query_device(ctx, &attr, sizeof(attr))) {
+    ret = efadv_query_device(ctx, &attr, sizeof(attr));
+    if (ret != 0) {
+        ucs_debug("efadv_query_device(%s) failed: %d",
+                  ibv_get_device_name(ibv_device), ret);
         status = UCS_ERR_UNSUPPORTED;
         goto err_free_context;
     }

@@ -604,12 +604,11 @@ bool is_rdmacm_netdev(const char *ifa_name)
 bool is_aws()
 {
     static bool result, initialized = false;
-    const char *str;
 
     if (!initialized) {
-        str         = getenv("CLOUD_TYPE");
-        result      = str ? !strcmp(str, "aws") : false;
-        initialized = true;
+        const char *str = getenv("CLOUD_TYPE");
+        result          = str ? !strcmp(str, "aws") : false;
+        initialized     = true;
     }
 
     return result;
