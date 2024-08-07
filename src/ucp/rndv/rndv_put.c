@@ -65,7 +65,7 @@ ucp_proto_rndv_put_common_send(ucp_request_t *req,
                                  iov->length,
                                  comp,
                                  UCS_MEMORY_TYPE_UNKNOWN,
-                                 1);
+                                 1, req->user_data);
     if (consumed) {
         ucs_assert(iov->count == 1);
         return UCS_INPROGRESS;

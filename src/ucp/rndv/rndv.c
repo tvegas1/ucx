@@ -619,7 +619,7 @@ ucp_rndv_progress_rma_zcopy_common(ucp_request_t *req, ucp_lane_index_t lane,
                                         iov->length,
                                         &req->send.state.uct_comp,
                                         UCS_MEMORY_TYPE_UNKNOWN,
-                                        to_dev);
+                                        to_dev, req->user_data);
         if (consumed) {
             ucs_assert(iov->count == 1);
             status = UCS_OK;

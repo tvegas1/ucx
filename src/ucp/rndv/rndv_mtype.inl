@@ -155,7 +155,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_mtype_copy(
                                  iov.length,
                                  &req->send.state.uct_comp,
                                  mem_type,
-                                 to_dev)) {
+                                 to_dev, req->user_data)) {
 
         status = copy_func(ucp_ep_get_lane(mtype_ep, lane), &iov, 1,
                            (uintptr_t)req->send.state.dt_iter.type.contig.buffer,

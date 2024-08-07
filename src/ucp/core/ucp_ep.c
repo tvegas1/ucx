@@ -3839,7 +3839,8 @@ int ucp_mem_external_device_copy(ucp_worker_h worker, uct_ep_h ep,
                                  const void *src, size_t length,
                                  uct_completion_t *comp,
                                  ucs_memory_type_t mem_type,
-                                 int to_dev)
+                                 int to_dev,
+                                 void *user_data)
 {
     if (!ucp_ep_is_cuda_ipc(ep) ||
         !ucp_mem_type_is_cuda(mem_type) ||
@@ -3847,6 +3848,6 @@ int ucp_mem_external_device_copy(ucp_worker_h worker, uct_ep_h ep,
         return 0;
     }
 
-    return worker->callbacks.memcpy_device_start(cuda_dest, src, length, to_dev, comp);
+    return worker->callbacks.memcpy_device_start(cuda_dest, src, length, to_dev, comp, user_data);
 }
 

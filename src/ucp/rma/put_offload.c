@@ -217,7 +217,7 @@ ucp_proto_put_offload_zcopy_send_func(ucp_request_t *req,
                                  iov.length,
                                  &req->send.state.uct_comp,
                                  UCS_MEMORY_TYPE_UNKNOWN,
-                                 1);
+                                 1, req->user_data);
     if (consumed) {
         ucs_assert(iov.count == 1);
         return UCS_INPROGRESS;

@@ -908,5 +908,6 @@ int ucp_mem_external_device_copy(ucp_worker_h worker, uct_ep_h ep, void *cuda_de
                                  const void *src, size_t length,
                                  uct_completion_t *comp,
                                  ucs_memory_type_t mem_type,
-                                 int to_dev);
+                                 int to_dev,
+                                 void *user_data);
 #endif

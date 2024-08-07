@@ -1299,7 +1299,7 @@ typedef struct ucp_worker_mem_callbacks {
    *    returned from ->memcpy_device_start().
    */
   int  (*memcpy_device_start)(void *dest, const void *src, size_t size,
-                              int to_dev, void *completion);
+                              int to_dev, void *completion, void *user_data);
 } ucp_worker_mem_callbacks_t;
 
 /**

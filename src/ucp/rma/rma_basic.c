@@ -83,7 +83,7 @@ static ucs_status_t ucp_rma_basic_progress_put(uct_pending_req_t *self)
                                            iov.length,
                                            &req->send.state.uct_comp,
                                            UCS_MEMORY_TYPE_UNKNOWN,
-                                           1);
+                                           1, req->user_data);
         if (consumed) {
             ucs_assert(iov.count == 1);
             status = UCS_INPROGRESS;
@@ -142,7 +142,7 @@ static ucs_status_t ucp_rma_basic_progress_get(uct_pending_req_t *self)
                                                 iov.length,
                                                 &req->send.state.uct_comp,
                                                 UCS_MEMORY_TYPE_UNKNOWN,
-                                                0);
+                                                0, req->user_data);
         if (consumed) {
             status = UCS_INPROGRESS;
         } else {
