@@ -737,8 +737,14 @@ ucs_status_t uct_ud_iface_query(uct_ud_iface_t *iface,
                                       UCT_IFACE_FLAG_EVENT_ASYNC_CB;
     }
 
-    iface_attr->cap.am.max_short       = uct_ib_iface_hdr_size(iface->config.max_inline,
-                                                               sizeof(uct_ud_neth_t));
+    /* Make sure we cannot use more than two SGE */
+    if (uct_ib_iface_device(&iface->super)->max_sq_sge < 4) {
+        iface_attr->cap.am.max_short = sizeof(uct_ud_neth_t) + 1;
+    } else {
+        iface_attr->cap.am.max_short = uct_ib_iface_hdr_size(
+                iface->config.max_inline, sizeof(uct_ud_neth_t));
+    }
+
     iface_attr->cap.am.max_bcopy       = iface->super.config.seg_size - UCT_UD_RX_HDR_LEN;
     iface_attr->cap.am.min_zcopy       = 0;
     iface_attr->cap.am.max_zcopy       = iface->super.config.seg_size - UCT_UD_RX_HDR_LEN;
