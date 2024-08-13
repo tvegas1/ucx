@@ -3848,6 +3848,6 @@ int ucp_mem_external_device_copy(ucp_worker_h worker, uct_ep_h ep,
         return 0;
     }
 
-    return worker->callbacks.memcpy_device_start(cuda_dest, src, length, to_dev, comp, user_data);
+    return worker->callbacks.memcpy_device_start(cuda_dest, src, length, comp, user_data);
 }
 

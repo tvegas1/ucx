@@ -1284,12 +1284,11 @@ typedef struct ucp_rkey_compare_params {
 } ucp_rkey_compare_params_t;
 
 
-/* Common: Using to_dev=1 means dest is cuda, else src is cuda */
 typedef struct ucp_worker_mem_callbacks {
   /*
    * The coyping must be completed by the time function returns
    */
-  void (*memcpy_device)(void *dest, const void *src, size_t size, int to_dev);
+  void (*memcpy_device)(void *dest, const void *src, size_t size);
 
   /*
    * ->memcpy_device_start() must return, before calling ucp_memcpy_device_complete()
@@ -1299,7 +1298,7 @@ typedef struct ucp_worker_mem_callbacks {
    *    returned from ->memcpy_device_start().
    */
   int  (*memcpy_device_start)(void *dest, const void *src, size_t size,
-                              int to_dev, void *completion, void *user_data);
+                              void *completion, void *user_data);
 } ucp_worker_mem_callbacks_t;
 
 /**

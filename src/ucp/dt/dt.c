@@ -53,7 +53,7 @@ UCS_PROFILE_FUNC_VOID(ucp_mem_type_unpack,
     }
 
     if (worker->callbacks.memcpy_device && ucp_mem_type_is_cuda(mem_type)) {
-        worker->callbacks.memcpy_device(buffer, recv_data, recv_length, 1);
+        worker->callbacks.memcpy_device(buffer, recv_data, recv_length);
     } else {
         status = uct_ep_put_short(ucp_ep_get_lane(ep, lane), recv_data, recv_length,
                                   (uint64_t)buffer, rkey_bundle.rkey);
@@ -93,7 +93,7 @@ UCS_PROFILE_FUNC_VOID(ucp_mem_type_pack,
     }
 
     if (worker->callbacks.memcpy_device && ucp_mem_type_is_cuda(mem_type)) {
-        worker->callbacks.memcpy_device(dest, src, length, 1);
+        worker->callbacks.memcpy_device(dest, src, length);
     } else {
         status = uct_ep_get_short(ucp_ep_get_lane(ep, lane), dest, length,
                                   (uint64_t)src, rkey_bundle.rkey);
