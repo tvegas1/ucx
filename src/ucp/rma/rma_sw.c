@@ -163,7 +163,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_put_handler, (arg, data, length, am_flags),
                             "SW PUT request");
     ucp_dt_contig_unpack(worker, (void*)puth->address, puth + 1,
                          length - sizeof(*puth), puth->mem_type,
-                         length - sizeof(*puth));
+                         length - sizeof(*puth), NULL);
     ucp_rma_sw_send_cmpl(ep);
     return UCS_OK;
 }
@@ -197,7 +197,7 @@ static size_t ucp_rma_sw_pack_get_reply(void *dest, void *arg)
     hdr->offset = req->send.state.dt_iter.offset;
     ucp_dt_contig_pack(req->send.ep->worker, hdr + 1,
                        (char*)req->send.buffer + hdr->offset, length,
-                       req->send.mem_type, req->send.length);
+                       req->send.mem_type, req->send.length, req->user_data);
 
     return sizeof(*hdr) + length;
 }
@@ -282,7 +282,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_get_rep_handler, (arg, data, length, am_flags
     ep = req->send.ep;
     if (ep->worker->context->config.ext.proto_enable) {
         ucp_datatype_iter_unpack(&req->send.state.dt_iter, worker, frag_length,
-                                 getreph->offset, getreph + 1);
+                                 getreph->offset, getreph + 1, req->user_data);
         req->send.state.completed_size += frag_length;
         if (req->send.state.completed_size == req->send.length) {
             ucp_send_request_id_release(req);

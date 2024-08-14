@@ -97,7 +97,7 @@ static size_t ucp_eager_tag_offload_pack(void *dest, void *arg)
 
     return ucp_datatype_iter_next_pack(&req->send.state.dt_iter,
                                        req->send.ep->worker, SIZE_MAX,
-                                       &next_iter, dest);
+                                       &next_iter, dest, req->user_data);
 }
 
 static UCS_F_ALWAYS_INLINE ucs_status_t

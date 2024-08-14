@@ -3844,7 +3844,7 @@ int ucp_mem_external_device_copy(ucp_worker_h worker, uct_ep_h ep,
 {
     if (!ucp_ep_is_cuda_ipc(ep) ||
         !ucp_mem_type_is_cuda(mem_type) ||
-        !worker->callbacks.memcpy_device) {
+        !worker->callbacks.memcpy_device_start) {
         return 0;
     }
 

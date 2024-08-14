@@ -166,7 +166,7 @@ UCS_PROFILE_FUNC_VOID(ucp_tag_offload_rndv_cb,
            it to the host memory staging buffer for further processing. */
         header_host_copy = ucs_alloca(header_length);
         ucp_mem_type_pack(req->recv.worker, header_host_copy, header,
-                          header_length, req->recv.dt_iter.mem_info.type);
+                          header_length, req->recv.dt_iter.mem_info.type, req->user_data);
         ucp_tag_rndv_matched(req->recv.worker, req, header_host_copy,
                              header_length);
     }
@@ -473,7 +473,7 @@ static size_t ucp_tag_offload_pack_eager(void *dest, void *arg)
 
     length = ucp_dt_pack(req->send.ep->worker, req->send.datatype,
                          req->send.mem_type, dest, req->send.buffer,
-                         &req->send.state.dt, req->send.length);
+                         &req->send.state.dt, req->send.length, req->user_data);
     ucs_assert(length == req->send.length);
     return length;
 }

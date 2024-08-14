@@ -594,7 +594,7 @@ ucp_request_recv_data_unpack(ucp_request_t *req, const void *data,
     }
 
     status = ucp_datatype_iter_unpack(&req->recv.dt_iter, req->recv.worker,
-                                      length, offset, data);
+                                      length, offset, data, req->user_data);
     if (last || (status != UCS_OK)) {
         ucp_datatype_iter_cleanup(&req->recv.dt_iter, dereg, UCP_DT_MASK_ALL);
     }

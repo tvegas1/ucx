@@ -1830,7 +1830,7 @@ static size_t ucp_rndv_pack_data(void *dest, void *arg)
 
     return sizeof(*hdr) + ucp_dt_pack(sreq->send.ep->worker, sreq->send.datatype,
                                       sreq->send.mem_type, hdr + 1, sreq->send.buffer,
-                                      &sreq->send.state.dt, length);
+                                      &sreq->send.state.dt, length, sreq->user_data);
 }
 
 UCS_PROFILE_FUNC(ucs_status_t, ucp_rndv_progress_am_bcopy, (self),

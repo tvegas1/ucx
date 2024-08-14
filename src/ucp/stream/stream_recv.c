@@ -358,7 +358,7 @@ ucp_stream_try_recv_inplace(ucp_ep_h ep, void *buffer, size_t count,
     ucs_assertv(recv_length > 0, "count=%zu elem_size=%zu", count, elem_size);
     status = ucp_datatype_iter_unpack_single(ep->worker, buffer, count,
                                              ucp_stream_rdesc_payload(rdesc),
-                                             recv_length, 0, param);
+                                             recv_length, 0, param, NULL);
     if (status != UCS_OK) {
         return status;
     }

@@ -102,7 +102,7 @@ static size_t ucp_eager_single_pack(void *dest, void *arg)
     hdr->super.tag = req->send.msg_proto.tag;
     packed_size    = ucp_datatype_iter_next_pack(&req->send.state.dt_iter,
                                                  req->send.ep->worker,
-                                                 SIZE_MAX, &next_iter, hdr + 1);
+                                                 SIZE_MAX, &next_iter, hdr + 1, req->user_data);
     return sizeof(*hdr) + packed_size;
 }
 

@@ -128,7 +128,7 @@ static unsigned ucp_proto_rndv_progress_rkey_ptr(void *arg)
                   seg_size, src, offset, length);
 
     status = ucp_datatype_iter_unpack(&req->send.state.dt_iter, worker,
-                                      seg_size, offset, src);
+                                      seg_size, offset, src, req->user_data);
     if (ucs_unlikely(status != UCS_OK)) {
         ucp_proto_request_abort(req, status);
         return 0;

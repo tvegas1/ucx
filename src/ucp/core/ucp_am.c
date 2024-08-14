@@ -371,7 +371,7 @@ ucp_am_bcopy_pack_data(void *buffer, ucp_request_t *req, size_t length)
     return user_header_length +
            ucp_dt_pack(req->send.ep->worker, req->send.datatype,
                        req->send.mem_type, buffer, req->send.buffer,
-                       &req->send.state.dt, payload_length);
+                       &req->send.state.dt, payload_length, req->user_data);
 }
 
 static size_t
@@ -456,7 +456,7 @@ ucp_am_bcopy_pack_args_mid(void *dest, void *arg)
                           req->send.length - req->send.state.dt.offset);
     length      = ucp_dt_pack(req->send.ep->worker, req->send.datatype,
                               req->send.mem_type, hdr + 1, req->send.buffer,
-                              &req->send.state.dt, max_length);
+                              &req->send.state.dt, max_length, req->user_data);
     mid_ftr     = UCS_PTR_BYTE_OFFSET(hdr + 1, length);
 
     ucp_am_fill_middle_footer(mid_ftr, req);
@@ -1067,7 +1067,7 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_am_recv_data_nbx,
     ucp_recv_desc_t *desc = (ucp_recv_desc_t*)data_desc - 1;
     ucp_context_h context = worker->context;
     ucs_status_ptr_t ret;
-    ucp_request_t *req;
+    ucp_request_t *req = NULL;
     ucp_rndv_rts_hdr_t *rts;
     ucs_status_t status;
     size_t recv_length, rkey_length;
@@ -1146,9 +1146,14 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_am_recv_data_nbx,
     } else {
         /* data_desc represents eager message and can be received in place
          * without initializing request */
+        if (req == NULL) {
+            req = ucp_request_get_param(worker, param,
+                                        {ret = UCS_STATUS_PTR(UCS_ERR_NO_MEMORY);
+                                         goto out;});
+        }
         status      = ucp_datatype_iter_unpack_single(worker, buffer, count,
                                                       data_desc, desc->length, 1,
-                                                      param);
+                                                      param, req->user_data);
         recv_length = desc->length;
     }
 

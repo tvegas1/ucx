@@ -30,7 +30,7 @@ ucp_tag_pack_eager_common(ucp_request_t *req, void *dest,
 
     packed_length = ucp_dt_pack(req->send.ep->worker, req->send.datatype,
                                 req->send.mem_type, dest, req->send.buffer,
-                                &req->send.state.dt, length);
+                                &req->send.state.dt, length, req->user_data);
     return packed_length + hdr_length;
 }
 

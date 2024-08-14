@@ -27,9 +27,10 @@ const char * ucp_datatype_class_names[] = {
 };
 
 UCS_PROFILE_FUNC_VOID(ucp_mem_type_unpack,
-                      (worker, buffer, recv_data, recv_length, mem_type),
+                      (worker, buffer, recv_data, recv_length, mem_type, user_data),
                       ucp_worker_h worker, void *buffer, const void *recv_data,
-                      size_t recv_length, ucs_memory_type_t mem_type)
+                      size_t recv_length, ucs_memory_type_t mem_type, 
+                      void *user_data)
 {
     ucp_ep_h ep         = worker->mem_type_ep[mem_type];
     ucp_lane_index_t lane;
@@ -53,7 +54,7 @@ UCS_PROFILE_FUNC_VOID(ucp_mem_type_unpack,
     }
 
     if (worker->callbacks.memcpy_device && ucp_mem_type_is_cuda(mem_type)) {
-        worker->callbacks.memcpy_device(buffer, recv_data, recv_length);
+        worker->callbacks.memcpy_device(buffer, recv_data, recv_length, user_data);
     } else {
         status = uct_ep_put_short(ucp_ep_get_lane(ep, lane), recv_data, recv_length,
                                   (uint64_t)buffer, rkey_bundle.rkey);
@@ -67,9 +68,10 @@ UCS_PROFILE_FUNC_VOID(ucp_mem_type_unpack,
 }
 
 UCS_PROFILE_FUNC_VOID(ucp_mem_type_pack,
-                      (worker, dest, src, length, mem_type),
+                      (worker, dest, src, length, mem_type, user_data),
                       ucp_worker_h worker, void *dest, const void *src,
-                      size_t length, ucs_memory_type_t mem_type)
+                      size_t length, ucs_memory_type_t mem_type,
+                      void *user_data)
 {
     ucp_ep_h ep         = worker->mem_type_ep[mem_type];
     ucp_lane_index_t lane;
@@ -93,7 +95,7 @@ UCS_PROFILE_FUNC_VOID(ucp_mem_type_pack,
     }
 
     if (worker->callbacks.memcpy_device && ucp_mem_type_is_cuda(mem_type)) {
-        worker->callbacks.memcpy_device(dest, src, length);
+        worker->callbacks.memcpy_device(dest, src, length, user_data);
     } else {
         status = uct_ep_get_short(ucp_ep_get_lane(ep, lane), dest, length,
                                   (uint64_t)src, rkey_bundle.rkey);
@@ -108,7 +110,7 @@ UCS_PROFILE_FUNC_VOID(ucp_mem_type_pack,
 
 size_t ucp_dt_pack(ucp_worker_h worker, ucp_datatype_t datatype,
                    ucs_memory_type_t mem_type, void *dest, const void *src,
-                   ucp_dt_state_t *state, size_t length)
+                   ucp_dt_state_t *state, size_t length, void *user_data)
 {
     size_t result_len = 0;
     ucp_dt_generic_t *dt;
@@ -121,14 +123,15 @@ size_t ucp_dt_pack(ucp_worker_h worker, ucp_datatype_t datatype,
     case UCP_DATATYPE_CONTIG:
         ucp_dt_contig_pack(worker, dest,
                            UCS_PTR_BYTE_OFFSET(src, state->offset),
-                           length, mem_type, length);
+                           length, mem_type, length, user_data);
         result_len = length;
         break;
 
     case UCP_DATATYPE_IOV:
         UCS_PROFILE_CALL_VOID(ucp_dt_iov_gather, worker, dest, src, length,
                               &state->dt.iov.iov_offset,
-                              &state->dt.iov.iovcnt_offset, mem_type, length);
+                              &state->dt.iov.iovcnt_offset, mem_type, length,
+                              user_data);
         result_len = length;
         break;
 

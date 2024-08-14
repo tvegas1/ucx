@@ -39,10 +39,10 @@ static size_t ucp_amo_sw_pack(void *dest, ucp_request_t *req, int fetch,
 
     if (worker->context->config.ext.proto_enable) {
         ucp_dt_contig_pack(worker, atomich + 1, &req->send.amo.value, size,
-                           UCS_MEMORY_TYPE_HOST, size);
+                           UCS_MEMORY_TYPE_HOST, size, req->user_data);
         if (req->send.amo.uct_op == UCT_ATOMIC_OP_CSWAP) {
             ucp_dt_contig_pack(worker, cswaph, req->send.amo.reply_buffer, size,
-                               ucp_amo_request_reply_mem_type(req), size);
+                               ucp_amo_request_reply_mem_type(req), size, req->user_data);
             length += size;
         }
     } else {
@@ -305,7 +305,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_atomic_rep_handler, (arg, data, length, am_fl
     if (worker->context->config.ext.proto_enable) {
         ucp_dt_contig_unpack(worker, req->send.amo.reply_buffer, hdr + 1,
                              frag_length, ucp_amo_request_reply_mem_type(req),
-                             frag_length);
+                             frag_length, req->user_data);
     } else {
         memcpy(req->send.buffer, hdr + 1, frag_length);
     }
@@ -384,7 +384,7 @@ ucp_proto_amo_sw_progress(uct_pending_req_t *self, uct_pack_callback_t pack_cb,
         if (!(req->flags & UCP_REQUEST_FLAG_PROTO_AMO_PACKED)) {
             ucp_datatype_iter_next_pack(&req->send.state.dt_iter,
                                         req->send.ep->worker, SIZE_MAX,
-                                        &next_iter, &req->send.amo.value);
+                                        &next_iter, &req->send.amo.value, req->user_data);
             req->flags |= UCP_REQUEST_FLAG_PROTO_AMO_PACKED;
         }
 

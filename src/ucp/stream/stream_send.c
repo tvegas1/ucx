@@ -234,7 +234,7 @@ static size_t ucp_stream_pack_am_single_dt(void *dest, void *arg)
 
     length = ucp_dt_pack(req->send.ep->worker, req->send.datatype,
                          req->send.mem_type, hdr + 1, req->send.buffer,
-                         &req->send.state.dt, req->send.length);
+                         &req->send.state.dt, req->send.length, req->user_data);
     ucs_assert(length == req->send.length);
     return sizeof(*hdr) + length;
 }
@@ -260,7 +260,7 @@ static size_t ucp_stream_pack_am_first_dt(void *dest, void *arg)
     ucs_assert(req->send.state.dt.offset == 0);
     return sizeof(*hdr) + ucp_dt_pack(req->send.ep->worker, req->send.datatype,
                                       req->send.mem_type, hdr + 1, req->send.buffer,
-                                      &req->send.state.dt, length);
+                                      &req->send.state.dt, length, req->user_data);
 }
 
 static size_t ucp_stream_pack_am_middle_dt(void *dest, void *arg)
@@ -274,7 +274,7 @@ static size_t ucp_stream_pack_am_middle_dt(void *dest, void *arg)
                          req->send.length - req->send.state.dt.offset);
     return sizeof(*hdr) + ucp_dt_pack(req->send.ep->worker, req->send.datatype,
                                       req->send.mem_type, hdr + 1, req->send.buffer,
-                                      &req->send.state.dt, length);
+                                      &req->send.state.dt, length, req->user_data);
 }
 
 static ucs_status_t ucp_stream_bcopy_multi(uct_pending_req_t *self)

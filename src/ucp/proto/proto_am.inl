@@ -673,7 +673,7 @@ ucp_am_pack_user_header(void *buffer, ucp_request_t *req)
 
     ucp_dt_pack(req->send.ep->worker, ucp_dt_make_contig(1),
                 UCS_MEMORY_TYPE_HOST, buffer, req->send.msg_proto.am.header.ptr,
-                &hdr_state, req->send.msg_proto.am.header.length);
+                &hdr_state, req->send.msg_proto.am.header.length, req->user_data);
 }
 
 #endif

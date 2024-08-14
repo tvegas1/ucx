@@ -33,7 +33,8 @@ ucp_am_eager_bcopy_pack(void *buffer, ucp_request_t *req, size_t length,
 
     total_length = ucp_datatype_iter_next_pack(&req->send.state.dt_iter,
                                                req->send.ep->worker,
-                                               length, next_iter, buffer);
+                                               length, next_iter, buffer,
+                                               req->user_data);
     if (user_header_length != 0) {
         /* Pack user header to the end of message/fragment */
         user_hdr = UCS_PTR_BYTE_OFFSET(buffer, total_length);

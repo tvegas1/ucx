@@ -500,7 +500,7 @@ ucp_proto_rndv_handle_data(void *arg, void *data, size_t length, unsigned flags)
 
     status = ucp_datatype_iter_unpack(&req->send.state.dt_iter, worker,
                                       recv_len, rndv_data_hdr->offset,
-                                      rndv_data_hdr + 1);
+                                      rndv_data_hdr + 1, req->user_data);
     if (status != UCS_OK) {
         ucp_proto_request_abort(req, status);
         return UCS_OK;

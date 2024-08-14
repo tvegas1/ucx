@@ -24,7 +24,7 @@ ucp_amo_memtype_unpack_reply_buffer(ucp_request_t *req)
     ucp_dt_contig_unpack(req->send.ep->worker, req->send.amo.reply_buffer,
                          &req->send.amo.result, req->send.state.dt_iter.length,
                          ucp_amo_request_reply_mem_type(req),
-                         req->send.state.dt_iter.length);
+                         req->send.state.dt_iter.length, req->user_data);
 }
 
 static void ucp_proto_amo_completion(uct_completion_t *self)
@@ -73,7 +73,7 @@ ucp_proto_amo_progress(uct_pending_req_t *self, ucp_operation_id_t op_id,
                                     UCS_MEMORY_TYPE_HOST;
             ucp_dt_contig_pack(req->send.ep->worker, &req->send.amo.value,
                                req->send.state.dt_iter.type.contig.buffer,
-                               op_size, mem_type, op_size);
+                               op_size, mem_type, op_size, req->user_data);
             req->flags |= UCP_REQUEST_FLAG_PROTO_AMO_PACKED;
         }
 
@@ -86,7 +86,7 @@ ucp_proto_amo_progress(uct_pending_req_t *self, ucp_operation_id_t op_id,
         if (op_id == UCP_OP_ID_AMO_CSWAP) {
             ucp_dt_contig_pack(ep->worker, &req->send.amo.result,
                                req->send.amo.reply_buffer, op_size,
-                               ucp_amo_request_reply_mem_type(req), op_size);
+                               ucp_amo_request_reply_mem_type(req), op_size, req->user_data);
         }
 
         req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;

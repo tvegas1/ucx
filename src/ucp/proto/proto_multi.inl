@@ -93,7 +93,8 @@ ucp_proto_multi_data_pack(ucp_proto_multi_pack_ctx_t *pack_ctx, void *dest)
     return ucp_datatype_iter_next_pack(&req->send.state.dt_iter,
                                        req->send.ep->worker,
                                        pack_ctx->max_payload,
-                                       pack_ctx->next_iter, dest);
+                                       pack_ctx->next_iter, dest,
+                                       req->user_data);
 }
 
 static UCS_F_ALWAYS_INLINE ucs_status_t

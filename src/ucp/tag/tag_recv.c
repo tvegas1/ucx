@@ -96,7 +96,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_tag_recv_common(
         status = ucp_datatype_iter_unpack_single(worker, buffer, count,
                                                  UCS_PTR_BYTE_OFFSET(rdesc + 1,
                                                                      hdr_len),
-                                                 recv_len, 1, param);
+                                                 recv_len, 1, param, req->user_data);
         ucp_recv_desc_release(rdesc);
 
         req->status = status;

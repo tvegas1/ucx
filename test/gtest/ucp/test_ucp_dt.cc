@@ -136,7 +136,7 @@ protected:
             /* TODO create non-NULL worker when using memtype */
             ucp_datatype_iter_t next_iter;
             ucp_datatype_iter_next_pack(&m_dt_iter, NULL, seg_size, &next_iter,
-                                        packed_ptr);
+                                        packed_ptr, NULL);
             ucp_datatype_iter_copy_position(&m_dt_iter, &next_iter, UINT_MAX);
         }
 
@@ -164,7 +164,7 @@ protected:
             void *packed_ptr = UCS_PTR_BYTE_OFFSET(&m_packed_buffer[0], offset);
             /* TODO create non-NULL worker when using memtype */
             ucp_datatype_iter_unpack(&m_dt_iter, NULL, it->second, offset,
-                                     packed_ptr);
+                                     packed_ptr, NULL);
         }
 
         finalize_dt_iter();
