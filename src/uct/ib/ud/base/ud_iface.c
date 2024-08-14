@@ -208,8 +208,8 @@ uct_ud_iface_create_qp(uct_ud_iface_t *self, const uct_ud_iface_config_t *config
     }
 
     if (qp_init_attr.cap.max_send_sge > dev->max_sq_sge) {
-        ucs_diag("create QP: max_sq_sge: using device cap %d (configured %u+1)",
-                 dev->max_sq_sge, qp_init_attr.cap.max_send_sge - 1);
+        ucs_diag("create QP: max_sq_sge: using device cap %d (configured %u)",
+                 dev->max_sq_sge, qp_init_attr.cap.max_send_sge);
 
         qp_init_attr.cap.max_send_sge = dev->max_sq_sge;
     }
