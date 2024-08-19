@@ -1288,7 +1288,7 @@ typedef struct ucp_worker_mem_callbacks {
   /*
    * The coyping must be completed by the time function returns
    */
-  void (*memcpy_device)(void *dest, const void *src, size_t size, void *user_data);
+  void (*memcpy_device)(void *dest, void *src, size_t size, void *user_data);
 
   /*
    * ->memcpy_device_start() must return, before calling ucp_memcpy_device_complete()
@@ -1297,7 +1297,7 @@ typedef struct ucp_worker_mem_callbacks {
    * 2. ucp_memcpy_device_complete() can only be called after having first
    *    returned from ->memcpy_device_start().
    */
-  int  (*memcpy_device_start)(void *dest, const void *src, size_t size,
+  int  (*memcpy_device_start)(void *dest, void *src, size_t size,
                               void *completion, void *user_data);
 } ucp_worker_mem_callbacks_t;
 
