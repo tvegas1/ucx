@@ -70,15 +70,19 @@ static inline void *array_append(array_t *a, void *data, size_t len)
     return ptr;
 }
 
+static inline void *array_end(const array_t *a)
+{
+    return a->data + a->elem_size * a->count;
+}
+
 static inline void array_remove(array_t *a, void *data)
 {
     assert(data >= a->data &&
-           data + a->elem_size <= a->data + a->elem_size * a->count);
+           data + a->elem_size <= array_end(a));
     a->count--;
 
-    if (data < (a->data + a->elem_size * a->count)) {
-        memmove(data, data + a->elem_size,
-                a->data + (a->count * a->elem_size) - data);
+    if (data < array_end(a)) {
+        memmove(data, data + a->elem_size, array_end(a) - data);
     }
 }
 

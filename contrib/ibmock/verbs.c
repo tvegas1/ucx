@@ -139,13 +139,14 @@ struct fake_recv_wr *fake_recv_wr_create(struct ibv_recv_wr *wr)
 static int dev_post_recv(struct ibv_qp *qp, struct ibv_recv_wr *wr,
                          struct ibv_recv_wr **bad_wr)
 {
-    struct fake_recv_wr *f;
     struct fake_qp *fqp = (struct fake_qp*)qp;
+    struct fake_recv_wr *recv_wr;
 
     lock();
     for (; wr; wr = wr->next) {
-        f = calloc(1, sizeof(*f) + wr->num_sge * sizeof(*f->sge));
-        if (f == NULL) {
+        recv_wr = calloc(1, sizeof(*recv_wr) +
+                         ( wr->num_sge * sizeof(*recv_wr->sge)));
+        if (recv_wr == NULL) {
             if (bad_wr) {
                 *bad_wr = wr;
             }
@@ -153,9 +154,9 @@ static int dev_post_recv(struct ibv_qp *qp, struct ibv_recv_wr *wr,
             return -1;
         }
 
-        memcpy(&f->wr, wr, sizeof(*wr));
-        memcpy(f->sge, wr->sg_list, sizeof(*f->sge) * wr->num_sge);
-        list_add_tail(&fqp->recv_reqs, &f->list);
+        memcpy(&recv_wr->wr, wr, sizeof(*wr));
+        memcpy(recv_wr->sge, wr->sg_list, sizeof(*recv_wr->sge) * wr->num_sge);
+        list_add_tail(&fqp->recv_reqs, &recv_wr->list);
     }
 
     unlock();
@@ -189,15 +190,15 @@ rx_send(struct fake_qp *fqp, struct fake_hdr *hdr, struct iovec *iov, int count)
     struct fake_cq *fcq;
     struct ibv_sge *sge;
     struct ibv_recv_wr *wr;
-    int i, j, s, d, l;
-    size_t soff, doff, total = 0;
+    int i, j, src_len, dst_len, len;
+    size_t src_off, dst_off, total = 0;
 
     if (list_is_empty(&fqp->recv_reqs)) {
         return 1;
     }
 
-    soff = sizeof(*hdr);
-    doff = 0;
+    src_off = sizeof(*hdr);
+    dst_off = 0;
 
     recv = list_first(&fqp->recv_reqs);
     list_del(&recv->list);
@@ -205,27 +206,26 @@ rx_send(struct fake_qp *fqp, struct fake_hdr *hdr, struct iovec *iov, int count)
     wr  = &recv->wr;
     sge = recv->sge;
 
-    for (i = 0, j = 0; i < count; i++, soff = 0) {
-        while (soff < iov[i].iov_len) {
-            s = iov[i].iov_len - soff;
-            d = sge[j].length - doff;
-            if (!d) {
+    for (i = 0, j = 0; i < count; i++, src_off = 0) {
+        while (src_off < iov[i].iov_len) {
+            src_len = iov[i].iov_len - src_off;
+            dst_len = sge[j].length - dst_off;
+            if (!dst_len) {
                 j++;
-                doff = 0;
+                dst_off = 0;
                 if (j >= wr->num_sge) {
                     printf("ibmock: error: posted RX too short\n");
                     return -1;
                 }
             }
 
-            l = min(s, d);
-            memcpy((void*)sge[j].addr + doff, iov[i].iov_base + soff, l);
-            soff  += l;
-            doff  += l;
-            total += l;
+            len = min(src_len, dst_len);
+            memcpy((void*)sge[j].addr + dst_off, iov[i].iov_base + src_off,
+                   len);
+            src_off += len;
+            dst_off += len;
+            total   += len;
         }
-
-        soff = 0;
     }
 
     recv->fcqe.wc.status   = IBV_WC_SUCCESS;
@@ -250,10 +250,9 @@ rx_rdma(struct fake_qp *fqp, struct fake_hdr *hdr, struct iovec *iov, int count)
         uint32_t len;
     } __attribute__((packed)) dest[hdr->rdma.count];
     int i;
-    size_t soff, doff, total, len;
+    size_t src_off, dst_off, total, len;
 
-    array_foreach(mr, &fqp->fpd->mrs)
-    {
+    array_foreach(mr, &fqp->fpd->mrs) {
         if ((*mr)->mr.lkey == hdr->rdma.rkey) {
             /* TODO check addr ranges, deduplicate mr key lookup */
             found = 1;
@@ -266,12 +265,12 @@ rx_rdma(struct fake_qp *fqp, struct fake_hdr *hdr, struct iovec *iov, int count)
         return 0;
     }
 
-    i    = 0;
-    soff = sizeof(*hdr);
-    doff = 0;
-    for (doff = 0; doff < sizeof(dest);) {
-        while (i < count && soff >= iov[i].iov_len) {
-            soff = 0;
+    i       = 0;
+    src_off = sizeof(*hdr);
+    dst_off = 0;
+    for (dst_off = 0; dst_off < sizeof(dest);) {
+        while (i < count && src_off >= iov[i].iov_len) {
+            src_off = 0;
             i++;
         }
 
@@ -280,10 +279,10 @@ rx_rdma(struct fake_qp *fqp, struct fake_hdr *hdr, struct iovec *iov, int count)
             return 0;
         }
 
-        len = min(sizeof(dest) - doff, iov[i].iov_len - soff);
-        memcpy((void*)dest + doff, iov[i].iov_base + soff, len);
-        doff += len;
-        soff += len;
+        len = min(sizeof(dest) - dst_off, iov[i].iov_len - src_off);
+        memcpy((void*)dest + dst_off, iov[i].iov_base + src_off, len);
+        dst_off += len;
+        src_off += len;
     }
 
     total = 0;
@@ -308,8 +307,7 @@ static int dev_rx_cb(struct iovec *iov, int count)
     }
 
     /* Lookup QP */
-    array_foreach(entry, &fake_qps)
-    {
+    array_foreach(entry, &fake_qps) {
         if ((*entry)->qp_ex.qp_base.qp_num == hdr->qpn) {
             fqp = *entry;
             break;
@@ -416,7 +414,7 @@ static int dev_wr_send_serialize(struct ibv_qp *qp, struct ibv_send_wr *wr,
     wc->src_qp   = qp->qp_num;
     wc->byte_len = total;
 
-    /* TODO: Use actual backend for multi processs/nodes */
+    /* TODO: Use actual backend for multi process/nodes */
     ret = dev_rx_cb(iov, count);
     if (ret == 0) {
         free(fcqe);
@@ -451,8 +449,7 @@ static int dev_post_send(struct ibv_qp *qp, struct ibv_send_wr *wr,
         if (!(wr->send_flags & IBV_SEND_INLINE)) {
             total = 0;
             memset(found, 0, sizeof(found));
-            array_foreach(mr, &fqp->fpd->mrs)
-            {
+            array_foreach(mr, &fqp->fpd->mrs) {
                 for (i = 0; i < wr->num_sge; i++) {
                     if ((*mr)->mr.lkey == wr->sg_list[i].lkey) {
                         total   += !found[i];
@@ -719,18 +716,17 @@ int ibv_query_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr, int attr_mask,
 int ibv_destroy_qp(struct ibv_qp *qp)
 {
     struct fake_qp **entry, *fqp = (struct fake_qp*)qp;
-    struct fake_recv_wr *f;
+    struct fake_recv_wr *fake_wr;
 
     lock();
-    array_foreach(entry, &fake_qps)
-    {
+    array_foreach(entry, &fake_qps) {
         if (fqp == *entry) {
             array_remove(&fake_qps, entry);
 
             while (!list_is_empty(&fqp->recv_reqs)) {
-                f = list_first(&fqp->recv_reqs);
-                list_del(&f->list);
-                free(f);
+                fake_wr = list_first(&fqp->recv_reqs);
+                list_del(&fake_wr->list);
+                free(fake_wr);
             }
 
             free(fqp);
@@ -767,7 +763,7 @@ struct ibv_mr *ibv_reg_mr_iova2(struct ibv_pd *pd, void *addr, size_t length,
     mr->addr    = addr;
     mr->length  = length;
     mr->handle  = access;
-    mr->rkey = mr->lkey = ++fpd->lkey;
+    mr->rkey    = mr->lkey = ++fpd->lkey;
 
     fmr->fpd = fpd;
     array_append(&fpd->mrs, &fmr, sizeof(fmr));
@@ -787,8 +783,7 @@ int ibv_dereg_mr(struct ibv_mr *mr)
     struct fake_mr **entry, *fmr = (struct fake_mr*)mr;
 
     lock();
-    array_foreach(entry, &fmr->fpd->mrs)
-    {
+    array_foreach(entry, &fmr->fpd->mrs) {
         if (fmr == *entry) {
             array_remove(&fmr->fpd->mrs, entry);
             free(fmr);
@@ -822,6 +817,7 @@ int ibv_query_gid(struct ibv_context *context, uint8_t port_num, int index,
                   union ibv_gid *gid)
 {
     struct fake_device *fdevice = (struct fake_device*)context->device;
+    /* Construct an arbitrary GID based on default GID prefix */
     uint8_t addr[16] = {0xfe,        0x80,          0x00,     0x00, 0x00, 0x00,
                         0x00,        0x00,          0x04,     0x07, 0x64, 0xff,
                         fdevice->id, be_mode_get(), port_num, index};
@@ -858,16 +854,17 @@ struct ibv_ah *ibv_create_ah(struct ibv_pd *pd, struct ibv_ah_attr *attr)
     struct fake_ah *fah = calloc(1, sizeof(*fah));
     static int ah_handle;
 
-    if (fah != NULL) {
-        fah->ah.context = pd->context;
-        fah->ah.pd      = pd;
-        lock();
-        fah->ah.handle  = ++ah_handle;
-        unlock();
-
-        memcpy(&fah->attr, attr, sizeof(*attr));
+    if (fah == NULL) {
+        return NULL;
     }
 
+    lock();
+    fah->ah.context = pd->context;
+    fah->ah.pd      = pd;
+    fah->ah.handle  = ++ah_handle;
+    unlock();
+
+    memcpy(&fah->attr, attr, sizeof(*attr));
     return &fah->ah;
 }
 
