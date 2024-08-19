@@ -15,6 +15,17 @@
 #include <stdbool.h>
 #include <unistd.h>
 
+static pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void lock(void)
+{
+    pthread_mutex_lock(&global_lock);
+}
+
+void unlock(void)
+{
+    pthread_mutex_unlock(&global_lock);
+}
 
 bool verbs_allow_disassociate_destroy = 0;
 
@@ -36,13 +47,13 @@ struct ibv_device **ibv_get_device_list(int *num_devices)
 
     *num_devices = NUM_DEVS;
     devs         = calloc(*num_devices, sizeof(*devs));
-    if (!devs) {
+    if (devs == NULL) {
         return NULL;
     }
 
     for (i = 0; i < *num_devices; i++) {
         fake = calloc(1, sizeof(*fake));
-        if (!fake) {
+        if (fake == NULL) {
             return NULL; /* leak */
         }
 
@@ -95,7 +106,7 @@ static int vctx_query_port(struct ibv_context *context, uint8_t port_num,
 {
     (void)context;
 
-    if (port_num != 1 || port_attr_len != sizeof(*port_attr)) {
+    if ((port_num != 1) || (port_attr_len != sizeof(*port_attr))) {
         return EINVAL;
     }
 
@@ -126,18 +137,19 @@ static int dev_post_recv(struct ibv_qp *qp, struct ibv_recv_wr *wr,
     lock();
     for (; wr; wr = wr->next) {
         f = calloc(1, sizeof(*f) + wr->num_sge * sizeof(*f->sge));
-        if (!f) {
+        if (f == NULL) {
             if (bad_wr) {
                 *bad_wr = wr;
             }
             unlock();
             return -1;
         }
+
         memcpy(&f->wr, wr, sizeof(*wr));
         memcpy(f->sge, wr->sg_list, sizeof(*f->sge) * wr->num_sge);
-
         list_add_tail(&fqp->recv_reqs, &f->list);
     }
+
     unlock();
     return 0;
 }
@@ -217,7 +229,6 @@ rx_send(struct fake_qp *fqp, struct fake_hdr *hdr, struct iovec *iov, int count)
 
     fcq = (struct fake_cq*)fqp->qp_ex.qp_base.recv_cq;
     list_add_tail(&fcq->wcs, &recv->fcqe.list);
-
     return 1;
 }
 
@@ -297,7 +308,7 @@ static int dev_rx_cb(struct iovec *iov, int count)
         }
     }
 
-    if (!fqp) {
+    if (fqp == NULL) {
         return 1;
     }
 
@@ -336,7 +347,7 @@ static int dev_wr_send_serialize(struct ibv_qp *qp, struct ibv_send_wr *wr,
     struct ibv_wc *wc;
     int i, ret, count;
 
-    if (wr->opcode != IBV_WR_SEND && wr->opcode != IBV_WR_RDMA_READ) {
+    if ((wr->opcode != IBV_WR_SEND) && (wr->opcode != IBV_WR_RDMA_READ)) {
         return -1;
     }
 
@@ -382,7 +393,7 @@ static int dev_wr_send_serialize(struct ibv_qp *qp, struct ibv_send_wr *wr,
 
     /* Pre-generate completion queue entry */
     fcqe = malloc(sizeof(*fcqe));
-    if (!fcqe) {
+    if (fcqe == NULL) {
         return -1;
     }
 
@@ -399,7 +410,7 @@ static int dev_wr_send_serialize(struct ibv_qp *qp, struct ibv_send_wr *wr,
 
     /* TODO: Use actual backend for multi processs/nodes */
     ret = dev_rx_cb(iov, count);
-    if (!ret) {
+    if (ret == 0) {
         free(fcqe);
         return -1;
     }
@@ -495,12 +506,12 @@ struct ibv_context *ibv_open_device(struct ibv_device *device)
     int fds[2];
 
     vctx = calloc(1, sizeof(*vctx));
-    if (!vctx) {
+    if (vctx == NULL) {
         return NULL;
     }
 
     vctx->context.device = malloc(sizeof(struct fake_device));
-    if (!vctx->context.device) {
+    if (vctx->context.device == NULL) {
         free(vctx);
         return NULL;
     }
@@ -536,16 +547,17 @@ int ibv_close_device(struct ibv_context *context)
 struct ibv_pd *ibv_alloc_pd(struct ibv_context *context)
 {
     struct fake_pd *fpd = calloc(1, sizeof(*fpd));
-    struct ibv_pd *pd   = &fpd->pd;
+    struct ibv_pd *pd;
 
-    if (!fpd) {
+    if (fpd == NULL) {
         return NULL;
     }
 
     array_init(&fpd->mrs, sizeof(struct fake_mr*));
     array_init(&fpd->qps, sizeof(struct fake_qp*));
-    pd->context = context;
 
+    pd          = &fpd->pd;
+    pd->context = context;
     return pd;
 }
 
@@ -566,12 +578,12 @@ struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
     struct fake_cq *fcq;
     struct ibv_cq *cq;
 
+    (void)comp_vector;
+
     fcq = calloc(1, sizeof(*fcq));
-    if (!fcq) {
+    if (fcq == NULL) {
         return NULL;
     }
-
-    (void)comp_vector;
 
     cq             = &fcq->cq;
     cq->context    = context;
@@ -606,17 +618,17 @@ struct ibv_qp *ibv_create_qp(struct ibv_pd *pd, struct ibv_qp_init_attr *attr)
     struct fake_qp *fqp;
     struct ibv_qp *qp;
 
-    if (attr->qp_type != IBV_QPT_DRIVER && attr->qp_type != IBV_QPT_UD) {
+    if ((attr->qp_type != IBV_QPT_DRIVER) && (attr->qp_type != IBV_QPT_UD)) {
         return NULL; /* RC is not supported */
     }
 
-    if (attr->cap.max_inline_data > efa_dev_attr.inline_buf_size ||
-        attr->cap.max_send_sge > efa_dev_attr.max_sq_sge) {
+    if ((attr->cap.max_inline_data > efa_dev_attr.inline_buf_size) ||
+        (attr->cap.max_send_sge > efa_dev_attr.max_sq_sge)) {
         return NULL;
     }
 
     fqp = calloc(1, sizeof(*fqp));
-    if (!fqp) {
+    if (fqp == NULL) {
         return NULL;
     }
 
@@ -736,7 +748,7 @@ struct ibv_mr *ibv_reg_mr_iova2(struct ibv_pd *pd, void *addr, size_t length,
     (void)iova;
 
     fmr = calloc(1, sizeof(*fmr));
-    if (!fmr) {
+    if (fmr == NULL) {
         return NULL;
     }
 
@@ -790,7 +802,7 @@ int ibv_query_pkey(struct ibv_context *context, uint8_t port_num, int index,
     (void)port_num;
     (void)index;
 
-    if (port_num != 1 || index != 0) {
+    if ((port_num != 1) || (index != 0)) {
         return EINVAL;
     }
 
@@ -838,11 +850,11 @@ struct ibv_ah *ibv_create_ah(struct ibv_pd *pd, struct ibv_ah_attr *attr)
     struct fake_ah *fah = calloc(1, sizeof(*fah));
     static int ah_handle;
 
-    if (fah) {
+    if (fah != NULL) {
         fah->ah.context = pd->context;
         fah->ah.pd      = pd;
         lock();
-        fah->ah.handle = ++ah_handle;
+        fah->ah.handle  = ++ah_handle;
         unlock();
 
         memcpy(&fah->attr, attr, sizeof(*attr));

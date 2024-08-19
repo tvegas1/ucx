@@ -16,27 +16,18 @@
 typedef struct {
     void   *data;
     size_t elem_size;
-    int    count;
+    size_t count;
 } array_t;
 
-pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;
-
-static inline void lock(void)
-{
-    pthread_mutex_lock(&global_lock);
-}
-
-static inline void unlock(void)
-{
-    pthread_mutex_unlock(&global_lock);
-}
+void lock(void);
+void unlock(void);
 
 #define min(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
 #define container_of(_ptr, _type, _member) \
     ((_type*)((char*)(_ptr) - (char*)&((_type*)0)->_member))
 
-static inline void array_init(array_t *a, int elem_size)
+static inline void array_init(array_t *a, size_t elem_size)
 {
     memset(a, 0, sizeof(*a));
     a->elem_size = elem_size;
@@ -47,8 +38,9 @@ static inline void array_cleanup(array_t *a)
     if (a->data) {
         free(a->data);
     }
+
     if (a->count) {
-        printf("ibmock: non-empty array (count=%d)\n", a->count);
+        printf("ibmock: non-empty array (count=%zu)\n", a->count);
     }
 }
 
