@@ -34,7 +34,7 @@ static inline void unlock(void)
 #define min(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
 #define container_of(_ptr, _type, _member) \
-    ((_type *)((char *)(_ptr) - (char *)&((_type *)0)->_member))
+    ((_type*)((char*)(_ptr) - (char*)&((_type*)0)->_member))
 
 static inline void array_init(struct array *a, int elem_size)
 {
@@ -70,7 +70,7 @@ static inline void *array_append(struct array *a, void *data, size_t len)
     }
 
     a->data = tmp;
-    ptr = a->data + (a->count * a->elem_size);
+    ptr     = a->data + (a->count * a->elem_size);
     memcpy(ptr, data, len);
     a->count++;
     return ptr;
@@ -81,13 +81,15 @@ static inline void array_remove(struct array *a, void *data)
     assert(data >= a->data &&
            data + a->elem_size <= a->data + a->elem_size * a->count);
     a->count--;
-    memmove(data, data + a->elem_size, a->data + (a->count * a->elem_size) - data);
+    memmove(data, data + a->elem_size,
+            a->data + (a->count * a->elem_size) - data);
 }
 
 #define array_foreach(_entry, _arr) \
     for (_entry = (_arr)->data; \
-         (void *)(_entry + 1) <= \
-         (_arr)->data + (_arr)->elem_size * (_arr)->count;  _entry++)
+         (void*)(_entry + 1) <= \
+         (_arr)->data + (_arr)->elem_size * (_arr)->count; \
+         _entry++)
 
 
 struct list {
@@ -102,9 +104,9 @@ static inline void list_init(struct list *head)
 static inline void list_add_tail(struct list *head, struct list *entry)
 {
     head->prev->next = entry;
-    entry->prev = head->prev;
-    entry->next = head;
-    head->prev = entry;
+    entry->prev      = head->prev;
+    entry->next      = head;
+    head->prev       = entry;
 }
 
 static inline void list_del(struct list *entry)

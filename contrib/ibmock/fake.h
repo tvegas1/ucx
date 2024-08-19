@@ -57,15 +57,15 @@ struct fake_cqe {
     struct list    list;
     struct ibv_wc  wc;
     struct fake_cq *fcq; /* owner CQ */
-    void           (*free)(void *);
+    void (*free)(void*);
 };
 
 /* Header for serialized payloads */
 struct fake_hdr {
-    union ibv_gid     gid;
-    unsigned          opcode;
-    unsigned          src_qp;
-    unsigned          qpn;
+    union ibv_gid gid;
+    unsigned      opcode;
+    unsigned      src_qp;
+    unsigned      qpn;
     struct {
         union ibv_gid src_gid;
         uint32_t      rkey;
