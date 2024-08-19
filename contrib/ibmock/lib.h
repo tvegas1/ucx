@@ -51,14 +51,8 @@ static inline void *array_append(array_t *a, void *data, size_t len)
     assert(len == a->elem_size);
     tmp = realloc(a->data, (a->count + 1) * a->elem_size);
     if (tmp == NULL) {
-        tmp = malloc((a->count + 1) * a->elem_size);
-        if (!tmp) {
-            printf("ibmock: OOM\n");
-            exit(1);
-        }
-
-        memcpy(tmp, a->data, a->count * a->elem_size);
-        free(a->data);
+        printf("ibmock: OOM\n");
+        exit(1);
     }
 
     a->data = tmp;
@@ -73,8 +67,11 @@ static inline void array_remove(array_t *a, void *data)
     assert(data >= a->data &&
            data + a->elem_size <= a->data + a->elem_size * a->count);
     a->count--;
-    memmove(data, data + a->elem_size,
-            a->data + (a->count * a->elem_size) - data);
+
+    if (data < (a->data + a->elem_size * a->count)) {
+        memmove(data, data + a->elem_size,
+                a->data + (a->count * a->elem_size) - data);
+    }
 }
 
 #define array_foreach(_entry, _arr) \

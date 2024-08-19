@@ -54,7 +54,7 @@ struct ibv_device **ibv_get_device_list(int *num_devices)
     for (i = 0; i < *num_devices; i++) {
         fake = calloc(1, sizeof(*fake));
         if (fake == NULL) {
-            return NULL; /* leak */
+            goto failure;
         }
 
         fake->id = i;
@@ -72,6 +72,14 @@ struct ibv_device **ibv_get_device_list(int *num_devices)
     }
 
     return devs;
+
+failure:
+    while (i-- > 0) {
+        free(devs[i]);
+    }
+
+    free(devs);
+    return NULL;
 }
 
 void ibv_free_device_list(struct ibv_device **list)
