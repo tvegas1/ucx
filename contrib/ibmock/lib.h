@@ -17,6 +17,7 @@ typedef struct {
     void   *data;
     size_t elem_size;
     size_t count;
+    size_t total;
 } array_t;
 
 void lock(void);
@@ -47,16 +48,23 @@ static inline void array_cleanup(array_t *a)
 static inline void *array_append(array_t *a, void *data, size_t len)
 {
     void *tmp, *ptr;
+    size_t total;
 
     assert(len == a->elem_size);
-    tmp = realloc(a->data, (a->count + 1) * a->elem_size);
-    if (tmp == NULL) {
-        printf("ibmock: OOM\n");
-        exit(1);
+
+    if (a->count >= a->total) {
+        total = (a->total * 2)? : 1;
+        tmp   = realloc(a->data, total * a->elem_size);
+        if (tmp == NULL) {
+            printf("ibmock: OOM\n");
+            exit(1);
+        }
+
+        a->data  = tmp;
+        a->total = total;
     }
 
-    a->data = tmp;
-    ptr     = a->data + (a->count * a->elem_size);
+    ptr = a->data + (a->count * a->elem_size);
     memcpy(ptr, data, len);
     a->count++;
     return ptr;
