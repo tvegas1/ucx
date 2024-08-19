@@ -34,7 +34,7 @@ struct ibv_device **ibv_get_device_list(int *num_devices)
     struct ibv_device **devs;
     int i;
 
-    *num_devices = conf_num_devices();
+    *num_devices = NUM_DEVS;
     devs         = calloc(*num_devices, sizeof(*devs));
     if (!devs) {
         return NULL;
@@ -55,9 +55,9 @@ struct ibv_device **ibv_get_device_list(int *num_devices)
         sprintf(devs[i]->name, "rdmap%d", i);
         sprintf(devs[i]->dev_name, "uverbs%d", i);
         sprintf(devs[i]->dev_path, "%s/sys/class/infiniband/rdmap%d",
-                conf_sys_path(), i);
+                SYS_PATH, i);
         sprintf(devs[i]->ibdev_path, "%s/sys/class/infiniband/uverbs%d",
-                conf_sys_path(), i);
+                SYS_PATH, i);
     }
 
     return devs;
@@ -67,7 +67,7 @@ void ibv_free_device_list(struct ibv_device **list)
 {
     int i;
 
-    for (i = 0; i < conf_num_devices(); i++) {
+    for (i = 0; i < NUM_DEVS; i++) {
         free(list[i]);
     }
 
@@ -76,7 +76,7 @@ void ibv_free_device_list(struct ibv_device **list)
 
 const char *ibv_get_sysfs_path(void)
 {
-    return conf_sys_path();
+    return SYS_PATH;
 }
 
 const char *ibv_get_device_name(struct ibv_device *device)
@@ -599,7 +599,7 @@ int ibv_destroy_cq(struct ibv_cq *cq)
 }
 
 int fake_qpn = 0;
-struct array fake_qps;
+array_t fake_qps;
 
 struct ibv_qp *ibv_create_qp(struct ibv_pd *pd, struct ibv_qp_init_attr *attr)
 {

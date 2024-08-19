@@ -17,12 +17,12 @@
 int efadv_query_device(struct ibv_context *context,
                        struct efadv_device_attr *attr, uint32_t inlen)
 {
-    if (!context || inlen != sizeof(efa_dev_attr)) {
+    if ((context == NULL) || (inlen != sizeof(efa_dev_attr))) {
         return EINVAL;
     }
 
-    if (context->device->node_type != IBV_NODE_UNSPECIFIED ||
-        context->device->transport_type != IBV_TRANSPORT_UNSPECIFIED) {
+    if ((context->device->node_type != IBV_NODE_UNSPECIFIED) ||
+        (context->device->transport_type != IBV_TRANSPORT_UNSPECIFIED)) {
         return ENOTSUP;
     }
 
@@ -34,10 +34,12 @@ struct ibv_qp *efadv_create_driver_qp_impl(struct ibv_pd           *pd,
                                            struct ibv_qp_init_attr *attr,
                                            uint32_t driver_qp_type)
 {
-    struct fake_qp *fqp = calloc(1, sizeof(*fqp));
-    struct ibv_qp *qp   = &fqp->qp_ex.qp_base;
+    struct fake_qp *fqp;
+    struct ibv_qp *qp;
 
-    if (!fqp) {
+
+    fqp = calloc(1, sizeof(*fqp));
+    if (fqp == NULL) {
         return NULL;
     }
 
@@ -50,15 +52,15 @@ struct ibv_qp *efadv_create_driver_qp_impl(struct ibv_pd           *pd,
     fqp->qp_ex.wr_complete     = dev_qp_wr_complete;
 
     list_init(&fqp->recv_reqs);
+
+    qp             = &fqp->qp_ex.qp_base;
     qp->qp_context = pd->context;
-
-    qp->context = pd->context;
-    qp->qp_type = driver_qp_type;
-    qp->send_cq = attr->send_cq;
-    qp->recv_cq = attr->recv_cq;
-    qp->pd      = pd;
-
-    qp->state = IBV_QPS_RESET;
+    qp->context    = pd->context;
+    qp->qp_type    = driver_qp_type;
+    qp->send_cq    = attr->send_cq;
+    qp->recv_cq    = attr->recv_cq;
+    qp->pd         = pd;
+    qp->state      = IBV_QPS_RESET;
 
     lock();
     qp->qp_num = ++fake_qpn;
@@ -71,8 +73,8 @@ struct ibv_qp *efadv_create_driver_qp(struct ibv_pd           *pd,
                                       struct ibv_qp_init_attr *attr,
                                       uint32_t                driver_qp_type)
 {
-    if (attr->qp_type != IBV_QPT_DRIVER ||
-        driver_qp_type != EFADV_QP_DRIVER_TYPE_SRD) {
+    if ((attr->qp_type != IBV_QPT_DRIVER) ||
+        (driver_qp_type != EFADV_QP_DRIVER_TYPE_SRD)) {
         return NULL;
     }
 

@@ -7,20 +7,11 @@
 #ifndef __CONFIG_H
 #define __CONFIG_H
 
-#define NUM_DEVS 2
-
 #include <infiniband/efadv.h>
 #include <infiniband/verbs.h>
 
-static inline int conf_num_devices(void)
-{
-    return NUM_DEVS;
-}
-
-static inline const char *conf_sys_path(void)
-{
-    return "/tmp/fake";
-}
+#define NUM_DEVS 2
+#define SYS_PATH "/tmp/fake"
 
 extern struct efadv_device_attr efa_dev_attr;
 extern struct ibv_device_attr efa_ibv_dev_attr;

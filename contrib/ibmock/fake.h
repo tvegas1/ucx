@@ -26,8 +26,8 @@ struct fake_ah {
 struct fake_pd {
     struct ibv_pd pd;
     uint32_t      lkey;
-    struct array  mrs; /* memory registrations */
-    struct array  qps; /* queue pairs created */
+    array_t       mrs; /* memory registrations */
+    array_t       qps; /* queue pairs created */
 };
 
 struct fake_mr {
@@ -83,6 +83,6 @@ struct fake_recv_wr {
 };
 
 extern int fake_qpn;
-extern struct array fake_qps;
+extern array_t fake_qps;
 
 #endif /* __FAKE_H */

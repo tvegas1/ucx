@@ -13,11 +13,11 @@
 #include <sys/uio.h>
 
 
-struct array {
+typedef struct {
     void   *data;
     size_t elem_size;
     int    count;
-};
+} array_t;
 
 pthread_mutex_t global_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -36,13 +36,13 @@ static inline void unlock(void)
 #define container_of(_ptr, _type, _member) \
     ((_type*)((char*)(_ptr) - (char*)&((_type*)0)->_member))
 
-static inline void array_init(struct array *a, int elem_size)
+static inline void array_init(array_t *a, int elem_size)
 {
     memset(a, 0, sizeof(*a));
     a->elem_size = elem_size;
 }
 
-static inline void array_cleanup(struct array *a)
+static inline void array_cleanup(array_t *a)
 {
     if (a->data) {
         free(a->data);
@@ -52,7 +52,7 @@ static inline void array_cleanup(struct array *a)
     }
 }
 
-static inline void *array_append(struct array *a, void *data, size_t len)
+static inline void *array_append(array_t *a, void *data, size_t len)
 {
     void *tmp, *ptr;
 
@@ -76,7 +76,7 @@ static inline void *array_append(struct array *a, void *data, size_t len)
     return ptr;
 }
 
-static inline void array_remove(struct array *a, void *data)
+static inline void array_remove(array_t *a, void *data)
 {
     assert(data >= a->data &&
            data + a->elem_size <= a->data + a->elem_size * a->count);
