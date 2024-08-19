@@ -53,7 +53,7 @@ static inline void *array_append(array_t *a, void *data, size_t len)
     assert(len == a->elem_size);
 
     if (a->count >= a->total) {
-        total = (a->total * 2)? : 1;
+        total = (a->total * 2)? : 8;
         tmp   = realloc(a->data, total * a->elem_size);
         if (tmp == NULL) {
             printf("ibmock: OOM\n");
