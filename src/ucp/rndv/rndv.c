@@ -622,7 +622,7 @@ ucp_rndv_progress_rma_zcopy_common(ucp_request_t *req, ucp_lane_index_t lane,
                                         to_dev, req->user_data);
         if (consumed) {
             ucs_assert(iov->count == 1);
-            status = UCS_OK;
+            status = (consumed > 0) ? UCS_OK : UCS_ERR_NO_RESOURCE;
             goto next;
         }
 

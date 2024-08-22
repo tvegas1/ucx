@@ -1286,14 +1286,16 @@ typedef struct ucp_rkey_compare_params {
 
 typedef struct ucp_worker_mem_callbacks {
   /*
-   * The coyping must be completed by the time function returns
+   * The coyping must be completed by the time function returns.
+   * The callback must return < 0 if an error occurred.
    */
-  void (*memcpy_device)(void *dest, void *src, size_t size, void *user_data);
+  int (*memcpy_device)(void *dest, void *src, size_t size, void *user_data);
 
   /*
    * ->memcpy_device_start() must return, before calling ucp_memcpy_device_complete()
    *
    * 1. Return 1 if copying was started. Returning 0 will trigger standard UCX behavior.
+   *    Return < 0 if an error occurred.
    * 2. ucp_memcpy_device_complete() can only be called after having first
    *    returned from ->memcpy_device_start().
    */

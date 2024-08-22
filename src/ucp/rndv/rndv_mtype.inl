@@ -119,6 +119,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_mtype_copy(
     uct_iov_t iov;
     int to_dev;
     void *src, *dst;
+    int consume;
 
     ucp_trace_req(req, "buffer %p copy-%s %p %s using memtype-ep %p lane[%d]",
                   buffer, mode, req->send.state.dt_iter.type.contig.buffer,
@@ -148,20 +149,20 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_mtype_copy(
     }
 
     if ((to_dev == -1) ||
-        !ucp_mem_external_device_copy(worker,
+        !(consume = ucp_mem_external_device_copy(worker,
                                  ucp_ep_get_lane(mtype_ep, lane),
                                  dst,
                                  src,
                                  iov.length,
                                  &req->send.state.uct_comp,
                                  mem_type,
-                                 to_dev, req->user_data)) {
+                                 to_dev, req->user_data))) {
 
         status = copy_func(ucp_ep_get_lane(mtype_ep, lane), &iov, 1,
                            (uintptr_t)req->send.state.dt_iter.type.contig.buffer,
                            UCT_INVALID_RKEY, &req->send.state.uct_comp);
     } else {
-        status = UCS_INPROGRESS;
+        status = (consume > 0) ? UCS_INPROGRESS : UCS_ERR_NO_RESOURCE;
     }
 
     ucp_trace_req(req, "buffer %p copy returned %s", buffer,

@@ -107,7 +107,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_get_common_send(
                                       0, req->user_data);
     if (consumed) {
         ucs_assert(iov->count == 1);
-        return UCS_INPROGRESS;
+        return (consumed > 0)? UCS_INPROGRESS : UCS_ERR_NO_RESOURCE;
     }
 
     return uct_ep_get_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane),

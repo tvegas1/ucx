@@ -85,8 +85,12 @@ static ucs_status_t ucp_rma_basic_progress_put(uct_pending_req_t *self)
                                            UCS_MEMORY_TYPE_UNKNOWN,
                                            1, req->user_data);
         if (consumed) {
-            ucs_assert(iov.count == 1);
-            status = UCS_INPROGRESS;
+            if (consumed < 0) {
+                status = UCS_ERR_NO_RESOURCE;
+            } else {
+                ucs_assert(iov.count == 1);
+                status = UCS_INPROGRESS;
+            }
         } else {
             status = UCS_PROFILE_CALL(uct_ep_put_zcopy,
                                       ucp_ep_get_fast_lane(ep, lane), &iov, 1,
@@ -144,7 +148,7 @@ static ucs_status_t ucp_rma_basic_progress_get(uct_pending_req_t *self)
                                                 UCS_MEMORY_TYPE_UNKNOWN,
                                                 0, req->user_data);
         if (consumed) {
-            status = UCS_INPROGRESS;
+            status = (consumed > 0)? UCS_INPROGRESS : UCS_ERR_NO_RESOURCE;
         } else {
             status = UCS_PROFILE_CALL(uct_ep_get_zcopy,
                                       ucp_ep_get_fast_lane(ep, lane), &iov, 1,

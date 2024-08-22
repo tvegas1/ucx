@@ -168,11 +168,12 @@ ucp_proto_get_offload_zcopy_send_func(ucp_request_t *req,
                                             &req->send.state.uct_comp,
                                             UCS_MEMORY_TYPE_UNKNOWN,
                                             0, req->user_data);
-    if (consumed) {
+    if (consumed > 0) {
         ucs_assert(iov.count == 1);
         return UCS_INPROGRESS;
+    } else if (consumed < 0) {
+        return UCS_ERR_NO_RESOURCE;
     }
-
 
     return uct_ep_get_zcopy(ucp_ep_get_lane(req->send.ep, lpriv->super.lane),
                             &iov, 1, req->send.rma.remote_addr + offset,
