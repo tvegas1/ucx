@@ -97,7 +97,12 @@ uct_cuda_ipc_post_cuda_async_copy(uct_ep_h tl_ep, uint64_t remote_addr,
     mapped_rem_addr = (void *) ((uintptr_t) mapped_addr + offset);
     ucs_assert(offset <= key->b_len);
 
-    ucs_assert(iface->streams_initialized);
+    if (!iface->streams_initialized) {
+        status = uct_cuda_ipc_iface_init_streams(iface);
+        if (UCS_OK != status) {
+            return status;
+        }
+    }
 
     key->dev_num %= iface->config.max_streams; /* round-robin */
 
