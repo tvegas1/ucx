@@ -738,7 +738,7 @@ ucs_status_t uct_ud_iface_query(uct_ud_iface_t *iface,
                                       UCT_IFACE_FLAG_EVENT_ASYNC_CB;
     }
 
-    /* Make we sure have the minimum SGE to implement short protocols fully */
+    /* Make sure to have the minimum SGE to implement short protocols fully */
     if (uct_ib_iface_device(&iface->super)->max_sq_sge < 4) {
         iface_attr->cap.am.max_short = 0;
     } else {
