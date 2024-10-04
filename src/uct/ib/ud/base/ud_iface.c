@@ -730,7 +730,8 @@ ucs_status_t uct_ud_iface_query(uct_ud_iface_t *iface,
                                          UCT_IFACE_FLAG_EP_CHECK         |
                                          UCT_IFACE_FLAG_CB_SYNC          |
                                          UCT_IFACE_FLAG_CB_ASYNC         |
-                                         UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE;
+                                         UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE |
+                                         UCT_IFACE_FLAG_INTER_NODE;
     if (uct_ib_iface_device(&iface->super)->req_notify_cq_support) {
         iface_attr->cap.event_flags = UCT_IFACE_FLAG_EVENT_SEND_COMP |
                                       UCT_IFACE_FLAG_EVENT_RECV |
