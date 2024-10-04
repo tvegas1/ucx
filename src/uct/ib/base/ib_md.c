@@ -605,10 +605,9 @@ ucs_status_t uct_ib_memh_alloc(uct_ib_md_t *md, size_t length,
     return UCS_OK;
 }
 
-uint64_t uct_ib_memh_access_flags(uct_ib_mem_t *memh, int relaxed_order)
+uint64_t uct_ib_memh_access_flags(uct_ib_mem_t *memh, int relaxed_order,
+                                  uint64_t access_flags)
 {
-    uint64_t access_flags = md->dev.mr_access_flags;
-
     if (memh->flags & UCT_IB_MEM_FLAG_ODP) {
         access_flags |= IBV_ACCESS_ON_DEMAND;
     }
@@ -640,7 +639,8 @@ ucs_status_t uct_ib_verbs_mem_reg(uct_md_h uct_md, void *address, size_t length,
     }
 
     memh         = ucs_derived_of(ib_memh, uct_ib_verbs_mem_t);
-    access_flags = uct_ib_memh_access_flags(&memh->super, md->relaxed_order);
+    access_flags = uct_ib_memh_access_flags(&memh->super, md->relaxed_order,
+                                            md->dev.mr_access_flags);
 
     status = uct_ib_reg_mr(md, address, length, params, access_flags, NULL,
                            &mr_default);
