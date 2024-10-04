@@ -442,8 +442,16 @@ public:
     }
 
     ucp_object_version_t address_version() const {
-        return (get_variant_value() & WORKER_ADDR_V2) ?
-               UCP_OBJECT_VERSION_V2 : UCP_OBJECT_VERSION_V1;
+        if (get_variant_value() & WORKER_ADDR_V2) {
+            return UCP_OBJECT_VERSION_V2;
+        }
+
+        const char *str = getenv("UCX_ADDRESS_VERSION");
+        if ((str != NULL) && !strcmp("v2", str)) {
+            return UCP_OBJECT_VERSION_V2;
+        }
+
+        return UCP_OBJECT_VERSION_V1;
     }
 
     ucp_lane_index_t m_lanes2remote[UCP_MAX_LANES];
@@ -514,7 +522,7 @@ UCS_TEST_P(test_ucp_wireup_1sided, ep_address, "IB_NUM_PATHS?=2") {
 
     status = ucp_address_pack(sender().worker(), sender().ep(),
                               &ucp_tl_bitmap_max, UCP_ADDRESS_PACK_FLAGS_ALL,
-                              UCP_OBJECT_VERSION_V1, m_lanes2remote, UINT_MAX,
+                              address_version(), m_lanes2remote, UINT_MAX,
                               &size, &buffer);
     ASSERT_UCS_OK(status);
     ASSERT_TRUE(buffer != NULL);
