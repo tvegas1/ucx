@@ -1286,6 +1286,11 @@ public:
         modify_config("NUM_EPS", num_eps1);
         entity *e1 = create_entity();
 
+        if (!has_resource(*e1, "dc_mlx5") && !has_resource(*e1, "rc_mlx5") &&
+            !has_resource(*e1, "rc_verbs")) {
+            UCS_TEST_SKIP_R("RMA transports are not present");
+        }
+
         /* Second context initialized with num_eps below threshold */
         modify_config("NUM_EPS", num_eps2);
         entity *e2 = create_entity();
