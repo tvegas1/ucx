@@ -25,6 +25,11 @@ static ucs_status_t uct_ib_efa_md_open(struct ibv_device *ibv_device,
     ucs_status_t status;
     int ret;
 
+    if (md_config->devx == UCS_YES) {
+        ucs_error("DEVX requested but not supported");
+        return UCS_ERR_UNSUPPORTED;
+    }
+
     ctx = ibv_open_device(ibv_device);
     if (ctx == NULL) {
         ucs_diag("ibv_open_device(%s) failed: %m",
