@@ -237,6 +237,10 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_tag_recv_nbx,
 
     UCP_WORKER_THREAD_CS_ENTER_CONDITIONAL(worker);
 
+    if (!worker->callbacks.external_top_level_progress) {
+        (void)uct_worker_progress_top_level(worker->uct);
+    }
+
     req = ucp_request_get_param(worker, param, {
         ret = UCS_STATUS_PTR(UCS_ERR_NO_MEMORY);
         goto out;

@@ -381,6 +381,7 @@ typedef struct uct_iface_ops {
  */
 typedef struct uct_worker {
     ucs_callbackq_t        progress_q;
+    ucs_callbackq_t        progress_top_level_q;
 } uct_worker_t;
 
 

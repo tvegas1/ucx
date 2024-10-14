@@ -2510,6 +2510,7 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     worker->uuid                 = ucs_generate_uuid((uintptr_t)worker);
     worker->flush_ops_count      = 0;
     worker->inprogress           = 0;
+    worker->inprogress_top_level = 0;
     worker->rkey_config_count    = 0;
     worker->num_active_ifaces    = 0;
     worker->num_ifaces           = 0;
@@ -3065,6 +3066,22 @@ ucs_status_t ucp_worker_address_query(ucp_address_t *address,
     }
 
     return UCS_OK;
+}
+
+unsigned ucp_worker_progress_top_level(ucp_worker_h worker)
+{
+    unsigned count;
+
+    UCP_WORKER_THREAD_CS_ENTER_CONDITIONAL(worker);
+    ucs_assert(worker->inprogress_top_level++ == 0);
+    ucs_assertv(worker->inprogress == 0,
+                "ucp_worker_progress() already running");
+
+    count = uct_worker_progress_top_level(worker->uct);
+
+    ucs_assert(--worker->inprogress_top_level == 0);
+    UCP_WORKER_THREAD_CS_EXIT_CONDITIONAL(worker);
+    return count;
 }
 
 unsigned ucp_worker_progress(ucp_worker_h worker)

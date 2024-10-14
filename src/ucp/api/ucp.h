@@ -1301,6 +1301,15 @@ typedef struct ucp_worker_mem_callbacks {
    */
   int  (*memcpy_device_start)(void *dest, void *src, size_t size,
                               void *completion, void *user_data);
+
+  /*
+   * Should be false by default. If set to true, the app needs to periodically
+   * call @ref ucp_worker_progress_top_level to make sure that all rkeys are
+   * eventually unpacked. When set to false, UCX will internally take care of
+   * such call internally when being called through @ref ucp_tag_send_nbx and/or
+   * @ref ucp_tag_recv_nbx.
+   */
+  int external_top_level_progress;
 } ucp_worker_mem_callbacks_t;
 
 /**
@@ -1313,6 +1322,17 @@ typedef struct ucp_worker_mem_callbacks {
  * Pass status as UCS_OK, unless error occured
  */
 void ucp_memcpy_device_complete(void *completion, ucs_status_t status);
+
+/**
+ * Call to progress events that can only be processed from top level context or
+ * without any specific parallel operation running.
+ *
+ * Usage:
+ * 1. Call to process events that cannot be processed from non-top level
+ *    callstack.
+ * 2. Return 1 while calling it is needed.
+ */
+unsigned ucp_worker_progress_top_level(ucp_worker_h worker);
 
 /**
  * @ingroup UCP_WORKER

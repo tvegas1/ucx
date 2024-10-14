@@ -247,6 +247,10 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_tag_send_nbx,
 
     UCP_WORKER_THREAD_CS_ENTER_CONDITIONAL(ep->worker);
 
+    if (!ep->worker->callbacks.external_top_level_progress) {
+        (void)uct_worker_progress_top_level(ep->worker->uct);
+    }
+
     ucs_trace_req("send_nbx buffer %p count %zu tag %"PRIx64" to %s",
                   buffer, count, tag, ucp_ep_peer_name(ep));
 

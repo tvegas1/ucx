@@ -488,6 +488,8 @@ static UCS_CLASS_INIT_FUNC(uct_cuda_ipc_iface_t, uct_md_h md, uct_worker_h worke
                            const uct_iface_config_t *tl_config)
 {
     uct_cuda_ipc_iface_config_t *config = NULL;
+    uct_cuda_ipc_md_t *ipc_md           = ucs_derived_of(md,
+                                                         uct_cuda_ipc_md_t);
     ucs_status_t status;
     ucs_mpool_params_t mp_params;
 
@@ -508,6 +510,12 @@ static UCS_CLASS_INIT_FUNC(uct_cuda_ipc_iface_t, uct_md_h md, uct_worker_h worke
     self->config.max_cuda_ipc_events = config->max_cuda_ipc_events;
     self->config.bandwidth           = UCS_CONFIG_DBL_IS_AUTO(config->bandwidth) ?
                                        uct_cuda_ipc_iface_get_bw() : config->bandwidth;
+
+    if (!ipc_md->pending_cb_added) {
+        ucs_callbackq_add_safe(&worker->progress_top_level_q,
+                               uct_cuda_ipc_pending_rkey_callbackq, ipc_md);
+        ipc_md->pending_cb_added = 1;
+    }
 
     ucs_mpool_params_reset(&mp_params);
     mp_params.elem_size       = sizeof(uct_cuda_ipc_event_desc_t);

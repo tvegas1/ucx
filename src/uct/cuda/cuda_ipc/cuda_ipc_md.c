@@ -182,34 +182,34 @@ ucs_status_t uct_cuda_ipc_get_unique_index_for_uuid(int* idx,
     return UCS_OK;
 }
 
-static ucs_status_t uct_cuda_ipc_is_peer_accessible(uct_cuda_ipc_component_t *mdc,
-                                                    uct_cuda_ipc_rkey_t *rkey)
+static ucs_status_t uct_cuda_ipc_is_peer_accessible_internal(uct_cuda_ipc_md_t *md,
+                                                             uct_cuda_ipc_rkey_t *rkey,
+                                                             int is_cuda_accessible)
 {
+    int peer_idx = rkey->dev_num;
     CUdevice this_device;
     ucs_status_t status;
-    int peer_idx;
     int num_devices;
     ucs_ternary_auto_value_t *accessible;
     void *d_mapped;
 
-    status = uct_cuda_ipc_get_unique_index_for_uuid(&peer_idx, mdc->md, rkey);
-    if (ucs_unlikely(status != UCS_OK)) {
-        goto err;
-    }
-
-    /* overwrite dev_num with a unique ID; this means that relative remote
-     * device number of multiple peers do not map on the same stream and reduces
-     * stream sequentialization */
-    rkey->dev_num = peer_idx;
-
+    /* TODO: Check if we can use cuCtxGetDevice() */
     UCT_CUDA_IPC_DEVICE_GET_COUNT(num_devices);
     if (UCT_CUDADRV_FUNC_LOG_DEBUG(cuCtxGetDevice(&this_device)) != UCS_OK) {
         status = UCS_ERR_UNREACHABLE;
         goto err;
     }
 
-    accessible = &mdc->md->peer_accessible_cache[peer_idx * num_devices + this_device];
+    accessible = &md->peer_accessible_cache[peer_idx * num_devices + this_device];
     if (*accessible == UCS_TRY) { /* unchecked, add to cache */
+
+        if (!is_cuda_accessible) {
+            if (md->pending_rkey_count < ucs_static_array_size(md->pending_rkey)) {
+                md->pending_rkey[md->pending_rkey_count++] = *rkey;
+            }
+            status = UCS_ERR_UNREACHABLE;
+            goto err;
+        }
 
         /* Check if peer is reachable by trying to open memory handle. This is
          * necessary when the device is not visible through CUDA_VISIBLE_DEVICES
@@ -237,6 +237,40 @@ static ucs_status_t uct_cuda_ipc_is_peer_accessible(uct_cuda_ipc_component_t *md
 
 err:
     return status;
+}
+
+unsigned uct_cuda_ipc_pending_rkey_callbackq(void *arg)
+{
+    uct_cuda_ipc_md_t *md = arg;
+    uct_cuda_ipc_rkey_t *rkey;
+    int i;
+
+    for (i = 0; i < md->pending_rkey_count; i++) {
+        rkey = &md->pending_rkey[i];
+        (void)uct_cuda_ipc_is_peer_accessible_internal(md, rkey, 1);
+    }
+
+    md->pending_rkey_count = 0;
+    return i;
+}
+
+static ucs_status_t uct_cuda_ipc_is_peer_accessible(uct_cuda_ipc_component_t *mdc,
+                                                    uct_cuda_ipc_rkey_t *rkey)
+{
+    ucs_status_t status;
+    int peer_idx;
+
+    status = uct_cuda_ipc_get_unique_index_for_uuid(&peer_idx, mdc->md, rkey);
+    if (ucs_unlikely(status != UCS_OK)) {
+        return status;
+    }
+
+    /* overwrite dev_num with a unique ID; this means that relative remote
+     * device number of multiple peers do not map on the same stream and reduces
+     * stream sequentialization */
+    rkey->dev_num = peer_idx;
+
+    return uct_cuda_ipc_is_peer_accessible_internal(mdc->md, rkey, 0);
 }
 
 UCS_PROFILE_FUNC(ucs_status_t, uct_cuda_ipc_rkey_unpack,
@@ -355,6 +389,8 @@ uct_cuda_ipc_md_open(uct_component_t *component, const char *md_name,
     md->uuid_map_capacity     = 0;
     md->uuid_map              = NULL;
     md->peer_accessible_cache = NULL;
+    md->pending_rkey_count    = 0;
+    md->pending_cb_added      = 0;
 
     com     = ucs_derived_of(md->super.component, uct_cuda_ipc_component_t);
     com->md = md;

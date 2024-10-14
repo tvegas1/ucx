@@ -2787,6 +2787,11 @@ UCT_INLINE_API unsigned uct_worker_progress(uct_worker_h worker)
     return ucs_callbackq_dispatch(&worker->progress_q);
 }
 
+UCT_INLINE_API unsigned uct_worker_progress_top_level(uct_worker_h worker)
+{
+    return ucs_callbackq_dispatch(&worker->progress_top_level_q);
+}
+
 
 /**
  * @ingroup UCT_RESOURCE
