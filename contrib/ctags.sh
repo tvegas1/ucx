@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# See file LICENSE for terms.
+#
 
 get_base() {
     while ! [ -e "$PWD/.git" ] && [ "$PWD" != "/" ]; do

@@ -1,4 +1,8 @@
-#!/usr/bin/awk -f
+#!/usr/bin/env awk -f
+#
+# Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# See file LICENSE for terms.
+#
 
 BEGIN {
     OFS="\t"
