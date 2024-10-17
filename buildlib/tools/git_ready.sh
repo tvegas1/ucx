@@ -4,6 +4,8 @@
 # See file LICENSE for terms.
 #
 
+source ./buildlib/tools/codestyle.sh
+
 git_commit() {
     if ! git diff-index --quiet HEAD; then
         git add -p
@@ -22,23 +24,8 @@ if ! git diff-index --quiet HEAD; then
     exit 1
 fi
 
-ok=1
-for sha1 in $(git log "$base"..HEAD --format="%h")
-do
-    title=$(git log -1 --format="%s" "$sha1")
-    if [ ${#title} -gt "80" ]
-    then
-        echo "commit title too long (${#title}): '$title'"
-        ok=0
-    elif echo "$title" | grep -qP '^Merge |^[0-9A-Z/_\-]*: \w'; then
-        echo "good commit title: '$title'"
-    else
-        echo "bad commit title: '$title'"
-        ok=0
-    fi
-done
-
-if [ "$ok" -eq "0" ]
+codestyle_check_commit_title "$base"..HEAD
+if [[ $? -ne 0 ]]
 then
     echo "error: fix commit title"
     exit 1
@@ -52,11 +39,7 @@ module unload dev/llvm-ucx || :
 git_commit
 
 # Codespell
-TMP_ENV=/tmp/codespell_env
-python3 -m venv "$TMP_ENV"
-source "$TMP_ENV/bin/activate"
-pip3 install codespell
-codespell --write-changes || :
+codestyle_check_spell --write-changes || :
 
 git_commit
 
