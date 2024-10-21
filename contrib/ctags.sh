@@ -25,6 +25,6 @@ find . -name "*.inl" -type f -exec \
     {} \;
 
 find . -type f -and \( -name '*.inl' -or -name '*.c' \) \
-    -exec awk -f ./contrib/ctags_profile.awk {} \; >>tags
+    -exec awk -f ./contrib/ctags_ucx.awk {} \; >>tags
 
 LC_COLLATE=C sort -o tags{,}

@@ -34,6 +34,6 @@ then
     echo "SUCCESS"
     exit 0
 else
-    echo "FAILURES: ${failures}"
+    azure_log_error "Fail to find generated ctags: $failures"
     exit 1
 fi
