@@ -4,6 +4,9 @@
 # See file LICENSE for terms.
 #
 
+realdir="$(realpath "$(dirname "$0")")"
+source ${realdir}/../az-helpers.sh
+
 set -eu
 
 ./contrib/ctags.sh

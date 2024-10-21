@@ -4,17 +4,16 @@
 # See file LICENSE for terms.
 #
 
-get_base() {
-    while ! [ -e "$PWD/.git" ] && [ "$PWD" != "/" ]; do
-        cd ..
-    done
+base="$(realpath $0)"
+cd "$(dirname $base)"/..
 
-    if [ "$PWD" == "/" ]; then
-        exit 1;
-    fi
-}
+echo "Using $PWD"
+if [[ ! -e autogen.sh ]]
+then
+    echo "Failed to get root of directory from '$0'"
+    return 1
+fi
 
-get_base
 rm -f tags || :
 ctags -R -f tags .
 
