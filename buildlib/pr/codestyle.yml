@@ -105,6 +105,5 @@ jobs:
         retryCountOnTaskFailure: 5
 
       - bash: |
-          sudo yum -y install ctags vim
           ./buildlib/tools/test_ctags.sh
         displayName: ctags generation test
