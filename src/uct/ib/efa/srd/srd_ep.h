@@ -193,6 +193,11 @@ uct_srd_ep_ctl_op_check_ex(uct_srd_ep_t *ep, uint32_t ops)
 void uct_srd_ep_send_completion(uct_srd_send_op_t *send_op);
 ucs_status_t uct_srd_ep_create(const uct_ep_params_t *params, uct_ep_h *ep_p);
 
+ucs_status_t uct_srd_ep_get_address(uct_ep_h tl_ep, uct_ep_addr_t *addr);
+ucs_status_t uct_srd_ep_connect_to_ep(uct_ep_h tl_ep,
+                                      const uct_device_addr_t *dev_addr,
+                                      const uct_ep_addr_t *uct_ep_addr);
+
 ucs_status_t uct_srd_ep_pending_add(uct_ep_h ep_h, uct_pending_req_t *req,
                                     unsigned flags);
 ssize_t uct_srd_ep_am_bcopy(uct_ep_h tl_ep, uint8_t id,

@@ -455,6 +455,41 @@ static inline void uct_srd_ep_rx_put(uct_srd_neth_t *neth, uint32_t byte_len)
     memcpy((void *)put_hdr->rva, put_hdr+1, byte_len - sizeof(put_hdr->rva));
 }
 
+ucs_status_t uct_srd_ep_connect_to_ep(uct_ep_h tl_ep,
+                                      const uct_device_addr_t *dev_addr,
+                                      const uct_ep_addr_t *uct_ep_addr)
+{
+    uct_srd_ep_t *ep                   = ucs_derived_of(tl_ep, uct_srd_ep_t);
+    uct_srd_iface_t *iface             = ucs_derived_of(ep->super.super.iface,
+                                                        uct_srd_iface_t);
+    const uct_ib_address_t *ib_addr    = (const uct_ib_address_t*)dev_addr;
+    const uct_srd_ep_addr_t *ep_addr   = (const uct_srd_ep_addr_t*)uct_ep_addr;
+    uct_ib_device_t UCS_V_UNUSED *dev = uct_ib_iface_device(&iface->super);
+    void *peer_address;
+    char buf[128];
+
+    ucs_assert_always(ep->dest_ep_id == UCT_SRD_EP_NULL_ID);
+    ucs_trace_func("");
+
+    uct_srd_ep_set_dest_ep_id(ep, uct_ib_unpack_uint24(ep_addr->ep_id));
+
+    ucs_frag_list_cleanup(&ep->rx.ooo_pkts);
+    uct_srd_ep_reset(ep);
+
+    ucs_debug(UCT_IB_IFACE_FMT" slid %d qpn 0x%x epid %u connected to %s "
+              "qpn 0x%x epid %u", UCT_IB_IFACE_ARG(&iface->super),
+              dev->port_attr[iface->super.config.port_num - dev->first_port].lid,
+              iface->qp->qp_num, ep->ep_id,
+              uct_ib_address_str(ib_addr, buf, sizeof(buf)),
+              uct_ib_unpack_uint24(ep_addr->iface_addr.qp_num),
+              ep->dest_ep_id);
+
+    peer_address = uct_srd_ep_get_peer_address(ep);
+    return uct_srd_iface_unpack_peer_address(iface, ib_addr,
+                                             &ep_addr->iface_addr,
+                                             ep->path_index, peer_address);
+}
+
 static uct_srd_ep_t *uct_srd_ep_create_passive(uct_srd_iface_t *iface, uct_srd_ctl_hdr_t *ctl)
 {
     uct_ep_params_t params;
