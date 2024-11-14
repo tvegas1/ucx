@@ -74,6 +74,8 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_tag_recv_common(
     req->recv.proto_rndv_request = NULL;
 #endif
 
+    req->user_data = param->user_data;
+
     /* First, check the fast path case - single fragment
      * in this case avoid initializing most of request fields
      * */

@@ -257,6 +257,8 @@ static UCS_F_ALWAYS_INLINE ucs_status_ptr_t ucp_proto_request_send_op_common(
         return UCS_STATUS_PTR(status);
     }
 
+    req->user_data = param->user_data;
+
     UCS_PROFILE_CALL_VOID(ucp_request_send, req);
     if (req->flags & UCP_REQUEST_FLAG_COMPLETED) {
         /* coverity[offset_free] */
