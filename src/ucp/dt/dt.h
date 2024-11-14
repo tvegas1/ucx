@@ -86,11 +86,7 @@ ucp_memcpy_unpack(void *buffer, const void *data, size_t length,
 
 static inline int ucp_mem_type_is_cuda(ucs_memory_type_t mem_type)
 {
-    if (mem_type == UCS_MEMORY_TYPE_UNKNOWN) {
-        return 1;
-    }
-    return (mem_type == UCS_MEMORY_TYPE_CUDA_MANAGED) ||
-        (mem_type == UCS_MEMORY_TYPE_CUDA);
+    return 1;
 }
 
 #endif /* UCP_DT_H_ */
