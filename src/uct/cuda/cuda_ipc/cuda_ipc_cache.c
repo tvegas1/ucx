@@ -224,8 +224,10 @@ ucs_status_t uct_cuda_ipc_unmap_memhandle(pid_t pid, uintptr_t d_bptr,
     return status;
 }
 
-UCS_PROFILE_FUNC(ucs_status_t, uct_cuda_ipc_map_memhandle, (key, mapped_addr),
-                 const uct_cuda_ipc_rkey_t *key, void **mapped_addr)
+UCS_PROFILE_FUNC(ucs_status_t, uct_cuda_ipc_map_memhandle,
+                 (key, mapped_addr, must_be_cached),
+                 const uct_cuda_ipc_rkey_t *key, void **mapped_addr,
+                 int must_be_cached)
 {
     uct_cuda_ipc_cache_t *cache;
     ucs_status_t status;
@@ -273,6 +275,10 @@ UCS_PROFILE_FUNC(ucs_status_t, uct_cuda_ipc_map_memhandle, (key, mapped_addr),
                     cuIpcCloseMemHandle((CUdeviceptr)region->mapped_addr));
             ucs_free(region);
         }
+    }
+
+    if (must_be_cached) {
+        return UCS_ERR_NO_RESOURCE;
     }
 
     status = uct_cuda_ipc_open_memhandle(key, (CUdeviceptr*)mapped_addr);

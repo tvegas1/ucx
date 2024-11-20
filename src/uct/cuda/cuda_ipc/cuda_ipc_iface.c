@@ -348,6 +348,7 @@ static ucs_status_t uct_cuda_ipc_iface_event_fd_arm(uct_iface_h tl_iface,
 static uct_iface_ops_t uct_cuda_ipc_iface_ops = {
     .ep_get_zcopy             = uct_cuda_ipc_ep_get_zcopy,
     .ep_put_zcopy             = uct_cuda_ipc_ep_put_zcopy,
+    .ep_mem_pointer           = uct_cuda_ipc_ep_mem_pointer,
     .ep_pending_add           = ucs_empty_function_return_busy,
     .ep_pending_purge         = ucs_empty_function,
     .ep_flush                 = uct_base_ep_flush,

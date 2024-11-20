@@ -58,6 +58,35 @@ int uct_cuda_ipc_ep_is_connected(const uct_ep_h tl_ep,
     return ep->remote_pid == *(pid_t*)params->iface_addr;
 }
 
+UCS_PROFILE_FUNC(ucs_status_t, uct_cuda_ipc_ep_mem_pointer,
+                 (tl_ep, remote_addr, rkey, addr),
+                 uct_ep_h tl_ep, uint64_t remote_addr,
+                 uct_rkey_t rkey, void **addr)
+{
+    uct_cuda_ipc_rkey_t *key = (uct_cuda_ipc_rkey_t *)rkey;
+    void *mapped_rem_addr;
+    void *mapped_addr;
+    ucs_status_t status;
+    size_t offset;
+
+    if (rkey == UCT_INVALID_RKEY) {
+        return UCS_ERR_UNSUPPORTED;
+    }
+
+    /* Assuming we already added/unpacked rkeys otherwise it won't work... */
+    status = uct_cuda_ipc_map_memhandle(key, &mapped_addr, 1);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    offset          = (uintptr_t)remote_addr - (uintptr_t)key->d_bptr;
+    mapped_rem_addr = (void *) ((uintptr_t) mapped_addr + offset);
+    ucs_assert(offset <= key->b_len);
+
+    *addr = mapped_rem_addr;
+    return UCS_OK;
+}
+
 static UCS_F_ALWAYS_INLINE ucs_status_t
 uct_cuda_ipc_post_cuda_async_copy(uct_ep_h tl_ep, uint64_t remote_addr,
                                   const uct_iov_t *iov, uct_rkey_t rkey,
@@ -79,7 +108,7 @@ uct_cuda_ipc_post_cuda_async_copy(uct_ep_h tl_ep, uint64_t remote_addr,
         return UCS_OK;
     }
 
-    status = uct_cuda_ipc_map_memhandle(key, &mapped_addr);
+    status = uct_cuda_ipc_map_memhandle(key, &mapped_addr, 0);
     if (status != UCS_OK) {
         return UCS_ERR_IO_ERROR;
     }

@@ -33,4 +33,6 @@ ucs_status_t uct_cuda_ipc_ep_put_zcopy(uct_ep_h tl_ep,
 int uct_cuda_ipc_ep_is_connected(const uct_ep_h tl_ep,
                                  const uct_ep_is_connected_params_t *params);
 
+ucs_status_t uct_cuda_ipc_ep_mem_pointer(uct_ep_h tl_ep, uint64_t remote_addr,
+                                         uct_rkey_t rkey, void **addr);
 #endif
