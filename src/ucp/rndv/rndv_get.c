@@ -104,7 +104,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_get_common_send(
                                       iov->length,
                                       comp,
                                       UCS_MEMORY_TYPE_UNKNOWN,
-                                      0, req->user_data);
+                                      0, req->user_data, tl_rkey);
     if (consumed) {
         ucs_assert(iov->count == 1);
         return (consumed > 0)? UCS_INPROGRESS : UCS_ERR_NO_RESOURCE;

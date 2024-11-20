@@ -83,7 +83,8 @@ static ucs_status_t ucp_rma_basic_progress_put(uct_pending_req_t *self)
                                            iov.length,
                                            &req->send.state.uct_comp,
                                            UCS_MEMORY_TYPE_UNKNOWN,
-                                           1, req->user_data);
+                                           1, req->user_data,
+                                           rkey->cache.rma_rkey);
         if (consumed) {
             if (consumed < 0) {
                 status = UCS_ERR_NO_RESOURCE;
@@ -146,7 +147,8 @@ static ucs_status_t ucp_rma_basic_progress_get(uct_pending_req_t *self)
                                                 iov.length,
                                                 &req->send.state.uct_comp,
                                                 UCS_MEMORY_TYPE_UNKNOWN,
-                                                0, req->user_data);
+                                                0, req->user_data,
+                                                rkey->cache.rma_rkey);
         if (consumed) {
             status = (consumed > 0)? UCS_INPROGRESS : UCS_ERR_NO_RESOURCE;
         } else {

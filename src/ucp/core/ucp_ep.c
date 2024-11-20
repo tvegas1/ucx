@@ -3835,19 +3835,39 @@ static inline int ucp_ep_is_cuda_ipc(uct_ep_h ep)
 
 /* Returns true if call was hijacked */
 int ucp_mem_external_device_copy(ucp_worker_h worker, uct_ep_h ep,
-                                 void *cuda_dest,
-                                 const void *src, size_t length,
+                                 void *dest,
+                                 const void *src_in, size_t length,
                                  uct_completion_t *comp,
                                  ucs_memory_type_t mem_type,
                                  int to_dev,
-                                 void *user_data)
+                                 void *user_data,
+                                 uct_rkey_t rkey)
 {
-    if (!ucp_ep_is_cuda_ipc(ep) ||
-        !ucp_mem_type_is_cuda(mem_type) ||
-        !worker->callbacks.memcpy_device_start) {
+    ucs_status_t status;
+    void *mem;
+    void *cuda_mem;
+    void *src = (void *)src_in;
+
+    if (to_dev) {
+        cuda_mem = dest;
+    } else {
+        cuda_mem = src;
+    }
+
+    status = uct_ep_mem_pointer(ep, (uint64_t)cuda_mem, rkey, &mem);
+    if (status != UCS_OK) {
         return 0;
     }
 
-    return worker->callbacks.memcpy_device_start(cuda_dest, (void *)src, length, comp, user_data);
-}
+    if (to_dev) {
+        dest = mem;
+    } else {
+        src = mem;
+    }
 
+    if (!worker->callbacks.memcpy_device_start) {
+        return 0;
+    }
+
+    return worker->callbacks.memcpy_device_start(dest, (void *)src, length, comp, user_data);
+}

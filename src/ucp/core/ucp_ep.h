@@ -904,10 +904,11 @@ ucs_status_t ucp_ep_realloc_lanes(ucp_ep_h ep, unsigned new_num_lanes);
  */
 void ucp_ep_set_cfg_index(ucp_ep_h ep, ucp_worker_cfg_index_t cfg_index);
 
-int ucp_mem_external_device_copy(ucp_worker_h worker, uct_ep_h ep, void *cuda_dest,
-                                 const void *src, size_t length,
+int ucp_mem_external_device_copy(ucp_worker_h worker, uct_ep_h ep, void *dest,
+                                 const void *src_in, size_t length,
                                  uct_completion_t *comp,
                                  ucs_memory_type_t mem_type,
                                  int to_dev,
-                                 void *user_data);
+                                 void *user_data,
+                                 uct_rkey_t rkey);
 #endif

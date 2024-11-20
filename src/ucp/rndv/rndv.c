@@ -602,13 +602,13 @@ ucp_rndv_progress_rma_zcopy_common(ucp_request_t *req, ucp_lane_index_t lane,
                         ucp_ep_md_index(ep, lane), req->send.rndv.mdesc);
 
     for (;;) {
-        to_dev = (proto == UCP_REQUEST_SEND_PROTO_RNDV_GET);
+        to_dev = (proto != UCP_REQUEST_SEND_PROTO_RNDV_GET);
         if (to_dev) {
             src = (void *)iov->buffer;
             dst = (void *)req->send.rndv.remote_address;
         } else {
-            dst = (void *)iov->buffer;
             src = (void *)req->send.rndv.remote_address;
+            dst = (void *)iov->buffer;
         }
 
         consumed = ucp_mem_external_device_copy(
@@ -619,7 +619,8 @@ ucp_rndv_progress_rma_zcopy_common(ucp_request_t *req, ucp_lane_index_t lane,
                                         iov->length,
                                         &req->send.state.uct_comp,
                                         UCS_MEMORY_TYPE_UNKNOWN,
-                                        to_dev, req->user_data);
+                                        to_dev, req->user_data,
+                                        uct_rkey);
         if (consumed) {
             ucs_assert(iov->count == 1);
             status = (consumed > 0) ? UCS_OK : UCS_ERR_NO_RESOURCE;

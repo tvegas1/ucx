@@ -2983,6 +2983,19 @@ UCT_INLINE_API ucs_status_t uct_ep_get_zcopy(uct_ep_h ep,
     return ep->iface->ops.ep_get_zcopy(ep, iov, iovcnt, remote_addr, rkey, comp);
 }
 
+/** Ouptuts in addr the translated value if possible */
+UCT_INLINE_API ucs_status_t uct_ep_mem_pointer(uct_ep_h ep,
+                                               uint64_t remote_addr,
+                                               uct_rkey_t rkey,
+                                               void **addr)
+{
+    if (ep->iface->ops.ep_mem_pointer) {
+        return ep->iface->ops.ep_mem_pointer(ep, remote_addr, rkey, addr);
+    }
+
+    return UCS_ERR_UNSUPPORTED;
+}
+
 
 /**
  * @ingroup UCT_AM
