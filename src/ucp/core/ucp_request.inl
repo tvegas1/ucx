@@ -61,6 +61,7 @@ UCS_PTR_MAP_IMPL(request, 0);
             ucs_trace_req("allocated request %p", _req); \
             ucp_request_reset_internal(_req, _worker); \
             UCS_PROFILE_REQUEST_NEW(_req, "ucp_request", 0); \
+            (_req)->user_data = (void *)0x000000001011; \
         } \
         _req; \
     })
@@ -924,6 +925,7 @@ static UCS_F_ALWAYS_INLINE void ucp_request_set_super(ucp_request_t *req,
 {
     ucs_assertv(!(req->flags & UCP_REQUEST_FLAG_SUPER_VALID),
                 "req=%p req->super_req=%p", req, req->super_req);
+    req->user_data = super_req->user_data;
     req->super_req = super_req;
     req->flags    |= UCP_REQUEST_FLAG_SUPER_VALID;
 }

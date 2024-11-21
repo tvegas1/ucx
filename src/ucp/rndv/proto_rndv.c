@@ -797,6 +797,7 @@ UCS_PROFILE_FUNC_VOID(ucp_proto_rndv_receive_start,
     req->send.rndv.remote_address = rts->address;
     req->send.rndv.offset         = 0;
     ucp_request_set_super(req, recv_req);
+    req->user_data                = recv_req->user_data;
 
     if (ucs_likely(rts->size <= recv_req->recv.dt_iter.length)) {
         ucp_proto_rndv_check_rkey_length(rts->address, rkey_length, "rts");
