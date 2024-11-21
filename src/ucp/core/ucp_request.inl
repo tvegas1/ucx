@@ -235,6 +235,7 @@ ucp_request_put(ucp_request_t *req)
 {
     ucs_trace_req("put request %p", req);
     ucp_request_id_check(req, ==, UCS_PTR_MAP_KEY_INVALID);
+    req->user_data = (void *)0x0000000000001010;
     UCS_PROFILE_REQUEST_FREE(req);
     UCP_REQUEST_RESET(req);
     ucs_mpool_put_inline(req);

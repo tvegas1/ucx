@@ -933,6 +933,7 @@ ucp_proto_rndv_handle_rtr(void *arg, void *data, size_t length, unsigned flags)
            super request if needed */
         ucp_request_set_callback(freq, send.cb,
                                  ucp_proto_rndv_send_complete_one);
+        freq->user_data = req;
 
         ucp_datatype_iter_slice(&req->send.state.dt_iter, rtr->offset,
                                 rtr->size, &freq->send.state.dt_iter,
