@@ -131,8 +131,8 @@ struct ucp_request {
     /* Local request ID taken from PTR MAP */
     ucs_ptr_map_key_t id;
 
+    void                      *user_data; /* Completion user data */
     union {
-        void                      *user_data; /* Completion user data */
         ucp_request_t             *super_req; /* Super request that is used
                                                  by protocols */
     };
