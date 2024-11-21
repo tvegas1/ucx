@@ -1321,7 +1321,7 @@ typedef struct ucp_worker_mem_callbacks {
  * Pass completion pointer obtained from ->memcpy_device_start()
  * Pass status as UCS_OK, unless error occured
  */
-void ucp_memcpy_device_complete(void *completion, ucs_status_t status);
+void ucp_memcpy_device_complete(void *user_comp, ucs_status_t status);
 
 /**
  * Call to progress events that can only be processed from top level context or

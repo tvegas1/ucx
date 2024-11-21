@@ -3833,6 +3833,11 @@ static inline int ucp_ep_is_cuda_ipc(uct_ep_h ep)
     return ep->mem_callback;
 }
 
+void ucp_memcpy_device_complete(void *user_comp, ucs_status_t status)
+{
+    ucp_invoke_uct_completion(user_comp, status);
+}
+
 /* Returns true if call was hijacked */
 int ucp_mem_external_device_copy(ucp_worker_h worker, uct_ep_h ep,
                                  void *dest,
