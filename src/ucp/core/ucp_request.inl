@@ -925,7 +925,11 @@ static UCS_F_ALWAYS_INLINE void ucp_request_set_super(ucp_request_t *req,
 {
     ucs_assertv(!(req->flags & UCP_REQUEST_FLAG_SUPER_VALID),
                 "req=%p req->super_req=%p", req, req->super_req);
-    req->user_data = super_req->user_data;
+    if (super_req != NULL) {
+        req->user_data = super_req->user_data;
+    } else {
+        req->user_data = (void *)0x1baa20;
+    }
     req->super_req = super_req;
     req->flags    |= UCP_REQUEST_FLAG_SUPER_VALID;
 }
