@@ -41,4 +41,6 @@ ucs_status_t uct_cuda_copy_ep_get_short(uct_ep_h tl_ep, void *buffer,
                                         unsigned length, uint64_t remote_addr,
                                         uct_rkey_t rkey);
 
+ucs_status_t uct_cuda_copy_ep_mem_pointer(uct_ep_h tl_ep, uint64_t remote_addr,
+                                          uct_rkey_t rkey, void **addr);
 #endif

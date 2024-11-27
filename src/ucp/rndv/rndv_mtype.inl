@@ -142,6 +142,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_t ucp_proto_rndv_mtype_copy(
         } else {
             src = req->send.state.dt_iter.type.contig.buffer;
             dst = buffer;
+            to_dev = 0;
         }
     } else {
         src = buffer;

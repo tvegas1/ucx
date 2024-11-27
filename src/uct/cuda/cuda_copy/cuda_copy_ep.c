@@ -167,6 +167,15 @@ uct_cuda_copy_post_cuda_async_copy(uct_ep_h tl_ep, void *dst, void *src,
     return UCS_INPROGRESS;
 }
 
+UCS_PROFILE_FUNC(ucs_status_t, uct_cuda_copy_ep_mem_pointer,
+                 (tl_ep, remote_addr, rkey, addr),
+                 uct_ep_h tl_ep, uint64_t remote_addr,
+                 uct_rkey_t rkey, void **addr)
+{
+    *addr = (void *)remote_addr; /* Local, no-translation */
+    return UCS_OK; /* Invalid key here is OK we don't need it */
+}
+
 UCS_PROFILE_FUNC(ucs_status_t, uct_cuda_copy_ep_get_zcopy,
                  (tl_ep, iov, iovcnt, remote_addr, rkey, comp),
                  uct_ep_h tl_ep, const uct_iov_t *iov, size_t iovcnt,
