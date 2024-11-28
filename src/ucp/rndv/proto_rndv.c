@@ -867,7 +867,8 @@ static void ucp_proto_rndv_send_complete_one(void *request, ucs_status_t status,
     ucp_request_t *freq = (ucp_request_t*)request - 1;
     ucp_request_t *req;
 
-    req = ucp_request_user_data_get_super(request, user_data);
+    req = ucp_request_user_data_get_super(request,
+                                          ucp_request_get_super(freq));
 
     if (!ucp_proto_rndv_frag_complete(req, freq, "rndv_send")) {
         return;
