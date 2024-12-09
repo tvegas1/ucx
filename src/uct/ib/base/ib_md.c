@@ -863,6 +863,12 @@ ucs_status_t uct_ib_query_md_resources(uct_component_t *component,
             continue;
         }
 
+        if (component->flags & UCT_COMPONENT_FLAG_DEXV) {
+            if (!mlx5dv_is_supported(device_list[i])) {
+                continue;
+            }
+        }
+
         ucs_snprintf_zero(resources[num_resources].md_name,
                           sizeof(resources[num_resources].md_name),
                           "%s", ibv_get_device_name(device_list[i]));

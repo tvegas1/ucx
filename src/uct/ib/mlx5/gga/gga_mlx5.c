@@ -171,7 +171,7 @@ uct_ib_mlx5_gga_md_open(uct_component_t *component, const char *md_name,
                         const uct_md_config_t *uct_md_config, uct_md_h *md_p);
 
 static uct_component_t uct_gga_component = {
-    .query_md_resources = uct_ib_query_md_resources,
+    .query_md_resources = uct_ib_mlx5_query_md_resources,
     .md_open            = uct_ib_mlx5_gga_md_open,
     .cm_open            = ucs_empty_function_return_unsupported,
     .rkey_unpack        = uct_gga_mlx5_rkey_unpack,
@@ -187,7 +187,7 @@ static uct_component_t uct_gga_component = {
     },
     .cm_config          = UCS_CONFIG_EMPTY_GLOBAL_LIST_ENTRY,
     .tl_list            = UCT_COMPONENT_TL_LIST_INITIALIZER(&uct_gga_component),
-    .flags              = 0,
+    .flags              = UCT_COMPONENT_FLAG_DEVX,
     .md_vfs_init        = (uct_component_md_vfs_init_func_t)ucs_empty_function
 };
 

@@ -297,7 +297,9 @@ enum {
      * If set, the component supports direct access to remote memory using a
      * local pointer returned from @ref uct_rkey_ptr function.
      */
-    UCT_COMPONENT_FLAG_RKEY_PTR = UCS_BIT(1)
+    UCT_COMPONENT_FLAG_RKEY_PTR = UCS_BIT(1),
+
+    UCT_COMPONENT_FLAG_DEVX     = UCX_BIT(2)
 };
 
 

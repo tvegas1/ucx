@@ -1166,6 +1166,66 @@ uint8_t uct_ib_mlx5_iface_get_counter_set_id(uct_ib_iface_t *iface)
                                                   iface->config.port_num);
 }
 
+ucs_status_t uct_ib_mlx5_query_md_resources(uct_component_t *component,
+                                               uct_md_resource_desc_t **resources_p,
+                                               unsigned *num_resources_p)
+{
+    int num_resources = 0;
+    uct_md_resource_desc_t *resources;
+    struct ibv_device **device_list;
+    ucs_status_t status;
+    int i, num_devices;
+
+    /* Get device list from driver */
+    device_list = ibv_get_device_list(&num_devices);
+    if ((device_list == NULL) || (num_devices == 0)) {
+        *resources_p     = NULL;
+        *num_resources_p = 0;
+
+        if (device_list != NULL) {
+            ucs_debug("no devices are found");
+            status = UCS_OK;
+            goto out_free_device_list;
+        } else if (errno == ENOSYS) {
+            ucs_debug("failed to get ib device list: no kernel support for "
+                      "rdma");
+        } else {
+            ucs_debug("failed to get ib device list: %m");
+        }
+
+        return UCS_OK;
+    }
+
+    resources = ucs_calloc(num_devices, sizeof(*resources), "ib_resources");
+    if (resources == NULL) {
+        status = UCS_ERR_NO_MEMORY;
+        goto out_free_device_list;
+    }
+
+    for (i = 0; i < num_devices; ++i) {
+        /* Skip non-existent and non-accessible devices */
+        if (!uct_ib_device_is_accessible(device_list[i])) {
+            continue;
+        }
+
+        if (!mlx5dv_is_supported(device_list[i])) {
+            continue;
+        }
+
+        ucs_snprintf_zero(resources[num_resources].md_name,
+                          sizeof(resources[num_resources].md_name),
+                          "%s", ibv_get_device_name(device_list[i]));
+        num_resources++;
+    }
+
+    *resources_p     = resources;
+    *num_resources_p = num_resources;
+    status = UCS_OK;
+
+out_free_device_list:
+    ibv_free_device_list(device_list);
+    return status;
+}
 void uct_ib_mlx5_txwq_validate_always(uct_ib_mlx5_txwq_t *wq, uint16_t num_bb,
                                       int hw_ci_updated)
 {
