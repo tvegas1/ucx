@@ -2244,6 +2244,7 @@ size_t ucp_ep_tag_offload_min_rndv_thresh(ucp_context_h context,
 
 static void ucp_ep_config_init_short_thresh(ucp_memtype_thresh_t *thresh)
 {
+
     thresh->memtype_on  = -1;
     thresh->memtype_off = -1;
 }
@@ -2910,9 +2911,12 @@ ucs_status_t ucp_ep_config_init(ucp_worker_h worker, ucp_ep_config_t *config,
                     sizeof(ucp_am_hdr_t) + sizeof(ucp_am_reply_ftr_t),
                     config->am.zcopy_thresh[0], &config->rndv.am_thresh);
 
-            ucp_ep_config_set_memtype_thresh(&config->am_u.max_reply_eager_short,
-                                             am_max_eager_short,
-                                             context->num_mem_type_detect_mds);
+            if (iface_attr->cap.am.max_iov >= UCP_AM_SEND_SHORT_MIN_IOV) {
+                   ucp_ep_config_set_memtype_thresh(
+                                    &config->am_u.max_reply_eager_short,
+                                    am_max_eager_short,
+                                    context->num_mem_type_detect_mds);
+           }
         } else {
             /* Stub endpoint */
             config->am.max_bcopy        = UCP_MIN_BCOPY;
@@ -3892,7 +3896,6 @@ static void ucp_ep_config_proto_init(ucp_worker_h worker,
 {
     ucp_ep_config_t *ep_config = ucp_worker_ep_config(worker, cfg_index);
     ucp_ep_config_key_t *key   = &ep_config->key;
-
     ucp_memtype_thresh_t *tag_max_short;
     ucp_lane_index_t tag_exp_lane;
     unsigned tag_proto_flags;
@@ -3924,6 +3927,10 @@ static void ucp_ep_config_proto_init(ucp_worker_h worker,
                              UCP_PROTO_FLAG_AM_SHORT, key->am_lane,
                              &ep_config->am_u.max_eager_short);
 
+    /*
+     * protov2 probing infra is already checking interface attribute:
+     *  - cap.am.max_iov >= UCP_AM_SEND_SHORT_MIN_IOV
+     */
     ucp_ep_select_short_init(worker, cfg_index,
                              UCP_FEATURE_AM, UCP_OP_ID_AM_SEND_REPLY,
                              UCP_PROTO_FLAG_AM_SHORT, key->am_lane,
