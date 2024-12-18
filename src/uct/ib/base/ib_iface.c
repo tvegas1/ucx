@@ -1664,7 +1664,7 @@ UCS_CLASS_INIT_FUNC(uct_ib_iface_t, uct_iface_ops_t *tl_ops,
     if (uct_ib_iface_is_roce(self) || config->is_global ||
         uct_ib_grh_required(uct_ib_iface_port_attr(self)) ||
         ((uct_ib_iface_port_attr(self)->lid == 0) &&
-         uct_ib_device_port_attr(dev, port_num)->link_layer ==
+         uct_ib_iface_port_attr(self)->link_layer ==
                  IBV_LINK_LAYER_UNSPECIFIED) ||
         uct_ib_address_gid_is_global(&self->gid_info.gid) ||
         /* check ADDR_TYPE for backward compatibility */
