@@ -651,7 +651,7 @@ static ucs_config_field_t ucp_config_table[] = {
    UCS_CONFIG_TYPE_TABLE(ucp_context_config_table)},
 
   {"MAX_COMPONENT_RESOURCES", "16",
-      "Maximum number of resources per component to instantiate.",
+      "Maximum number of resources per component to use.",
    ucs_offsetof(ucp_config_t, max_comp_resources), UCS_CONFIG_TYPE_UINT},
 
   {NULL}
@@ -1575,7 +1575,8 @@ ucp_add_component_resources(ucp_context_h context, ucp_rsc_index_t cmpt_index,
     const uct_md_attr_v2_t *md_attr;
 
     /* List memory domain resources */
-    uct_component_attr.field_mask   = UCT_COMPONENT_ATTR_FIELD_MD_RESOURCES;
+    uct_component_attr.field_mask   = UCT_COMPONENT_ATTR_FIELD_MD_RESOURCES |
+                                      UCT_COMPONENT_ATTR_FIELD_NAME;
     uct_component_attr.md_resources =
                     ucs_alloca(tl_cmpt->attr.md_resource_count *
                                sizeof(*uct_component_attr.md_resources));
@@ -1588,6 +1589,10 @@ ucp_add_component_resources(ucp_context_h context, ucp_rsc_index_t cmpt_index,
     mem_type_mask = UCS_BIT(UCS_MEMORY_TYPE_HOST);
     for (i = 0; i < tl_cmpt->attr.md_resource_count; ++i) {
         if ((resources_avail == 0) && (config->max_comp_resources > 0)) {
+            ucs_debug("only first %d resources kept for component %s with %d "
+                      "resources",
+                      config->max_comp_resources, uct_component_attr.name,
+                      tl_cmpt->attr.md_resource_count);
             break;
         }
 
