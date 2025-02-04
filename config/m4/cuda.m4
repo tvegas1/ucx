@@ -49,6 +49,13 @@ AS_IF([test "x$cuda_checked" != "xyes"],
          AS_IF([test "x$cuda_happy" = "xyes"],
                [AC_CHECK_LIB([cudart], [cudaGetDeviceCount],
                              [CUDART_LIBS="$CUDART_LIBS -lcudart"], [cuda_happy="no"])])
+         # Check optional cuda library members
+         AS_IF([test "x$cuda_happy" = "xyes"],
+               [AC_CHECK_LIB([cuda], [cuMemRetainAllocationHandle],
+                             [AC_DEFINE([HAVE_CUMEMRETAINALLOCATIONHANDLE], [1],
+                                        [Enable cuMemRetainAllocationHandle() usage])])
+                AC_CHECK_DECLS([CU_MEM_LOCATION_TYPE_HOST],
+                               [], [], [[#include <cuda.h>]])])
 
          # Check nvml header files
          AS_IF([test "x$cuda_happy" = "xyes"],
@@ -66,6 +73,13 @@ AS_IF([test "x$cuda_checked" != "xyes"],
                                     [AC_MSG_ERROR([libnvidia-ml not found. Install appropriate nvidia-driver package])])
                               cuda_happy="no"])])
 
+         # Check for nvmlDeviceGetGpuFabricInfo
+         AC_CHECK_DECLS([nvmlDeviceGetGpuFabricInfo],
+                        [AC_DEFINE([HAVE_NVML_FABRIC_INFO], 1, [Enable NVML GPU fabric info support])],
+                        [AC_MSG_NOTICE([nvmlDeviceGetGpuFabricInfo function not found in libnvidia-ml. MNNVL support will be disabled.])],
+                        [[#include <nvml.h>]])
+
+
          # Check for cuda static library
          have_cuda_static="no"
          AS_IF([test "x$cuda_happy" = "xyes"],
@@ -73,6 +87,10 @@ AS_IF([test "x$cuda_checked" != "xyes"],
                              [CUDART_STATIC_LIBS="$CUDART_STATIC_LIBS -lcudart_static -lrt -ldl -lpthread"
                               have_cuda_static="yes"],
                              [], [-ldl -lrt -lpthread])])
+
+         AC_CHECK_DECLS([CU_MEM_HANDLE_TYPE_FABRIC],
+                        [AC_DEFINE([HAVE_CUDA_FABRIC], 1, [Enable CUDA fabric handle support])],
+                        [], [[#include <cuda.h>]])
 
          CPPFLAGS="$save_CPPFLAGS"
          LDFLAGS="$save_LDFLAGS"

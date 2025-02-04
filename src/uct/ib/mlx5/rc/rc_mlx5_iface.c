@@ -113,69 +113,6 @@ uct_rc_mlx5_iface_check_rx_completion(uct_ib_iface_t   *ib_iface,
     return NULL;
 }
 
-static UCS_F_ALWAYS_INLINE void
-uct_rc_mlx5_iface_update_tx_res(uct_rc_iface_t *rc_iface,
-                                uct_rc_mlx5_base_ep_t *rc_mlx5_base_ep,
-                                uint16_t hw_ci)
-{
-    uct_ib_mlx5_txwq_t *txwq = &rc_mlx5_base_ep->tx.wq;
-    uct_rc_txqp_t *txqp      = &rc_mlx5_base_ep->super.txqp;
-    uint16_t bb_num;
-
-    bb_num = uct_ib_mlx5_txwq_update_bb(txwq, hw_ci) -
-             uct_rc_txqp_available(txqp);
-
-    /* Must always have positive number of released resources. The first
-     * completion will report bb_num=1 (because prev_sw_pi is initialized to -1)
-     * and all the rest report the amount of BBs the previous WQE has consumed.
-     */
-    ucs_assertv(bb_num > 0, "hw_ci=%d prev_sw_pi=%d available=%d bb_num=%d",
-                hw_ci, txwq->prev_sw_pi, txqp->available, bb_num);
-
-    uct_rc_txqp_available_add(txqp, bb_num);
-    ucs_assert(uct_rc_txqp_available(txqp) <= txwq->bb_max);
-
-    uct_rc_iface_update_reads(rc_iface);
-    uct_rc_iface_add_cq_credits(rc_iface, bb_num);
-}
-
-static UCS_F_ALWAYS_INLINE unsigned
-uct_rc_mlx5_iface_poll_tx(uct_rc_mlx5_iface_common_t *iface, int poll_flags)
-{
-    struct mlx5_cqe64 *cqe;
-    uct_rc_mlx5_base_ep_t *ep;
-    unsigned qp_num;
-    uint16_t hw_ci;
-
-    cqe = uct_ib_mlx5_poll_cq(&iface->super.super, &iface->cq[UCT_IB_DIR_TX],
-                              poll_flags, uct_ib_mlx5_check_completion);
-    if (cqe == NULL) {
-        return 0;
-    }
-
-    UCS_STATS_UPDATE_COUNTER(iface->super.super.stats,
-                             UCT_IB_IFACE_STAT_TX_COMPLETION, 1);
-
-    ucs_memory_cpu_load_fence();
-
-    qp_num = ntohl(cqe->sop_drop_qpn) & UCS_MASK(UCT_IB_QPN_ORDER);
-    ep     = ucs_derived_of(uct_rc_iface_lookup_ep(&iface->super, qp_num),
-                            uct_rc_mlx5_base_ep_t);
-    ucs_assert(ep != NULL);
-
-    hw_ci = ntohs(cqe->wqe_counter);
-    ucs_trace_poll("rc_mlx5 iface %p tx_cqe: ep %p qpn 0x%x hw_ci %d", iface,
-                   ep, qp_num, hw_ci);
-
-    uct_rc_mlx5_txqp_process_tx_cqe(&ep->super.txqp, cqe, hw_ci);
-    ucs_arbiter_group_schedule(&iface->super.tx.arbiter, &ep->super.arb_group);
-    uct_rc_mlx5_iface_update_tx_res(&iface->super, ep, hw_ci);
-    uct_rc_iface_arbiter_dispatch(&iface->super);
-    uct_ib_mlx5_update_db_cq_ci(&iface->cq[UCT_IB_DIR_TX]);
-
-    return 1;
-}
-
 static UCS_F_ALWAYS_INLINE unsigned
 uct_rc_mlx5_iface_progress(void *arg, int flags)
 {
@@ -257,9 +194,8 @@ static ucs_status_t uct_rc_mlx5_iface_query(uct_iface_h tl_iface, uct_iface_attr
     return UCS_OK;
 }
 
-static void
-uct_rc_mlx5_iface_handle_failure(uct_ib_iface_t *ib_iface, void *arg,
-                                 ucs_status_t ep_status)
+void uct_rc_mlx5_iface_handle_failure(uct_ib_iface_t *ib_iface, void *arg,
+                                      ucs_status_t ep_status)
 {
     struct mlx5_cqe64 *cqe = arg;
     uct_rc_iface_t *iface  = ucs_derived_of(ib_iface, uct_rc_iface_t);
@@ -438,23 +374,30 @@ static ucs_status_t uct_rc_mlx5_iface_tag_recv_cancel(uct_iface_h tl_iface,
 static ucs_status_t
 uct_rc_mlx5_iface_parse_srq_topo(uct_ib_mlx5_md_t *md,
                                  uct_rc_mlx5_iface_common_config_t *config,
-                                 uct_rc_mlx5_srq_topo_t *topo_p)
+                                 uct_rc_mlx5_srq_topo_t *topo_p,
+                                 const uct_ib_iface_init_attr_t *init_attr)
 
 {
+    int ddp_enabled           = (init_attr->flags & UCT_IB_DDP_SUPPORTED) &&
+                                (config->ddp_enable != UCS_NO);
+    unsigned cyclic_srq_flags = UCT_IB_MLX5_MD_FLAG_RMP |
+                                ((init_attr->qp_type == UCT_IB_QPT_DCI) ?
+                                         UCT_IB_MLX5_MD_FLAG_DEVX_DC_SRQ :
+                                         UCT_IB_MLX5_MD_FLAG_DEVX_RC_SRQ);
     int i;
 
     for (i = 0; i < config->srq_topo.count; ++i) {
         if (!strcasecmp(config->srq_topo.types[i], "list")) {
             *topo_p = UCT_RC_MLX5_SRQ_TOPO_LIST;
             return UCS_OK;
-        } else if (!strcasecmp(config->srq_topo.types[i], "cyclic")) {
-            /* real cyclic list requires DevX support */
-            if (!(md->flags & UCT_IB_MLX5_MD_FLAG_DEVX_RC_SRQ)) {
-                continue;
-            }
+        } else if (!strcasecmp(config->srq_topo.types[i], "cyclic") &&
+                   ucs_test_all_flags(md->flags, cyclic_srq_flags) &&
+                   !ddp_enabled) {
+            /* real cyclic list requires DevX support, and ddp to be disabled */
             *topo_p = UCT_RC_MLX5_SRQ_TOPO_CYCLIC;
             return UCS_OK;
-        } else if (!strcasecmp(config->srq_topo.types[i], "cyclic_emulated")) {
+        } else if (!strcasecmp(config->srq_topo.types[i], "cyclic_emulated") &&
+                   !ddp_enabled) {
             *topo_p = UCT_RC_MLX5_SRQ_TOPO_CYCLIC_EMULATED;
             return UCS_OK;
         }
@@ -481,7 +424,8 @@ static ucs_status_t uct_rc_mlx5_iface_preinit(uct_rc_mlx5_iface_common_t *iface,
     ucs_status_t status;
 
     status = uct_rc_mlx5_iface_parse_srq_topo(md, mlx5_config,
-                                              &iface->config.srq_topo);
+                                              &iface->config.srq_topo,
+                                              init_attr);
     if (status != UCS_OK) {
         return status;
     }
@@ -706,13 +650,21 @@ static int
 uct_rc_mlx5_iface_is_reachable_v2(const uct_iface_h tl_iface,
                                   const uct_iface_is_reachable_params_t *params)
 {
+    static const char *tm_type_to_str[] = {"basic", "tag matching"};
     uint8_t my_type = uct_rc_mlx5_iface_get_address_type(tl_iface);
+    uint8_t remote_type;
     const uct_iface_addr_t *iface_addr;
 
     iface_addr = UCS_PARAM_VALUE(UCT_IFACE_IS_REACHABLE_FIELD, params,
                                  iface_addr, IFACE_ADDR, NULL);
+
     /* Check hardware tag matching compatibility */
-    if ((iface_addr != NULL) && (my_type != *(uint8_t*)iface_addr)) {
+    if ((iface_addr != NULL) &&
+        ((remote_type = *(uint8_t*)iface_addr) != my_type)) {
+        uct_iface_fill_info_str_buf(
+                    params, "incompatible hardware tag matching. "
+                    "%s (local) vs %s (remote)",
+                    tm_type_to_str[my_type], tm_type_to_str[remote_type]);
         return 0;
     }
 
@@ -973,10 +925,22 @@ UCS_CLASS_INIT_FUNC(uct_rc_mlx5_iface_t,
                                                    max_qp_rd_atom);
     init_attr.tx_moderation         = config->super.tx_cq_moderation;
 
+    if (md->dp_ordering_cap.rc == UCT_IB_MLX5_DP_ORDERING_OOO_ALL) {
+        init_attr.flags |= UCT_IB_DDP_SUPPORTED;
+    }
+
     UCS_CLASS_CALL_SUPER_INIT(uct_rc_mlx5_iface_common_t,
                               &uct_rc_mlx5_iface_tl_ops, &uct_rc_mlx5_iface_ops,
                               tl_md, worker, params, &config->super.super,
                               &config->rc_mlx5_common, &init_attr);
+
+    status = uct_rc_mlx5_dp_ordering_ooo_init(&self->super,
+                                              md->dp_ordering_cap.rc,
+                                              &config->rc_mlx5_common,
+                                              "rc_mlx5");
+    if (status != UCS_OK) {
+        return status;
+    }
 
     status = uct_rc_init_fc_thresh(&config->super, &self->super.super);
     if (status != UCS_OK) {

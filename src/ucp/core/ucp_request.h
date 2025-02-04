@@ -172,7 +172,7 @@ struct ucp_request {
                      * Used by rndv/ppln to track completed fragments
                      * Used by rkey_ptr to track copied data size
                      */
-                    size_t           completed_size;
+                    ssize_t          completed_size;
                 };
             } state;
 
@@ -287,12 +287,15 @@ struct ucp_request {
                                     /* Next lane to send ATP is the first set bit
                                        in rpriv->atp_map that's >= atp_lane */
                                     ucp_lane_index_t atp_lane;
+
+                                    /* Number of ATP messages sent so far */
+                                    ucp_lane_index_t atp_count;
                                 } put;
 
                                 /* Used by rndv/send/ppln and rndv/recv/ppln */
                                 struct {
                                     /* Size to send in ack message */
-                                    size_t ack_data_size;
+                                    ssize_t ack_data_size;
                                 } ppln;
 
                                 /* Used by rndv/rkey_ptr */

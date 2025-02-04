@@ -232,7 +232,7 @@ public:
     }
 
     ucs_status_t UCS_F_ALWAYS_INLINE
-    send(uct_ep_h ep, psn_t sn, psn_t prev_sn, void *buffer, unsigned length,
+    send(uct_ep_h ep, psn_t sn, psn_t prev_sn, void *buffer, size_t length,
          uint64_t remote_addr, uct_rkey_t rkey, uct_completion_t *comp)
     {
         uint64_t am_short_hdr;
@@ -351,7 +351,7 @@ public:
     }
 
     void UCS_F_ALWAYS_INLINE
-    send_b(uct_ep_h ep, psn_t sn, psn_t prev_sn, void *buffer, unsigned length,
+    send_b(uct_ep_h ep, psn_t sn, psn_t prev_sn, void *buffer, size_t length,
            uint64_t remote_addr, uct_rkey_t rkey, uct_completion_t *comp)
     {
         ucs_status_t status;
@@ -375,6 +375,15 @@ public:
                 return;
             }
         };
+    }
+
+    void fence(int peer_index)
+    {
+        ucs_status_t status = uct_ep_fence(m_perf.uct.peers[peer_index].ep, 0);
+
+        if (status != UCS_OK) {
+            ucs_error("uct_ep_fence() failed: %s", ucs_status_string(status));
+        }
     }
 
     void flush(int peer_index)
@@ -477,7 +486,7 @@ public:
                              volatile psn_t *recv_sn,
                              ucs_memory_type_t recv_mem_type,
                              const ucx_perf_allocator_t *recv_allocator,
-                             unsigned length, unsigned peer_index)
+                             size_t length, unsigned peer_index)
     {
         unsigned long remote_addr;
         psn_t sn, send_sn;
@@ -536,6 +545,7 @@ public:
             sn = 2;
             /* Send "sentinel" value */
             if (direction_to_responder) {
+                fence(peer_index);
                 wait_for_window(send_window);
                 set_sn(buffer, m_perf.uct.send_mem.mem_type, &sn,
                        m_perf.send_allocator);
@@ -561,7 +571,7 @@ public:
                              volatile psn_t *recv_sn,
                              ucs_memory_type_t recv_mem_type,
                              const ucx_perf_allocator_t *recv_allocator,
-                             unsigned length, unsigned peer_index)
+                             size_t length, unsigned peer_index)
     {
         unsigned long remote_addr;
         psn_t sn, send_sn;
@@ -634,7 +644,7 @@ public:
         ucs_memory_type_t recv_mem_type;
         volatile psn_t *recv_sn;
         unsigned my_index;
-        unsigned length;
+        size_t length;
         unsigned group_size;
         unsigned peer_index;
 

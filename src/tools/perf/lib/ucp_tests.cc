@@ -177,7 +177,7 @@ public:
             m_am_rx_params.user_data    = this;
             m_am_rx_buffer              = *recv_buffer;
             m_am_rx_length              = *recv_length;
-            fill_prereg_params(m_am_rx_params, m_perf.ucp.recv_memh);
+            fill_common_params(m_am_rx_params, m_perf.ucp.recv_memh);
         }
 
         fill_send_params(m_send_params, *send_buffer, *send_dt, send_cb, 0);
@@ -190,7 +190,7 @@ public:
         m_recv_params.datatype     = *recv_dt;
         m_recv_params.cb.recv      = tag_recv_cb;
         m_recv_params.user_data    = this;
-        fill_prereg_params(m_recv_params, m_perf.ucp.recv_memh);
+        fill_common_params(m_recv_params, m_perf.ucp.recv_memh);
     }
 
     void fill_send_params(ucp_request_param_t &params, void *reply_buffer,
@@ -214,14 +214,18 @@ public:
             params.reply_buffer  = reply_buffer;
         }
 
-        fill_prereg_params(params, m_perf.ucp.send_memh);
+        fill_common_params(params, m_perf.ucp.send_memh);
     }
 
-    void fill_prereg_params(ucp_request_param_t &params, ucp_mem_h memh)
+    void fill_common_params(ucp_request_param_t &params, ucp_mem_h memh)
     {
         if (m_perf.params.flags & UCX_PERF_TEST_FLAG_PREREG) {
             params.op_attr_mask |= UCP_OP_ATTR_FIELD_MEMH;
             params.memh          = memh;
+        }
+
+        if (TYPE == UCX_PERF_TEST_TYPE_STREAM_UNI) {
+            params.op_attr_mask |= UCP_OP_ATTR_FLAG_MULTI_SEND;
         }
     }
 
@@ -465,7 +469,7 @@ public:
     }
 
     UCS_F_ALWAYS_INLINE ucs_status_t send_daemon_req(void *buffer,
-                                                     unsigned length)
+                                                     size_t length)
     {
         ucp_ep_h ep               = m_perf.ucp.ep;
         ucp_request_param_t param = {
@@ -487,7 +491,7 @@ public:
     }
 
     ucs_status_t UCS_F_ALWAYS_INLINE
-    send(ucp_ep_h ep, void *buffer, unsigned length, ucp_datatype_t datatype,
+    send(ucp_ep_h ep, void *buffer, size_t length, ucp_datatype_t datatype,
          psn_t sn, uint64_t remote_addr, ucp_rkey_h rkey, bool get_info = false)
     {
         ucp_request_param_t *param = get_info ? &m_send_get_info_params :
@@ -566,7 +570,7 @@ public:
     }
 
     ucs_status_t UCS_F_ALWAYS_INLINE
-    recv(ucp_worker_h worker, ucp_ep_h ep, void *buffer, unsigned length,
+    recv(ucp_worker_h worker, ucp_ep_h ep, void *buffer, size_t length,
          ucp_datatype_t datatype, psn_t sn)
     {
         void *request;
@@ -910,7 +914,7 @@ public:
 
 private:
     ucs_status_t UCS_F_ALWAYS_INLINE
-    recv_stream_data(ucp_ep_h ep, unsigned length, ucp_datatype_t datatype)
+    recv_stream_data(ucp_ep_h ep, size_t length, ucp_datatype_t datatype)
     {
         void *data;
         size_t data_length;
@@ -929,7 +933,7 @@ private:
     }
 
     ucs_status_t UCS_F_ALWAYS_INLINE
-    recv_stream(ucp_ep_h ep, void *buf, unsigned length, ucp_datatype_t datatype)
+    recv_stream(ucp_ep_h ep, void *buf, size_t length, ucp_datatype_t datatype)
     {
         ssize_t  total = 0;
         void    *rreq;

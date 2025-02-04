@@ -14,7 +14,7 @@ extern "C" {
 #include <uct/ib/base/ib_device.h>
 #if HAVE_MLX5_DV
 #include <uct/ib/mlx5/ib_mlx5.h>
-#include <uct/ib/rc/accel/rc_mlx5.h>
+#include <uct/ib/mlx5/rc/rc_mlx5.h>
 #endif
 #include <uct/ib/rc/verbs/rc_verbs.h>
 }
@@ -128,7 +128,8 @@ protected:
 class uct_ep_test_event : public uct_test_event_base {
 protected:
     void init_qp(entity &e) {
-        if (GetParam()->tl_name == "rc_mlx5") {
+        if ((GetParam()->tl_name == "rc_mlx5") ||
+            (GetParam()->tl_name == "gga_mlx5")) {
 #if HAVE_MLX5_DV
             m_qp.reset(new mlx5_qp(e));
 #else

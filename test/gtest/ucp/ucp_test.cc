@@ -1094,6 +1094,11 @@ const size_t &ucp_test_base::entity::get_err_num() const {
     return m_err_cntr;
 }
 
+void ucp_test_base::entity::reset_err_num() {
+    m_err_cntr = 0;
+    m_rejected_cntr = 0;
+}
+
 const size_t &ucp_test_base::entity::get_accept_err_num() const {
     return m_accept_err_cntr;
 }
@@ -1171,6 +1176,32 @@ bool ucp_test_base::entity::has_lane_with_caps(uint64_t caps) const
                                                ucp_ep_get_rsc_index(ep, lane));
         if (ucs_test_all_flags(iface_attr->cap.flags, caps)) {
             return true;
+        }
+    }
+
+    return false;
+}
+
+bool ucp_test_base::entity::is_rndv_put_ppln_supported() const
+{
+    const auto config = ucp_ep_config(ep());
+    ucs_memory_type_t mem_type;
+
+    mem_type = (ucs_memory_type_t)ucs_ffs64(
+                                        ucph()->config.ext.rndv_frag_mem_types);
+
+    for (auto i = 0; i < config->key.num_lanes; ++i) {
+        const auto lane = config->key.rma_bw_lanes[i];
+        if (lane == UCP_NULL_LANE) {
+            break;
+        }
+        if (ucp_ep_md_attr(ep(), lane)->reg_mem_types & UCS_BIT(mem_type)) {
+            const auto iface_attr =
+                ucp_worker_iface_get_attr(worker(), ucp_ep_get_rsc_index(ep(),
+                                          lane));
+            if (iface_attr->cap.flags & UCT_IFACE_FLAG_PUT_ZCOPY) {
+                return true;
+            }
         }
     }
 

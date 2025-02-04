@@ -23,23 +23,24 @@ build_ucx() {
 
 build_ucx_in_docker() {
     docker run --rm \
+        --user "$(id -u)":"$(id -g)" \
         --name ucx_build_"$BUILD_BUILDID" \
         -e BUILD_SOURCESDIRECTORY="$BUILD_SOURCESDIRECTORY" \
         -v "$PWD":"$PWD" -w "$PWD" \
         -v /hpc/local:/hpc/local \
         $IMAGE \
         bash -c "source ./buildlib/tools/test_mad.sh && build_ucx"
-
-    sudo chown -R swx-azure-svc:ecryptfs "$PWD"
 }
 
 docker_run_srv() {
     local test_name="$1"
-    HCA=$(detect_hca)
+    HCA=$(detect_active_ib_hca)
+    sudo chmod 777 /dev/infiniband/umad*
     docker run \
         --rm \
         --detach \
         --net=host \
+        --user "$(id -u)":"$(id -g)" \
         --name ucx_perftest_"$BUILD_BUILDID" \
         -e BUILD_SOURCESDIRECTORY="$BUILD_SOURCESDIRECTORY" \
         -v "$PWD":"$PWD" -w "$PWD" \
@@ -58,7 +59,7 @@ docker_stop_srv() {
 
 set_vars() {
     set +x
-    HCA=$(detect_hca)
+    HCA=$(detect_active_ib_hca)
     # Replace ':' with space for 'ibstat' format
     HCA_DEV=${HCA/:/ }
     # shellcheck disable=SC2086
@@ -79,7 +80,22 @@ run_mad_test() {
     "$PWD"/install/bin/ucx_perftest -t tag_bw -e -K "$HCA" -e "$ib_address"
 }
 
-detect_hca() {
-    # Detect first active HCA port
-    ibv_devinfo | awk '/hca_id:/ {hca=$2} /port:/ {port=$2} /PORT_ACTIVE/ {print hca ":" port; exit}'
+detect_active_ib_hca() {
+  ibv_devinfo | awk '
+    /hca_id:/ {hca=$2}
+    /port:/ {port=$2}
+    /state:/ {state=$2}
+    /link_layer:/ {link_layer=$2}
+    state == "PORT_ACTIVE" && link_layer == "InfiniBand" {
+      print hca ":" port
+      found=1
+      exit
+    }
+    END {
+      if (!found) {
+        echo "Error: No active InfiniBand interface found"
+        exit 1
+      }
+    }
+  '
 }

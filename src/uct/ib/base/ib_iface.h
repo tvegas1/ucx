@@ -204,6 +204,9 @@ struct uct_ib_iface_config {
     /* Length of subnet prefix for reachability check */
     unsigned long           rocev2_subnet_pfx_len;
 
+    /* List of included/excluded subnets to filter RoCE GID entries by */
+    ucs_config_allow_list_t rocev2_subnet_filter;
+
     /* Multiplier for RoCE LAG UDP source port calculation */
     unsigned                roce_path_factor;
 
@@ -236,7 +239,9 @@ enum {
     /* Indicates that TX cq len in uct_ib_iface_init_attr_t is specified per
      * each IB path. Therefore IB interface constructor would need to multiply
      * TX CQ len by the number of IB paths (when it is properly initialized). */
-    UCT_IB_TX_OPS_PER_PATH           = UCS_BIT(2)
+    UCT_IB_TX_OPS_PER_PATH           = UCS_BIT(2),
+    /* Whether device and transport supports DDP */
+    UCT_IB_DDP_SUPPORTED             = UCS_BIT(3)
 };
 
 
@@ -543,9 +548,12 @@ int uct_ib_iface_is_roce_v2(uct_ib_iface_t *iface);
  *
  * @param iface                 IB interface
  * @param md_config_index       Gid index from the md configuration.
+ * @param subnets_list          Subnets list to filter GIDs by.
  */
-ucs_status_t uct_ib_iface_init_roce_gid_info(uct_ib_iface_t *iface,
-                                             unsigned long cfg_gid_index);
+ucs_status_t
+uct_ib_iface_init_roce_gid_info(uct_ib_iface_t *iface,
+                                unsigned long cfg_gid_index,
+                                const ucs_config_allow_list_t *subnets_list);
 
 
 static inline uct_ib_md_t* uct_ib_iface_md(uct_ib_iface_t *iface)
@@ -724,9 +732,12 @@ uct_ib_fill_cq_attr(struct ibv_cq_init_attr_ex *cq_attr,
                     const uct_ib_iface_init_attr_t *init_attr,
                     uct_ib_iface_t *iface, int preferred_cpu, unsigned cq_size)
 {
+    int num_comp_vectors =
+            uct_ib_iface_device(iface)->ibv_context->num_comp_vectors;
+
     cq_attr->cqe         = cq_size;
     cq_attr->channel     = iface->comp_channel;
-    cq_attr->comp_vector = preferred_cpu;
+    cq_attr->comp_vector = preferred_cpu % num_comp_vectors;
 #if HAVE_DECL_IBV_CREATE_CQ_ATTR_IGNORE_OVERRUN
     /* Always check CQ overrun if assert mode enabled. */
     /* coverity[dead_error_condition] */

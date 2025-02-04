@@ -83,6 +83,11 @@ UCS_CLASS_DECLARE(uct_rc_mlx5_ep_t, const uct_ep_params_t *);
 UCS_CLASS_DECLARE_NEW_FUNC(uct_rc_mlx5_ep_t, uct_ep_t, const uct_ep_params_t *);
 UCS_CLASS_DECLARE_DELETE_FUNC(uct_rc_mlx5_ep_t, uct_ep_t);
 
+UCS_CLASS_DECLARE(uct_rc_mlx5_base_ep_t, const uct_ep_params_t*);
+UCS_CLASS_DECLARE_NEW_FUNC(uct_rc_mlx5_base_ep_t, uct_ep_t,
+                           const uct_ep_params_t*);
+UCS_CLASS_DECLARE_DELETE_FUNC(uct_rc_mlx5_base_ep_t, uct_ep_t);
+
 struct mlx5_cqe64 *
 uct_rc_mlx5_iface_check_rx_completion(uct_ib_iface_t   *ib_iface,
                                       uct_ib_mlx5_cq_t *cq,
@@ -229,5 +234,8 @@ unsigned uct_rc_mlx5_ep_cleanup_qp(void *arg);
 ucs_status_t uct_rc_mlx5_iface_event_fd_get(uct_iface_h tl_iface, int *fd_p);
 
 ucs_status_t uct_rc_mlx5_iface_arm(uct_iface_h tl_iface, unsigned events);
+
+void uct_rc_mlx5_iface_handle_failure(uct_ib_iface_t *ib_iface, void *arg,
+                                      ucs_status_t ep_status);
 
 #endif

@@ -54,7 +54,10 @@ test_type_t tests[] = {
      "active message bandwidth / message rate", "overhead", 1},
 
     {"put_bw", UCX_PERF_API_UCT, UCX_PERF_CMD_PUT, UCX_PERF_TEST_TYPE_STREAM_UNI,
-     "put bandwidth / message rate", "overhead", 1},
+     "put bandwidth / message rate", "overhead", 32},
+
+    {"get_bw", UCX_PERF_API_UCT, UCX_PERF_CMD_GET, UCX_PERF_TEST_TYPE_STREAM_UNI,
+     "get bandwidth / message rate", "overhead", 32},
 
     {"add_mr", UCX_PERF_API_UCT, UCX_PERF_CMD_ADD, UCX_PERF_TEST_TYPE_STREAM_UNI,
      "atomic add message rate", "overhead", 1},
@@ -172,7 +175,7 @@ ucs_status_t init_test_params(perftest_params_t *params)
     params->super.api               = UCX_PERF_API_LAST;
     params->super.command           = UCX_PERF_CMD_LAST;
     params->super.test_type         = UCX_PERF_TEST_TYPE_LAST;
-    params->super.thread_mode       = UCS_THREAD_MODE_SINGLE;
+    params->super.thread_mode       = UCS_THREAD_MODE_SERIALIZED;
     params->super.thread_count      = 1;
     params->super.async_mode        = UCS_ASYNC_THREAD_LOCK_TYPE;
     params->super.wait_mode         = UCX_PERF_WAIT_MODE_LAST;

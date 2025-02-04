@@ -384,6 +384,10 @@ UCS_TEST_SKIP_COND_P(test_md, alloc,
     uct_md_h md_ref               = md();
     uct_alloc_method_t method     = UCT_ALLOC_METHOD_MD;
     unsigned num_alloc_failures   = 0;
+    const auto max_alloc          = md_attr().max_alloc;
+    auto max_size                 = ucs_max(max_alloc / 8,
+                                            ucs_min(max_alloc, 1024));
+
     std::vector<char> key(md_attr().rkey_packed_size);
     size_t size, orig_size;
     ucs_status_t status;
@@ -408,12 +412,13 @@ UCS_TEST_SKIP_COND_P(test_md, alloc,
     pack_params.flags      = UCT_MD_MKEY_PACK_FLAG_INVALIDATE_RMA |
                              UCT_MD_MKEY_PACK_FLAG_INVALIDATE_AMO;
 
+    max_size               = ucs_min(max_size, 63356);
+    max_size               = ucs_align_down_pow2(max_size, sizeof(size_t));
+
     ucs_for_each_bit(mem_type, md_attr().alloc_mem_types) {
         for (unsigned i = 0; i < iterations; ++i) {
-            size = orig_size = ucs::rand() %
-                               ucs_min(65536, md_attr().max_alloc);
-            if ((size == 0) || (ucs_align_up_pow2(size, sizeof(size_t)) >
-                                md_attr().max_alloc)) {
+            size = orig_size = ucs::rand() % max_size;
+            if (size == 0) {
                 continue;
             }
 
@@ -426,6 +431,7 @@ UCS_TEST_SKIP_COND_P(test_md, alloc,
             ucs_log_pop_handler();
 
             if (status == UCS_ERR_NO_MEMORY) {
+                usleep(ucs::rand_range(10000));
                 num_alloc_failures++;
                 continue;
             }
@@ -452,7 +458,7 @@ UCS_TEST_SKIP_COND_P(test_md, alloc,
             uct_mem_free(&mem);
         }
 
-        EXPECT_LT((double)num_alloc_failures / iterations, 0.7)
+        EXPECT_LT((double)num_alloc_failures / iterations, 0.5)
                 << "Too many OUT_OF_RESOURCE failures";
     }
 }
@@ -1132,44 +1138,16 @@ UCS_TEST_P(test_md_memlock_limit, md_open)
 
 UCT_MD_INSTANTIATE_TEST_CASE(test_md_memlock_limit)
 
-class test_md_non_blocking : public test_md
-{
-protected:
-    void init() override {
-        /* ODPv1 IB feature can work only for certain DEVX configuration */
-        modify_config("IB_MLX5_DEVX_OBJECTS", "dct,dcsrq", IGNORE_IF_NOT_EXIST);
-        test_md::init();
-    }
-};
-
 UCS_TEST_SKIP_COND_P(test_md_non_blocking, reg_advise,
                      !check_caps(UCT_MD_FLAG_REG | UCT_MD_FLAG_ADVISE))
 {
-    test_reg_advise(UCS_KBYTE, UCS_KBYTE, 0, true);
-    test_reg_advise(UCS_KBYTE, UCS_KBYTE / 2, 0, true);
-    test_reg_advise(UCS_KBYTE, UCS_KBYTE / 2, UCS_KBYTE / 4, true);
-
-    /*
-     * TODO: These tests should be enabled
-     * when https://redmine.mellanox.com/issues/336376 fixed
-
-     * test_reg_advise(UCS_MBYTE, UCS_MBYTE, 0, true);
-     * test_reg_advise(UCS_MBYTE, UCS_MBYTE / 2, 0, true);
-     * test_reg_advise(UCS_MBYTE, UCS_MBYTE / 2, UCS_MBYTE / 4, true);
-     */
+    test_nb_reg_advise();
 }
 
 UCS_TEST_SKIP_COND_P(test_md_non_blocking, reg,
                      !check_caps(UCT_MD_FLAG_REG))
 {
-    test_reg_advise(UCS_KBYTE, 0, 0, true);
-
-    /*
-     * TODO: This test should be enabled
-     * when https://redmine.mellanox.com/issues/336376 fixed
-
-     * test_reg_advise(UCS_MBYTE, 0, 0, true);
-     */
+    test_nb_reg();
 }
 
 UCT_MD_INSTANTIATE_TEST_CASE(test_md_non_blocking)

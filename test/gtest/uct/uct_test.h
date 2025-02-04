@@ -25,7 +25,6 @@
 
 
 #define DEFAULT_DELAY_MS           1.0
-#define DEFAULT_TIMEOUT_SEC       10.0
 #define DEFAULT_VARIANT              0
 
 #define UCT_TEST_CALL_AND_TRY_AGAIN(_func, _res) \
@@ -116,6 +115,8 @@ public:
 
     uct_test();
     virtual ~uct_test();
+
+    virtual bool has_transport(const std::string& tl_name) const;
 
     enum atomic_mode {
         OP32,
@@ -326,8 +327,8 @@ protected:
     template <typename T>
     void wait_for_flag(volatile T *flag, double timeout = DEFAULT_TIMEOUT_SEC) const
     {
-        ucs_time_t deadline = ucs_get_time() +
-                              ucs_time_from_sec(timeout) * ucs::test_time_multiplier();
+        using ucs::get_deadline;
+        ucs_time_t deadline = get_deadline(timeout);
         while ((ucs_get_time() < deadline) && (!(*flag))) {
             short_progress_loop();
         }
@@ -337,9 +338,8 @@ protected:
     void wait_for_bits(FlagType *flag, MaskType mask,
                        double timeout = DEFAULT_TIMEOUT_SEC) const
     {
-        ucs_time_t deadline = ucs_get_time() +
-                              ucs_time_from_sec(timeout) *
-                              ucs::test_time_multiplier();
+        using ucs::get_deadline;
+        ucs_time_t deadline = get_deadline(timeout);
         while ((ucs_get_time() < deadline) && (!ucs_test_all_flags(*flag, mask))) {
             /* Don't do short_progress_loop() to avoid extra timings */
             progress_mt();
@@ -347,18 +347,15 @@ protected:
     }
 
     template <typename T>
-    void wait_for_value(volatile T *var, T value, bool progress,
+    void wait_for_value(const volatile T *var, T value, bool progress,
                         double timeout = DEFAULT_TIMEOUT_SEC) const
     {
-        ucs_time_t deadline = ucs_get_time() +
-                              ucs_time_from_sec(timeout) * ucs::test_time_multiplier();
-        while ((ucs_get_time() < deadline) && (*var != value)) {
-            if (progress) {
-                short_progress_loop();
-            } else {
-                twait();
-            }
-        }
+        test_base::wait_for_value(
+                var, value,
+                [this, progress]() {
+                    progress ? short_progress_loop() : twait();
+                },
+                timeout);
     }
 
     template <typename T>
@@ -366,18 +363,13 @@ protected:
                                bool progress = true,
                                double timeout = DEFAULT_TIMEOUT_SEC) const
     {
-        ucs_time_t deadline = ucs_get_time() +
-                              ucs_time_from_sec(timeout) *
-                              ucs::test_time_multiplier();
-        T initial_value     = *var;
-
-        while ((ucs_get_time() < deadline) && (*var == initial_value)) {
-            if (progress) {
-                short_progress_loop(DEFAULT_DELAY_MS, e);
-            } else {
-                twait();
-            }
-        }
+        const T initial_value = *var;
+        wait_for_cond([var, initial_value]() { return *var != initial_value; },
+                      [this, progress, e]() {
+                          progress ? short_progress_loop(DEFAULT_DELAY_MS, e) :
+                                     twait();
+                      },
+                      timeout);
     }
 
     virtual void init();
@@ -386,7 +378,6 @@ protected:
                                modify_config_mode_t mode = FAIL_IF_NOT_EXIST);
     bool get_config(const std::string& name, std::string& value) const;
 
-    virtual bool has_transport(const std::string& tl_name) const;
     virtual bool has_ud() const;
     virtual bool has_rc() const;
     virtual bool has_rc_or_dc() const;
@@ -481,6 +472,11 @@ protected:
     ud_mlx5
 
 
+#define UCT_TEST_IB_AND_GGA_TLS \
+    UCT_TEST_IB_TLS,            \
+    gga_mlx5
+
+
 #define UCT_TEST_CMS rdmacm, tcp
 
 
@@ -488,7 +484,7 @@ protected:
 
 
 #define UCT_TEST_NO_SELF_TLS \
-    UCT_TEST_IB_TLS,         \
+    UCT_TEST_IB_AND_GGA_TLS, \
     ugni_rdma,               \
     ugni_udt,                \
     ugni_smsg,               \
@@ -532,6 +528,16 @@ protected:
  */
 #define UCT_INSTANTIATE_IB_TEST_CASE(_test_case) \
     UCS_PP_FOREACH(_UCT_INSTANTIATE_TEST_CASE, _test_case, UCT_TEST_IB_TLS)
+
+
+/**
+ * Instantiate the parametrized test case for all IB and GGA transports.
+ *
+ * @param _test_case  Test case class, derived from uct_test.
+ */
+#define UCT_INSTANTIATE_IB_AND_GGA_TEST_CASE(_test_case) \
+    UCS_PP_FOREACH(_UCT_INSTANTIATE_TEST_CASE, _test_case, \
+                   UCT_TEST_IB_AND_GGA_TLS)
 
 
 /**
@@ -594,9 +600,26 @@ protected:
     _UCT_INSTANTIATE_TEST_CASE(_test_case, rc_verbs) \
     _UCT_INSTANTIATE_TEST_CASE(_test_case, rc_mlx5)
 
+
 #define UCT_INSTANTIATE_RC_DC_TEST_CASE(_test_case) \
     UCT_INSTANTIATE_RC_TEST_CASE(_test_case) \
     _UCT_INSTANTIATE_TEST_CASE(_test_case, dc_mlx5)
+
+
+#define UCT_INSTANTIATE_RC_DC_GGA_TEST_CASE(_test_case) \
+    UCT_INSTANTIATE_RC_DC_TEST_CASE(_test_case) \
+    _UCT_INSTANTIATE_TEST_CASE(_test_case, gga_mlx5)
+
+
+/**
+ * Instantiate the parametrized test case for CUDA_IPC.
+ * TODO: add cuda_ipc to UCT_INSTANTIATE_TEST_CASE.
+ *
+ * @param _test_case  Test case class, derived from uct_test.
+ */
+#define UCT_INSTANTIATE_CUDA_IPC_TEST_CASE(_test_case) \
+    _UCT_INSTANTIATE_TEST_CASE(_test_case, cuda_ipc)
+
 
 std::ostream& operator<<(std::ostream& os, const uct_tl_resource_desc_t& resource);
 

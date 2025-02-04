@@ -68,12 +68,12 @@ protected:
 #ifndef __AVX__
         UCS_TEST_SKIP_R("Built without AVX support");
 #else
-        int i, j, result;
+        int i, j, result, ret = 0;
         char *test_window_src, *test_window_dst, *src, *dst, *dup;
         size_t len, total_size, test_window_size, hole_size, align;
 
         align            = 64;
-        test_window_size = 2 * 1024;
+        test_window_size = 8 * 1024;
         hole_size        = 2 * align;
 
         /*
@@ -82,9 +82,20 @@ protected:
          */
         total_size = test_window_size + (2 * hole_size);
 
-        posix_memalign((void **)&test_window_src, align, total_size);
-        posix_memalign((void **)&test_window_dst, align, total_size);
-        posix_memalign((void **)&dup, align, total_size);
+        ret = posix_memalign((void**)&test_window_src, align, total_size);
+        if (ret) {
+            goto src_fail;
+        }
+
+        ret = posix_memalign((void**)&test_window_dst, align, total_size);
+        if (ret) {
+            goto dst_fail;
+        }
+
+        ret = posix_memalign((void**)&dup, align, total_size);
+        if (ret) {
+            goto dup_fail;
+        }
 
         src = test_window_src + hole_size;
         dst = test_window_dst + hole_size;
@@ -94,7 +105,9 @@ protected:
         memset(test_window_src, 0xdeaddead, total_size);
         memset(test_window_dst, 0x0, total_size);
 
-        for (len = 0; len < test_window_size; len++) {
+        len = 0;
+
+        while (len < test_window_size) {
             for (i = 0; i < align; i++) {
                 for (j = 0; j < align; j++) {
                     /* Perform the transfer */
@@ -110,11 +123,26 @@ protected:
                     EXPECT_EQ(0, result);
                 }
             }
+            /* Check for each len for less than 1k sizes
+             * Above 1k test steps of 53
+             */
+            if (len < 1024) {
+                len++;
+            } else {
+                len += 53;
+            }
         }
 
-        free(test_window_src);
-        free(test_window_dst);
         free(dup);
+
+    dup_fail:
+        free(test_window_dst);
+    dst_fail:
+        free(test_window_src);
+    src_fail:
+        if (ret) {
+            UCS_TEST_ABORT("Failed to allocate memory: " << strerror(ret));
+        }
 #endif
     }
 };

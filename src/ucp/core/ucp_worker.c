@@ -94,8 +94,10 @@ static ucs_stats_class_t ucp_worker_stats_class = {
         [UCP_WORKER_STAT_RNDV_RX_EXP]              = "rndv_rx_exp",
         [UCP_WORKER_STAT_RNDV_RX_UNEXP]            = "rndv_rx_unexp",
         [UCP_WORKER_STAT_RNDV_PUT_ZCOPY]           = "rndv_put_zcopy",
+        [UCP_WORKER_STAT_RNDV_PUT_MTYPE_ZCOPY]     = "rndv_put_mtype_zcopy",
         [UCP_WORKER_STAT_RNDV_GET_ZCOPY]           = "rndv_get_zcopy",
         [UCP_WORKER_STAT_RNDV_RTR]                 = "rndv_rtr",
+        [UCP_WORKER_STAT_RNDV_RTR_MTYPE]           = "rndv_rtr_mtype",
         [UCP_WORKER_STAT_RNDV_RKEY_PTR]            = "rndv_rkey_ptr"
     }
 };
@@ -576,7 +578,7 @@ void ucp_worker_iface_activate(ucp_worker_iface_t *wiface, unsigned uct_flags)
 {
     ucp_worker_h worker = wiface->worker;
 
-    ucs_trace("activate " UCP_WIFACE_FMT " acount=%u aifaces=%u",
+    ucs_trace("activate " UCP_WIFACE_FMT " a_count=%u a_ifaces=%u",
               UCP_WIFACE_ARG(wiface), wiface->activate_count,
               worker->num_active_ifaces);
 
@@ -605,6 +607,11 @@ void ucp_worker_iface_activate(ucp_worker_iface_t *wiface, unsigned uct_flags)
 
     uct_iface_progress_enable(wiface->iface,
                               UCT_PROGRESS_SEND | UCT_PROGRESS_RECV | uct_flags);
+}
+
+int ucp_worker_iface_is_activated(const ucp_worker_iface_t *wiface)
+{
+    return wiface->activate_count > 0;
 }
 
 /*
@@ -725,7 +732,7 @@ static void ucp_worker_iface_deactivate(ucp_worker_iface_t *wiface, int force)
 {
     ucp_worker_h worker = wiface->worker;
 
-    ucs_trace("deactivate " UCP_WIFACE_FMT " force=%d acount=%u aifaces=%u",
+    ucs_trace("deactivate " UCP_WIFACE_FMT " force=%d a_count=%u a_ifaces=%u",
               UCP_WIFACE_ARG(wiface), force, wiface->activate_count,
               worker->num_active_ifaces);
 
@@ -1403,7 +1410,10 @@ ucs_status_t ucp_worker_iface_open(ucp_worker_h worker, ucp_rsc_index_t tl_id,
     uct_config_release(iface_config);
 
     if (status != UCS_OK) {
-       goto err_free_iface;
+        ucs_error("uct_iface_open(" UCT_TL_RESOURCE_DESC_FMT ") failed: %s",
+                  UCT_TL_RESOURCE_DESC_ARG(&resource->tl_rsc),
+                  ucs_status_string(status));
+        goto err_free_iface;
     }
 
     VALGRIND_MAKE_MEM_UNDEFINED(&wiface->attr, sizeof(wiface->attr));
@@ -2035,33 +2045,6 @@ static void ucp_worker_destroy_mpools(ucp_worker_h worker)
                       !(worker->flags & UCP_WORKER_FLAG_IGNORE_REQUEST_LEAK));
 }
 
-static void
-ucp_worker_ep_config_short_init(ucp_worker_h worker, ucp_ep_config_t *ep_config,
-                                ucp_worker_cfg_index_t ep_cfg_index,
-                                unsigned feature_flag, ucp_operation_id_t op_id,
-                                unsigned proto_flags, ucp_lane_index_t exp_lane,
-                                ucp_memtype_thresh_t *max_eager_short)
-{
-    ucp_proto_select_short_t proto_short;
-
-    if (worker->context->config.features & feature_flag) {
-        ucp_proto_select_short_init(worker, &ep_config->proto_select,
-                                    ep_cfg_index, UCP_WORKER_CFG_INDEX_NULL,
-                                    op_id, proto_flags, &proto_short);
-
-        /* Short protocol should be either disabled, or use expected lane */
-        ucs_assertv((proto_short.max_length_host_mem < 0) ||
-                            (proto_short.lane == exp_lane),
-                    "max_length_host_mem %ld, lane %d",
-                    proto_short.max_length_host_mem, proto_short.lane);
-    } else {
-        ucp_proto_select_short_disable(&proto_short);
-    }
-
-    max_eager_short->memtype_off = proto_short.max_length_unknown_mem;
-    max_eager_short->memtype_on  = proto_short.max_length_host_mem;
-}
-
 static unsigned ucp_worker_ep_config_free_cb(void *arg)
 {
     ucs_free(arg);
@@ -2090,12 +2073,8 @@ ucs_status_t ucp_worker_get_ep_config(ucp_worker_h worker,
                                       unsigned ep_init_flags,
                                       ucp_worker_cfg_index_t *cfg_index_p)
 {
-    ucp_context_h context = worker->context;
     ucp_worker_cfg_index_t ep_cfg_index;
     ucp_ep_config_t *ep_config;
-    ucp_memtype_thresh_t *tag_max_short;
-    ucp_lane_index_t tag_exp_lane;
-    unsigned tag_proto_flags;
     void *old_ep_cfg_buf;
     ucs_status_t status;
 
@@ -2122,6 +2101,8 @@ ucs_status_t ucp_worker_get_ep_config(ucp_worker_h worker,
     ep_config      = ucs_array_append_safe(&worker->ep_config, &old_ep_cfg_buf,
                                            return UCS_ERR_NO_MEMORY);
     if (old_ep_cfg_buf != NULL) {
+        memcpy(worker->ep_config.buffer, old_ep_cfg_buf,
+               sizeof(ucp_ep_config_t) * ucs_array_length(&worker->ep_config));
         /* Schedule release of old ep configs array backing buffer on the main
          * thread (this func can be called by async thread).
          * So the main thread can still access the old configuration buffer
@@ -2143,33 +2124,6 @@ ucs_status_t ucp_worker_get_ep_config(ucp_worker_h worker,
          * and do not print their configuration
          */
         goto out;
-    }
-
-    if (context->config.ext.proto_enable) {
-        if (ucp_ep_config_key_has_tag_lane(key)) {
-            tag_proto_flags = UCP_PROTO_FLAG_TAG_SHORT;
-            tag_max_short   = &ep_config->tag.offload.max_eager_short;
-            tag_exp_lane    = key->tag_lane;
-        } else {
-            tag_proto_flags = UCP_PROTO_FLAG_AM_SHORT;
-            tag_max_short   = &ep_config->tag.max_eager_short;
-            tag_exp_lane    = key->am_lane;
-        }
-
-        ucp_worker_ep_config_short_init(worker, ep_config, ep_cfg_index,
-                                        UCP_FEATURE_TAG, UCP_OP_ID_TAG_SEND,
-                                        tag_proto_flags, tag_exp_lane,
-                                        tag_max_short);
-
-        ucp_worker_ep_config_short_init(worker, ep_config, ep_cfg_index,
-                                        UCP_FEATURE_AM, UCP_OP_ID_AM_SEND,
-                                        UCP_PROTO_FLAG_AM_SHORT, key->am_lane,
-                                        &ep_config->am_u.max_eager_short);
-
-        ucp_worker_ep_config_short_init(worker, ep_config, ep_cfg_index,
-                                        UCP_FEATURE_AM, UCP_OP_ID_AM_SEND_REPLY,
-                                        UCP_PROTO_FLAG_AM_SHORT, key->am_lane,
-                                        &ep_config->am_u.max_reply_eager_short);
     }
 
     ucp_worker_print_used_tls(worker, ep_cfg_index);
@@ -3002,6 +2956,7 @@ static ucs_status_t ucp_worker_address_pack(ucp_worker_h worker,
     unsigned flags        = ucp_worker_default_address_pack_flags(worker);
     ucp_tl_bitmap_t tl_bitmap;
     ucp_rsc_index_t tl_id;
+    const uct_iface_attr_t *iface_attr;
 
     /* Make sure that UUID is packed to the address intended for the user,
      * because ucp_worker_address_query routine assumes that uuid is always
@@ -3012,7 +2967,8 @@ static ucs_status_t ucp_worker_address_pack(ucp_worker_h worker,
     if (address_flags & UCP_WORKER_ADDRESS_FLAG_NET_ONLY) {
         UCS_STATIC_BITMAP_RESET_ALL(&tl_bitmap);
         UCS_STATIC_BITMAP_FOR_EACH_BIT(tl_id, &worker->context->tl_bitmap) {
-            if (context->tl_rscs[tl_id].tl_rsc.dev_type == UCT_DEVICE_TYPE_NET) {
+            iface_attr = ucp_worker_iface_get_attr(worker, tl_id);
+            if (iface_attr->cap.flags & UCT_IFACE_FLAG_INTER_NODE) {
                 UCS_STATIC_BITMAP_SET(&tl_bitmap, tl_id);
             }
         }
@@ -3202,7 +3158,7 @@ ucs_status_t ucp_worker_arm(ucp_worker_h worker)
 
     if (worker->keepalive.timerfd >= 0) {
         /* Do read() of 8-byte unsigned integer containing the number of
-         * expirations that have occured to make sure no events will be
+         * expirations that have occurred to make sure no events will be
          * triggered again until timer isn't expired again.
          */
         status = ucp_worker_fd_read(worker, worker->keepalive.timerfd,
@@ -3491,8 +3447,7 @@ static int ucp_worker_do_ep_keepalive(ucp_worker_h worker, ucs_time_t now)
     ucs_trace("ep %p: do keepalive on lane[%d]=%p ep->flags=0x%x", ep, lane,
               uct_ep, ep->flags);
 
-    if (ucp_ep_is_am_keepalive(ep, rsc_index,
-                               ucp_ep_config(ep)->p2p_lanes & UCS_BIT(lane))) {
+    if (ucp_ep_is_am_keepalive(ep, rsc_index, ucp_ep_is_lane_p2p(ep, lane))) {
         status = ucp_ep_do_uct_ep_am_keepalive(ep, uct_ep, rsc_index);
     } else {
         status = uct_ep_check(uct_ep, 0, NULL);
@@ -3794,7 +3749,7 @@ ucp_wiface_process_for_each_lane(ucp_worker_h worker,
 
     ucs_for_each_bit(lane, lane_map) {
         ucs_assertv(lane < UCP_MAX_LANES,
-                    "lane=%" PRIu8 ", lane_map=0x%" PRIx16, lane, lane_map);
+                    "lane=%" PRIu8 ", lane_map=0x%" PRIx64, lane, lane_map);
         rsc_index = ep_config->key.lanes[lane].rsc_index;
         wiface    = ucp_worker_iface(worker, rsc_index);
         wiface_process(wiface);

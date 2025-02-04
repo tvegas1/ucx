@@ -21,7 +21,8 @@
 
 
 ucs_status_t ucp_proto_multi_init(const ucp_proto_multi_init_params_t *params,
-                                  ucp_proto_caps_t *caps,
+                                  const char *perf_name,
+                                  ucp_proto_perf_t **perf_p,
                                   ucp_proto_multi_priv_t *mpriv)
 {
     ucp_context_h context         = params->super.super.worker->context;
@@ -144,7 +145,7 @@ ucs_status_t ucp_proto_multi_init(const ucp_proto_multi_init_params_t *params,
     mpriv->min_frag     = 0;
     mpriv->max_frag_sum = 0;
     mpriv->align_thresh = 1;
-    perf.max_frag       = SIZE_MAX;
+    perf.max_frag       = 0;
     perf.min_length     = 0;
     weight_sum          = 0;
     min_end_offset      = 0;
@@ -167,8 +168,7 @@ ucs_status_t ucp_proto_multi_init(const ucp_proto_multi_init_params_t *params,
         ucs_assert(max_frag > 0);
 
         lpriv->max_frag = max_frag;
-        perf.max_frag   = ucs_min(perf.max_frag, lpriv->max_frag);
-
+        perf.max_frag  += max_frag;
 
         /* Calculate lane weight as a fixed-point fraction */
         lpriv->weight = ucs_proto_multi_calc_weight(lane_perf->bandwidth,
@@ -241,8 +241,9 @@ ucs_status_t ucp_proto_multi_init(const ucp_proto_multi_init_params_t *params,
         }
     }
 
-    status = ucp_proto_common_init_caps(&params->super, &perf, perf_node,
-                                        reg_md_map, caps);
+    status = ucp_proto_init_perf(&params->super, &perf, perf_node, reg_md_map,
+                                 perf_name, perf_p);
+
     /* Deref unused nodes */
     for (i = 0; i < num_lanes; ++i) {
         ucp_proto_perf_node_deref(&lanes_perf_nodes[lanes[i]]);
@@ -261,16 +262,19 @@ size_t ucp_proto_multi_priv_size(const ucp_proto_multi_priv_t *mpriv)
 
 void ucp_proto_multi_probe(const ucp_proto_multi_init_params_t *params)
 {
+    const char *proto_name = ucp_proto_id_field(params->super.super.proto_id,
+                                                name);
     ucp_proto_multi_priv_t mpriv;
-    ucp_proto_caps_t caps;
+    ucp_proto_perf_t *perf;
     ucs_status_t status;
 
-    status = ucp_proto_multi_init(params, &caps, &mpriv);
+    status = ucp_proto_multi_init(params, proto_name, &perf, &mpriv);
     if (status != UCS_OK) {
         return;
     }
 
-    ucp_proto_common_add_proto(&params->super, &caps, &mpriv,
+    ucp_proto_select_add_proto(&params->super.super, params->super.cfg_thresh,
+                               params->super.cfg_priority, perf, &mpriv,
                                ucp_proto_multi_priv_size(&mpriv));
 }
 

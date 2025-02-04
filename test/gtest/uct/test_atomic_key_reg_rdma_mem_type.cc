@@ -8,6 +8,12 @@
 
 class uct_atomic_key_reg_rdma_mem_type : public uct_amo_test {
 protected:
+    void init() override
+    {
+        modify_config("IB_DM_COUNT", "0", SKIP_IF_NOT_EXIST);
+        uct_amo_test::init();
+    }
+
     bool check_rdma_memory()
     {
         FOR_EACH_ENTITY(iter) {
@@ -30,7 +36,7 @@ UCS_TEST_SKIP_COND_P(uct_atomic_key_reg_rdma_mem_type, fadd64,
 
     run_workers(static_cast<send_func_t>(
                         &uct_amo_test::atomic_fop<uint64_t, UCT_ATOMIC_OP_ADD>),
-                recvbuf, std::vector<uint64_t>(1, add), false);
+                recvbuf, std::vector<uint64_t>(num_senders(), add), false);
     wait_for_remote();
 }
 

@@ -139,7 +139,7 @@ static inline ucp_lane_index_t ucp_ep_num_lanes(ucp_ep_h ep)
 
 static inline int ucp_ep_is_lane_p2p(ucp_ep_h ep, ucp_lane_index_t lane)
 {
-    return ucp_ep_config(ep)->p2p_lanes & UCS_BIT(lane);
+    return !!(ucp_ep_config(ep)->p2p_lanes & UCS_BIT(lane));
 }
 
 static inline ucp_md_index_t ucp_ep_md_index(ucp_ep_h ep, ucp_lane_index_t lane)
@@ -239,7 +239,7 @@ static inline ucp_rsc_index_t
 ucp_ep_config_get_dst_md_cmpt(const ucp_ep_config_key_t *key,
                               ucp_md_index_t dst_md_index)
 {
-    unsigned idx = ucs_popcount(key->reachable_md_map & UCS_MASK(dst_md_index));
+    unsigned idx = ucs_bitmap2idx(key->reachable_md_map, dst_md_index);
 
     return key->dst_md_cmpts[idx];
 }
@@ -281,6 +281,12 @@ static UCS_F_ALWAYS_INLINE int ucp_ep_use_indirect_id(ucp_ep_h ep)
 {
     UCS_STATIC_ASSERT(sizeof(ep->flags) <= sizeof(int));
     return ep->flags & UCP_EP_FLAG_INDIRECT_ID;
+}
+
+static UCS_F_ALWAYS_INLINE int
+ucp_ep_config_err_mode_eq(ucp_ep_h ep, ucp_err_handling_mode_t err_mode)
+{
+    return ucp_ep_config(ep)->key.err_mode == err_mode;
 }
 
 #endif

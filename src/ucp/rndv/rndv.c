@@ -22,6 +22,27 @@
 
 
 static UCS_F_ALWAYS_INLINE int
+ucp_rndv_frag_mem_type(ucp_context_t *context)
+{
+    ucs_memory_type_t frag_mem_type;
+
+    if (context->config.ext.rndv_frag_mem_types == 0) {
+        return UCS_MEMORY_TYPE_HOST;
+    }
+
+    /* Just one fragment memory type can be specified for proto v1, so take the
+     * first one from the map. Anyway for proto v1 UCX_RNDV_FRAG_MEM_TYPE is
+     * supposed to be used.
+     */
+    frag_mem_type = ucs_ffs64(context->config.ext.rndv_frag_mem_types);
+
+    ucs_assertv(frag_mem_type < UCS_MEMORY_TYPE_UNKNOWN, "frag_mem_type = %u",
+                frag_mem_type);
+
+    return frag_mem_type;
+}
+
+static UCS_F_ALWAYS_INLINE int
 ucp_rndv_memtype_direct_support(ucp_context_h context, size_t reg_length,
                                 uint64_t reg_mem_types)
 {
@@ -70,7 +91,7 @@ static int ucp_rndv_is_recv_pipeline_needed(ucp_request_t *rndv_req,
     const ucp_ep_config_t *ep_config = ucp_ep_config(rndv_req->send.ep);
     ucp_context_h context            = rndv_req->send.ep->worker->context;
     int found                        = 0;
-    ucs_memory_type_t frag_mem_type  = context->config.ext.rndv_frag_mem_type;
+    ucs_memory_type_t frag_mem_type  = ucp_rndv_frag_mem_type(context);
     ucp_md_index_t md_index;
     uct_md_attr_v2_t *md_attr;
     uint64_t mem_types;
@@ -519,7 +540,7 @@ static void ucp_rndv_zcopy_next_lane(ucp_request_t *rndv_req)
     ucp_lane_map_t lane_map;
     lane_map = lanes_map_all & ~UCS_MASK(rndv_req->send.multi_lane_idx + 1);
 
-    rndv_req->send.multi_lane_idx = ucs_ffs32((lane_map > 0) ? lane_map :
+    rndv_req->send.multi_lane_idx = ucs_ffs64((lane_map > 0) ? lane_map :
                                                                lanes_map_all);
 }
 
@@ -724,7 +745,7 @@ static void ucp_rndv_req_init_lanes(ucp_request_t *req,
                                     ucp_lane_map_t lanes_map)
 {
     req->send.rndv.zcopy.lanes_map_all = lanes_map;
-    req->send.multi_lane_idx           = ucs_ffs32(lanes_map);
+    req->send.multi_lane_idx           = ucs_ffs64(lanes_map);
 }
 
 static void ucp_rndv_req_init_zcopy_lane_map(ucp_request_t *rndv_req,
@@ -1200,7 +1221,7 @@ static void ucp_rndv_send_frag_get_mem_type(ucp_request_t *sreq, size_t length,
                                             uct_completion_callback_t comp_cb)
 {
     ucp_worker_h worker             = sreq->send.ep->worker;
-    ucs_memory_type_t frag_mem_type = worker->context->config.ext.rndv_frag_mem_type;
+    ucs_memory_type_t frag_mem_type = ucp_rndv_frag_mem_type(worker->context);
     ucp_request_t *freq;
     ucp_mem_desc_t *mdesc;
 
@@ -1284,7 +1305,7 @@ ucp_rndv_recv_start_get_pipeline(ucp_worker_h worker, ucp_request_t *rndv_req,
     size_t frag_size;
 
     /* use ucp_rkey_packed_mem_type(rkey_buffer) with non-host fragments */
-    frag_mem_type = context->config.ext.rndv_frag_mem_type;
+    frag_mem_type = ucp_rndv_frag_mem_type(context);
     frag_size     = context->config.ext.rndv_frag_size[frag_mem_type];
 
     min_zcopy                          = config->rndv.get_zcopy.min;
@@ -1367,7 +1388,7 @@ static void ucp_rndv_send_frag_rtr(ucp_worker_h worker, ucp_request_t *rndv_req,
     ucp_trace_req(rreq, "using rndv pipeline protocol rndv_req %p", rndv_req);
 
     offset        = 0;
-    frag_mem_type = worker->context->config.ext.rndv_frag_mem_type;
+    frag_mem_type = ucp_rndv_frag_mem_type(worker->context);
     max_frag_size = worker->context->config.ext.rndv_frag_size[frag_mem_type];
     num_frags     = ucs_div_round_up(rndv_rts_hdr->size, max_frag_size);
 
@@ -2099,7 +2120,7 @@ static ucs_status_t ucp_rndv_send_start_put_pipeline(ucp_request_t *sreq,
     ucp_worker_h worker             = sreq->send.ep->worker;
     ucp_context_h context           = worker->context;
     size_t rndv_base_offset         = rndv_rtr_hdr->offset;
-    ucs_memory_type_t frag_mem_type = context->config.ext.rndv_frag_mem_type;
+    ucs_memory_type_t frag_mem_type = ucp_rndv_frag_mem_type(context);
     size_t rndv_size                = ucs_min(rndv_rtr_hdr->size,
                                               sreq->send.length);
     const uct_md_attr_v2_t *md_attr;

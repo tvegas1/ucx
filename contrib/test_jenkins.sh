@@ -51,7 +51,7 @@ have_ptrace=$(capsh --print | grep 'Bounding' | grep ptrace || true)
 have_strace=$(strace -V || true)
 
 #
-# Override maven repository path, to cache the downloaded packages accross tests
+# Override maven repository path, to cache the downloaded packages across tests
 #
 export maven_repo=${WORKSPACE}/.deps
 
@@ -207,7 +207,7 @@ run_client_server_app() {
 
 	if [ $kill_server -eq 1 ]
 	then
-		kill -9 ${server_pid}
+		kill -9 ${server_pid} || true # ignore failure
 	fi
 	wait ${server_pid} || true
 }
@@ -356,7 +356,7 @@ run_client_server() {
 		do
 			for msg_size in ${msg_size_list}
 			do
-				echo "==== Running UCP client-server with \"${mem_type}\" memory type using \"{$api}\" API with msg_size={$msg_size} ===="
+				echo "==== Running UCP client-server with \"${mem_type}\" memory type using \"${api}\" API with msg_size={$msg_size} ===="
 				run_client_server_app "./examples/${test_name}" "-m ${mem_type} -c ${api} -s ${msg_size}" "-a ${server_ip}" 1 0
 			done
 		done
@@ -745,7 +745,7 @@ test_init_mt() {
 
 test_memtrack() {
 	echo "==== Running memtrack test ===="
-	UCX_MEMTRACK_DEST=stdout ./test/gtest/gtest --gtest_filter=test_memtrack.sanity
+	UCX_MEMTRACK_DEST=stdout GTEST_FILTER=test_memtrack.sanity make -C ./test/gtest test
 
 	echo "==== Running memtrack limit test ===="
 	UCX_MEMTRACK_DEST=stdout UCX_HANDLE_ERRORS=none UCX_MEMTRACK_LIMIT=512MB ./test/apps/test_memtrack_limit |& grep -C 100 'SUCCESS'
@@ -828,7 +828,7 @@ run_gtest_watchdog_test() {
 	env WATCHDOG_GTEST_TIMEOUT_=$watchdog_timeout \
 		WATCHDOG_GTEST_SLEEP_TIME_=$sleep_time \
 		GTEST_FILTER=test_watchdog.watchdog_timeout \
-		./test/gtest/gtest 2>&1 | tee watchdog_timeout_test &
+		make -C ./test/gtest test 2>&1 | tee watchdog_timeout_test &
 	pid=$!
 	wait $pid
 
@@ -1131,6 +1131,13 @@ run_test_proto_disable() {
 
 run_asan_check() {
 	build devel --enable-gtest --enable-asan --without-valgrind
+
+	if ! ldd ${WORKSPACE}/build-test/test/gtest/gtest | grep -q "libasan.so"
+	then
+		azure_log_error "Error: ASan is not loaded."
+		exit 1
+	fi
+
 	run_gtest "default"
 }
 

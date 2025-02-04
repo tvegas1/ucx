@@ -154,7 +154,7 @@ uct_ib_mlx5_poll_cq(uct_ib_iface_t *iface, uct_ib_mlx5_cq_t *cq, int poll_flags,
     }
 
     cq->cq_ci = idx + 1;
-    return cqe; /* TODO optimize - let complier know cqe is not null */
+    return cqe; /* TODO optimize - let compiler know cqe is not null */
 }
 
 
@@ -650,4 +650,12 @@ uct_ib_mlx5_update_cqe_zipping_stats(uct_ib_iface_t *iface,
         UCS_STATS_UPDATE_COUNTER(iface->stats,
                                  UCT_IB_IFACE_STAT_RX_COMPLETION_ZIPPED, 1);
     }
+}
+
+
+static int UCS_F_ALWAYS_INLINE
+uct_ib_mlx5_get_atomic_mode(uct_ib_iface_t *iface)
+{
+    return uct_ib_iface_device(iface)->ext_atomic_arg_sizes ?
+        UCT_IB_MLX5_ATOMIC_MODE_EXT : UCT_IB_MLX5_ATOMIC_MODE_COMP;
 }

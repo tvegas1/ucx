@@ -78,7 +78,10 @@
 #define UCS_BIT(i)               (1ul << (i))
 
 /* Mask of bits 0..i-1 */
-#define UCS_MASK(i)              (UCS_BIT(i) - 1)
+#define UCS_MASK(_i)             (((_i) >= 64) ? ~0 : (UCS_BIT(_i) - 1))
+
+/* The i-th bit */
+#define UCS_BIT_GET(_value, _i)  (!!((_value) & UCS_BIT(_i)))
 
 /*
  * Enable compiler checks for printf-like formatting.

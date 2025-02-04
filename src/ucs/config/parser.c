@@ -30,8 +30,6 @@
 /* width of titles in docstring */
 #define UCS_CONFIG_PARSER_DOCSTR_WIDTH         10
 
-/* String literal for allow-list */
-#define UCS_CONFIG_PARSER_ALL "all"
 
 /* list of prefixes for a configuration variable, used to dump all possible
  * aliases.
@@ -445,7 +443,7 @@ int ucs_config_sscanf_bitmap(const char *buf, void *dest, const void *arg)
     }
 
     ret = 1;
-    *((unsigned*)dest) = 0;
+    *((uint64_t*)dest) = 0;
     p = strtok_r(str, ",", &saveptr);
     while (p != NULL) {
         i = ucs_string_find_in_list(p, (const char**)arg, 0);
@@ -453,7 +451,10 @@ int ucs_config_sscanf_bitmap(const char *buf, void *dest, const void *arg)
             ret = 0;
             break;
         }
-        *((unsigned*)dest) |= UCS_BIT(i);
+
+        ucs_assertv(i < (sizeof(uint64_t) * 8), "bit %d overflows for '%s'", i,
+                    p);
+        *((uint64_t*)dest) |= UCS_BIT(i);
         p = strtok_r(NULL, ",", &saveptr);
     }
 
@@ -464,7 +465,7 @@ int ucs_config_sscanf_bitmap(const char *buf, void *dest, const void *arg)
 int ucs_config_sprintf_bitmap(char *buf, size_t max,
                               const void *src, const void *arg)
 {
-    ucs_flags_str(buf, max, *((unsigned*)src), (const char**)arg);
+    ucs_flags_str(buf, max, *((uint64_t*)src), (const char**)arg);
     return 1;
 }
 
@@ -1389,6 +1390,27 @@ ucs_config_parser_set_default_values(void *opts, ucs_config_field_t *fields)
     return UCS_OK;
 }
 
+static int
+ucs_config_prefix_name_match(const char *prefix, size_t prefix_len,
+                             const char *name, const char *pattern)
+{
+    const char *match_name;
+    char *full_name;
+    size_t full_name_len;
+
+    if (prefix_len == 0) {
+        match_name = name;
+    } else {
+        full_name_len = prefix_len + strlen(name) + 1;
+        full_name     = ucs_alloca(full_name_len);
+
+        ucs_snprintf_safe(full_name, full_name_len, "%s%s", prefix, name);
+        match_name = full_name;
+    }
+
+    return !fnmatch(pattern, match_name, 0);
+}
+
 /**
  * table_prefix == NULL  -> unused
  */
@@ -1419,8 +1441,8 @@ ucs_config_parser_set_value_internal(void *opts, ucs_config_field_t *fields,
             /* Check with sub-table prefix */
             if (recurse) {
                 status = ucs_config_parser_set_value_internal(var, sub_fields,
-                                                             name, value,
-                                                             field->name, 1);
+                                                              name, value,
+                                                              field->name, 1);
                 if (status == UCS_OK) {
                     ++count;
                 } else if (status != UCS_ERR_NO_ELEM) {
@@ -1431,17 +1453,16 @@ ucs_config_parser_set_value_internal(void *opts, ucs_config_field_t *fields,
             /* Possible override with my prefix */
             if (table_prefix != NULL) {
                 status = ucs_config_parser_set_value_internal(var, sub_fields,
-                                                             name, value,
-                                                             table_prefix, 0);
+                                                              name, value,
+                                                              table_prefix, 0);
                 if (status == UCS_OK) {
                     ++count;
                 } else if (status != UCS_ERR_NO_ELEM) {
                     return status;
                 }
             }
-        } else if (((table_prefix == NULL) || !strncmp(name, table_prefix, prefix_len)) &&
-                   !strcmp(name + prefix_len, field->name))
-        {
+        } else if (ucs_config_prefix_name_match(table_prefix, prefix_len,
+                                                field->name, name)) {
             if (ucs_config_is_deprecated_field(field)) {
                 return UCS_ERR_NO_ELEM;
             }
@@ -1544,7 +1565,7 @@ static int ucs_config_parse_check_filter(const char *name, const char *value)
             /**
              * The value does not match the pattern for this filter. E.g.
              * configuration file contains the line: CPU model = v1.*, and
-             * ucs_cpu_model_name() retruns "v2.0".
+             * ucs_cpu_model_name() returns "v2.0".
              */
             return 1;
         }
