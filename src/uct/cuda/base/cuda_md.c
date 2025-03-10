@@ -61,6 +61,17 @@ err:
     *sys_dev_p = UCS_SYS_DEVICE_ID_UNKNOWN;
 }
 
+static CUdevice sys_dev_to_device[UCS_SYS_DEVICE_ID_MAX] = {
+    [0 ... UCS_SYS_DEVICE_ID_MAX - 1] = CU_DEVICE_INVALID
+};
+
+ucs_status_t uct_cuda_base_get_cuda_device(ucs_sys_device_t sys_dev, CUdevice *device)
+{
+    *device = sys_dev_to_device[sys_dev];
+
+    return (*device != CU_DEVICE_INVALID) ? UCS_OK : UCS_ERR_NO_DEVICE;
+}
+
 ucs_status_t
 uct_cuda_base_query_md_resources(uct_component_t *component,
                                  uct_md_resource_desc_t **resources_p,
@@ -89,6 +100,8 @@ uct_cuda_base_query_md_resources(uct_component_t *component,
         if (sys_dev == UCS_SYS_DEVICE_ID_UNKNOWN) {
             continue;
         }
+
+        sys_dev_to_device[sys_dev] = cuda_device;
 
         ucs_snprintf_safe(device_name, sizeof(device_name), "GPU%d",
                           cuda_device);
