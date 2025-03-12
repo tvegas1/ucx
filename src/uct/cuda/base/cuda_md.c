@@ -65,7 +65,8 @@ static CUdevice sys_dev_to_device[UCS_SYS_DEVICE_ID_MAX] = {
     [0 ... UCS_SYS_DEVICE_ID_MAX - 1] = CU_DEVICE_INVALID
 };
 
-ucs_status_t uct_cuda_base_get_cuda_device(ucs_sys_device_t sys_dev, CUdevice *device)
+ucs_status_t
+uct_cuda_base_get_cuda_device(ucs_sys_device_t sys_dev, CUdevice *device)
 {
     *device = sys_dev_to_device[sys_dev];
 
@@ -78,7 +79,8 @@ int uct_cuda_base_get_num_devices(void)
     ucs_status_t status;
 
     if (num_devices == -2) {
-        status = UCT_CUDADRV_FUNC(cuDeviceGetCount(&num_devices), UCS_LOG_LEVEL_DIAG);
+        status = UCT_CUDADRV_FUNC(cuDeviceGetCount(&num_devices),
+                                  UCS_LOG_LEVEL_DIAG);
         if (status != UCS_OK) {
             num_devices = -1;
         }

@@ -194,8 +194,7 @@ UCS_PROFILE_FUNC(ucs_status_t, uct_cuda_copy_mem_dereg,
 static ucs_status_t
 uct_cuda_copy_mem_alloc_fabric(uct_cuda_copy_md_t *md,
                                uct_cuda_copy_alloc_handle_t *alloc_handle,
-                               unsigned flags,
-                               CUdevice cu_device)
+                               unsigned flags, CUdevice cu_device)
 {
 #if HAVE_CUDA_FABRIC
     CUmemAllocationProp prop    = {};
@@ -331,9 +330,9 @@ static void uct_cuda_copy_sync_memops(uct_cuda_copy_md_t *md,
                                   (CUdeviceptr)address));
 }
 
-static ucs_status_t
-uct_cuda_copy_push_ctx(CUdevice orig_device, CUdevice device,
-                       ucs_log_level_t log_level)
+static ucs_status_t uct_cuda_copy_push_ctx(CUdevice orig_device,
+                                           CUdevice device,
+                                           ucs_log_level_t log_level)
 {
     ucs_status_t status;
     CUcontext primary_ctx;
@@ -342,8 +341,7 @@ uct_cuda_copy_push_ctx(CUdevice orig_device, CUdevice device,
         return UCS_OK;
     }
 
-    status = UCT_CUDADRV_FUNC(cuDevicePrimaryCtxRetain(&primary_ctx,
-                                                       device),
+    status = UCT_CUDADRV_FUNC(cuDevicePrimaryCtxRetain(&primary_ctx, device),
                               log_level);
     if (status != UCS_OK) {
         /* If it does not exist, CUDA_ERROR_NOT_INITIALIZED is returned */
@@ -352,16 +350,14 @@ uct_cuda_copy_push_ctx(CUdevice orig_device, CUdevice device,
 
     status = UCT_CUDADRV_FUNC(cuCtxPushCurrent(primary_ctx), log_level);
     if (status != UCS_OK) {
-        (void)UCT_CUDADRV_FUNC(cuDevicePrimaryCtxRelease(device),
-                               log_level);
+        (void)UCT_CUDADRV_FUNC(cuDevicePrimaryCtxRelease(device), log_level);
     }
 
     return status;
 }
 
-static ucs_status_t
-uct_cuda_copy_pop_ctx(CUdevice orig_device, CUdevice device,
-                      ucs_log_level_t log_level)
+static ucs_status_t uct_cuda_copy_pop_ctx(CUdevice orig_device, CUdevice device,
+                                          ucs_log_level_t log_level)
 {
     CUcontext ctx;
     ucs_status_t status;
@@ -381,10 +377,10 @@ uct_cuda_copy_pop_ctx(CUdevice orig_device, CUdevice device,
     return UCS_OK;
 }
 
-static ucs_status_t
-uct_cuda_copy_push_alloc_ctx(const ucs_sys_device_t sys_dev,
-                             CUdevice *cu_device, CUdevice *alloc_cu_device,
-                             ucs_log_level_t log_level)
+static ucs_status_t uct_cuda_copy_push_alloc_ctx(const ucs_sys_device_t sys_dev,
+                                                 CUdevice *cu_device,
+                                                 CUdevice *alloc_cu_device,
+                                                 ucs_log_level_t log_level)
 {
     ucs_status_t status;
     int dev;
@@ -401,30 +397,33 @@ uct_cuda_copy_push_alloc_ctx(const ucs_sys_device_t sys_dev,
         }
 
         for (dev = 0; dev < uct_cuda_base_get_num_devices(); dev++) {
-            if (UCT_CUDADRV_FUNC_LOG_DEBUG(cuDeviceGet(alloc_cu_device, dev)) != UCS_OK) {
+            if (UCT_CUDADRV_FUNC_LOG_DEBUG(cuDeviceGet(alloc_cu_device, dev)) !=
+                UCS_OK) {
                 continue;
             }
 
-            status = uct_cuda_copy_push_ctx(*cu_device, *alloc_cu_device, log_level);
+            status = uct_cuda_copy_push_ctx(*cu_device, *alloc_cu_device,
+                                            log_level);
             if (status == UCS_OK) {
                 break;
             }
         }
 
         if (status != UCS_OK) {
-            ucs_log(log_level,
-                    "no primary context found on any device while allocating memory");
+            ucs_log(log_level, "no primary context found on any device while "
+                               "allocating memory");
             return status;
         }
     } else {
         status = uct_cuda_base_get_cuda_device(sys_dev, alloc_cu_device);
         if (status != UCS_OK) {
-            ucs_log(log_level,
-                    "failed to get device for system device %u", sys_dev);
+            ucs_log(log_level, "failed to get device for system device %u",
+                    sys_dev);
             return status;
         }
 
-        status = uct_cuda_copy_push_ctx(*cu_device, *alloc_cu_device, log_level);
+        status = uct_cuda_copy_push_ctx(*cu_device, *alloc_cu_device,
+                                        log_level);
         if (status != UCS_OK) {
             return status;
         }
