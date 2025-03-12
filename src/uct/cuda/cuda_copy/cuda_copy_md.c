@@ -389,7 +389,7 @@ uct_cuda_copy_push_alloc_ctx(const ucs_sys_device_t sys_dev,
     ucs_status_t status;
     int dev;
 
-    status = UCT_CUDADRV_FUNC(cuCtxGetDevice(cu_device), log_level);
+    status = UCT_CUDADRV_FUNC(cuCtxGetDevice(cu_device), UCS_LOG_LEVEL_DEBUG);
     if (status != UCS_OK) {
         *cu_device = CU_DEVICE_INVALID;
     }
