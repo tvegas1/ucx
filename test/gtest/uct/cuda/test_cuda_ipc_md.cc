@@ -182,6 +182,47 @@ UCS_MT_TEST_P(test_cuda_ipc_md, multiple_mds, 8)
 }
 
 #if HAVE_CUDA_FABRIC
+UCS_TEST_P(test_cuda_ipc_md, mpack_mempool)
+{
+    constexpr size_t size = 4096;
+    ucs::handle<uct_md_h> md;
+    uct_mem_h memh;
+    uct_cuda_ipc_rkey_t rkey;
+    CUdeviceptr ptr;
+    CUmemoryPool mpool, q_mpool;
+    CUstream cu_stream;
+    uct_cuda_ipc_key_handle_t handle_type;
+    CUmemFabricHandle fabric_handle;
+    CUresult cu_err;
+
+    UCS_TEST_CREATE_HANDLE(uct_md_h, md, uct_md_close, uct_md_open,
+                           GetParam().component, GetParam().md_name.c_str(),
+                           m_md_config);
+
+    alloc_mempool(&ptr, &mpool, &cu_stream, size);
+    EXPECT_EQ(CUDA_SUCCESS, (cuPointerGetAttribute((void*)&q_mpool,
+                    CU_POINTER_ATTRIBUTE_MEMPOOL_HANDLE, ptr)));
+    cu_err = cuMemPoolExportToShareableHandle((void*)&fabric_handle, q_mpool,
+                                              CU_MEM_HANDLE_TYPE_FABRIC, 0);
+    EXPECT_UCS_OK(md->ops->mem_reg(md, (void *)ptr, size, NULL, &memh));
+    EXPECT_UCS_OK(md->ops->mkey_pack(md, memh, (void *)ptr, size, NULL,
+                                     &rkey));
+
+    if ((cu_err == CUDA_SUCCESS) && (q_mpool == mpool)) {
+        handle_type = UCT_CUDA_IPC_KEY_HANDLE_TYPE_MEMPOOL;
+    } else {
+        handle_type = UCT_CUDA_IPC_KEY_HANDLE_TYPE_ERROR;
+    }
+
+    EXPECT_EQ(handle_type, rkey.ph.handle_type);
+
+    uct_md_mem_dereg_params_t params;
+    params.field_mask = UCT_MD_MEM_DEREG_FIELD_MEMH;
+    params.memh       = memh;
+    EXPECT_UCS_OK(md->ops->mem_dereg(md, &params));
+    free_mempool(&ptr, &mpool, &cu_stream);
+}
+
 UCS_MT_TEST_P(test_cuda_ipc_md, multiple_mds_mempool, 8)
 {
     cuda_context cuda_ctx;
