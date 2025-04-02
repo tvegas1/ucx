@@ -322,12 +322,6 @@ ucp_proto_rndv_get_mtype_probe(const ucp_proto_init_params_t *init_params)
 
     ucs_for_each_bit(frag_mem_info.type,
                      context->config.ext.rndv_frag_mem_types) {
-        status = ucp_proto_rndv_mtype_init(init_params, frag_mem_info.type,
-                                           &mdesc_md_map, &frag_size);
-        if (status != UCS_OK) {
-            continue;
-        }
-
         status = ucp_mm_get_alloc_md_index(context, frag_mem_info.type,
                                            &dummy_md_id,
                                            &frag_mem_info.sys_dev);
@@ -335,6 +329,12 @@ ucp_proto_rndv_get_mtype_probe(const ucp_proto_init_params_t *init_params)
             continue;
         }
 
+        ucs_info("get_mtype_probe alloc_md_index mem_type=%d", frag_mem_info.type);
+        status = ucp_proto_rndv_mtype_init(init_params, frag_mem_info.type,
+                                           &mdesc_md_map, &frag_size);
+        if (status != UCS_OK) {
+            continue;
+        }
 
         ucp_proto_rndv_get_common_probe(init_params,
                                         UCS_BIT(UCP_RNDV_MODE_GET_PIPELINE),
