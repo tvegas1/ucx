@@ -36,9 +36,10 @@ static UCS_CLASS_INIT_FUNC(uct_srd_ep_t, const uct_ep_params_t *params)
     self->ep_uuid    = ucs_generate_uuid((uintptr_t)self);
     self->path_index = UCT_EP_PARAMS_GET_PATH_INDEX(params);
     self->psn        = UCT_SRD_INITIAL_PSN;
-    self->inflight   = 0;
     self->pending    = 0;
     self->ah_added   = 0;
+    self->flags      = 0;
+    ucs_list_init(&self->outstanding_list);
 
     uct_ib_iface_fill_ah_attr_from_addr(&iface->super, ib_addr,
                                         self->path_index, &ah_attr, &path_mtu);
@@ -85,7 +86,6 @@ uct_srd_ep_skip_pending(uct_srd_ep_t *ep, uct_srd_iface_t *iface)
 void uct_srd_ep_send_op_completion(uct_srd_send_op_t *send_op)
 {
     if (send_op->ep != NULL) {
-        send_op->ep->inflight--;
         send_op->comp_cb(send_op, UCS_OK);
     }
 
@@ -99,19 +99,19 @@ static void uct_srd_ep_send_op_purge(uct_srd_ep_t *ep)
                                             uct_srd_iface_t);
     uct_srd_send_op_t *send_op;
 
-    ucs_list_for_each(send_op, &iface->tx.outstanding_list, list) {
-        if (send_op->ep == ep) {
-            /*
-             * Make ep invalid, as ibv_poll_cq() will return this
-             * send_op after it has been released.
-             */
-            send_op->comp_cb(send_op, UCS_ERR_CANCELED);
-            send_op->ep = NULL;
-            if (--ep->inflight == 0) {
-                break;
-            }
-        }
+    ucs_list_for_each(send_op, &ep->outstanding_list, list) {
+        ucs_assertv(send_op->ep == ep, "send_op_ep=%p ep=%p", send_op->ep, ep);
+
+        /*
+         * Make ep invalid, as ibv_poll_cq() will return this
+         * send_op after it has been released.
+         */
+        send_op->comp_cb(send_op, UCS_ERR_CANCELED);
+        send_op->ep = NULL;
     }
+
+    ucs_list_splice_tail(&iface->tx.op_list, &ep->outstanding_list);
+    ucs_list_init(&ep->outstanding_list);
 }
 
 ucs_status_t
@@ -215,13 +215,7 @@ static UCS_CLASS_CLEANUP_FUNC(uct_srd_ep_t)
 
     ucs_trace_func("");
 
-    if (self->inflight != 0) {
-        uct_srd_ep_send_op_purge(self);
-        ucs_assertv(self->inflight == 0,
-                    "ep=%p failed to complete %u send operations",
-                    self, self->inflight);
-    }
-
+    uct_srd_ep_send_op_purge(self);
     uct_srd_iface_remove_ep(iface, self);
     uct_srd_ep_pending_purge(&self->super.super, NULL, NULL);
     ucs_arbiter_group_cleanup(&self->pending_group);
@@ -235,7 +229,6 @@ static UCS_F_ALWAYS_INLINE void
 uct_srd_ep_posted(uct_srd_iface_t *iface, uct_srd_ep_t *ep)
 {
     iface->tx.available--;
-    ep->inflight++;
 }
 
 static UCS_F_ALWAYS_INLINE uct_srd_send_op_t *
@@ -600,4 +593,24 @@ ucs_status_t uct_srd_ep_get_bcopy(uct_ep_h tl_ep,
     }
 
     return UCS_INPROGRESS;
+}
+
+ucs_status_t uct_srd_ep_flush(uct_ep_h ep_h, unsigned flags,
+                              uct_completion_t *comp)
+{
+    uct_srd_ep_t *ep       = ucs_derived_of(ep_h, uct_srd_ep_t);
+    uct_srd_iface_t *iface = ucs_derived_of(ep->super.super.iface,
+                                            uct_srd_iface_t);
+    ucs_status_t status;
+
+    if (ucs_unlikely(flags & UCT_FLUSH_FLAG_CANCEL)) {
+        uct_ep_pending_purge(ep_h, NULL, 0);
+        /* CTL_REQ/CTL_RESP that could still be exchanged will be ignored */
+        uct_srd_ep_send_op_purge(ep);
+    }
+
+    if (uct_srd_ep_skip_pending(ep, iface)) {
+        return UCS_ERR_NO_RESOURCE; /* Prevent reordering */
+    }
+
 }

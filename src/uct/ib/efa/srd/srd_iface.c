@@ -161,7 +161,7 @@ uct_srd_iface_ctl_op_send(uct_srd_iface_t *iface, uct_srd_ctl_op_t *ctl_op)
     uct_srd_iface_post_send(iface, ctl_op->ah, ctl_op->dest_qpn,
                             &iface->tx.wr_inl, IBV_SEND_INLINE);
     iface->tx.available--;
-    ucs_list_add_tail(&iface->tx.outstanding_list, &send_op->list);
+    ucs_list_add_tail(&iface->tx.op_list, &send_op->list);
     return UCS_OK;
 }
 
@@ -341,9 +341,11 @@ static void uct_srd_iface_send_op_purge(uct_srd_iface_t *iface)
 {
     uct_srd_send_op_t *send_op;
 
-    while (!ucs_list_is_empty(&iface->tx.outstanding_list)) {
-        send_op = ucs_list_extract_head(&iface->tx.outstanding_list,
+    while (!ucs_list_is_empty(&iface->tx.op_list)) {
+        send_op = ucs_list_extract_head(&iface->tx.op_list,
                                         uct_srd_send_op_t, list);
+
+        ucs_assertv(send_op->ep == NULL, "send_op_ep=%p", send_op->ep);
         ucs_mpool_put(send_op);
     }
 }
@@ -448,7 +450,7 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
     }
 
     ucs_arbiter_init(&self->tx.pending_q);
-    ucs_list_head_init(&self->tx.outstanding_list);
+    ucs_list_head_init(&self->tx.op_list);
     ucs_list_head_init(&self->tx.ctl_list);
 
     status = uct_srd_iface_create_qp(self, config, &efa_attr);
@@ -911,7 +913,7 @@ static uct_iface_ops_t uct_srd_iface_tl_ops = {
     .ep_am_short_iov          = uct_srd_ep_am_short_iov,
     .ep_pending_add           = uct_srd_ep_pending_add,
     .ep_pending_purge         = uct_srd_ep_pending_purge,
-    .iface_flush              = uct_base_iface_flush,
+    .iface_flush              = uct_srd_ep_flush,
     .iface_fence              = (uct_iface_fence_func_t)
         ucs_empty_function_return_unsupported,
     .iface_progress_enable    = uct_base_iface_progress_enable,

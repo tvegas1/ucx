@@ -10,17 +10,24 @@
 #include "srd_def.h"
 
 
+typedef struct uct_srd_ep_flag {
+    UCT_SRD_EP_FLAG_CANCELED = UCS_BIT(0), /* Endpoint was flush canceled */
+    UCT_SRD_EP_FLAG_AH_ADDED = UCS_BIT(1)  /* Remote has added AH */
+} uct_srd_ep_flag_t;
+
+
 typedef struct uct_srd_ep {
     uct_base_ep_t       super;
-    uint64_t            ep_uuid;       /* Random EP identifier */
-    uint32_t            dest_qpn;      /* Remote QP */
-    uint32_t            inflight;      /* Entries outstanding list */
-    int32_t             pending;       /* Count requests in pending queue */
-    struct ibv_ah       *ah;           /* Remote peer */
-    int                 ah_added;      /* true if remote has added our AH */
-    uct_srd_psn_t       psn;           /* Next PSN to send */
+    unsigned            flags;            /* Endpoint state tracking */
+    uint64_t            ep_uuid;          /* Random EP identifier */
+    uint32_t            dest_qpn;         /* Remote QP */
+    int32_t             pending;          /* Count requests in pending queue */
+    struct ibv_ah       *ah;              /* Remote peer */
+    int                 ah_added;         /* true if remote has added our AH */
+    uct_srd_psn_t       psn;              /* Next PSN to send */
     uint8_t             path_index;
-    ucs_arbiter_group_t pending_group; /* Queue of pending requests */
+    ucs_arbiter_group_t pending_group;    /* Queue of pending requests */
+    ucs_list_link_t     outstanding_list; /* Ordered outstanding list */
 } uct_srd_ep_t;
 
 
