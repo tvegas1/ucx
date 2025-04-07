@@ -89,6 +89,12 @@ uct_srd_ep_skip_fence(uct_srd_ep_t *ep)
            !ucs_list_is_empty(&ep->outstanding_list);
 }
 
+static UCS_F_ALWAYS_INLINE int
+uct_srd_ep_can_tx(uct_srd_ep_t *ep, uct_srd_iface_t *iface)
+{
+    return !uct_srd_ep_skip_pending(ep, iface) && !uct_srd_ep_skip_fence(ep);
+}
+
 static void uct_srd_ep_send_op_user_completion(uct_srd_send_op_t *send_op,
                                                ucs_status_t status)
 {
@@ -329,7 +335,7 @@ static UCS_F_ALWAYS_INLINE ucs_status_t uct_srd_ep_am_short_prepare(
     uct_srd_am_short_hdr_t *am = &iface->tx.am_inl_hdr;
     uct_srd_send_op_t *send_op;
 
-    if (uct_srd_ep_skip_pending(ep, iface) || uct_srd_ep_skip_fence(ep)) {
+    if (!uct_srd_ep_can_tx(ep, iface)) {
         return UCS_ERR_NO_RESOURCE;
     }
 
@@ -445,8 +451,7 @@ ucs_status_t uct_srd_ep_am_zcopy(uct_ep_h tl_ep, uint8_t id, const void *header,
     length = uct_iov_total_length(iov, iovcnt);
     UCT_SRD_CHECK_AM_ZCOPY(iface, id, header_length, length);
 
-    if (uct_srd_ep_skip_pending(ep, iface) ||
-        uct_srd_ep_skip_fence(ep)) {
+    if (!uct_srd_ep_can_tx(ep, iface)) {
         return UCS_ERR_NO_RESOURCE;
     }
 
@@ -477,8 +482,7 @@ ssize_t uct_srd_ep_am_bcopy(uct_ep_h tl_ep, uint8_t id,
     uct_srd_send_desc_t *desc;
     size_t length;
 
-    if (uct_srd_ep_skip_pending(ep, iface) ||
-        uct_srd_ep_skip_fence(ep)) {
+    if (!uct_srd_ep_can_tx(ep, iface)) {
         return UCS_ERR_NO_RESOURCE;
     }
 
@@ -570,8 +574,7 @@ ucs_status_t uct_srd_ep_get_zcopy(uct_ep_h tl_ep, const uct_iov_t *iov,
     UCT_CHECK_LENGTH(length, iface->super.config.max_inl_cqe[UCT_IB_DIR_TX] + 1,
                      iface->config.max_get_zcopy, "get_zcopy");
 
-    if (uct_srd_ep_skip_pending(ep, iface) ||
-        uct_srd_ep_skip_fence(ep) ||
+    if (!uct_srd_ep_can_tx(ep, iface) ||
         !(ep->flags & UCT_SRD_EP_FLAG_AH_ADDED)) {
         return UCS_ERR_NO_RESOURCE;
     }
@@ -618,8 +621,7 @@ ucs_status_t uct_srd_ep_get_bcopy(uct_ep_h tl_ep,
 
     UCT_CHECK_LENGTH(length, 0, iface->config.max_get_bcopy, "get_bcopy");
 
-    if (uct_srd_ep_skip_pending(ep, iface) ||
-        uct_srd_ep_skip_fence(ep) ||
+    if (!uct_srd_ep_can_tx(ep, iface) ||
         !(ep->flags & UCT_SRD_EP_FLAG_AH_ADDED)) {
         return UCS_ERR_NO_RESOURCE;
     }

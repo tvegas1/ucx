@@ -901,19 +901,6 @@ static ucs_status_t uct_srd_iface_flush(uct_iface_h tl_iface, unsigned flags,
     return UCS_OK;
 }
 
-static ucs_status_t uct_srd_iface_fence(uct_iface_h tl_iface, unsigned flags)
-{
-    uct_srd_iface_t *iface = ucs_derived_of(tl_iface, uct_srd_iface_t);
-    uct_srd_ep_t *ep;
-
-    kh_foreach_value(&iface->ep_hash, ep, {
-        uct_ep_fence(&ep->super.super, 0);
-    });
-
-    UCT_TL_IFACE_STAT_FENCE(&iface->super.super);
-    return UCS_OK;
-}
-
 static ucs_status_t
 uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
                          unsigned *num_tl_devices_p)
@@ -956,7 +943,8 @@ static uct_iface_ops_t uct_srd_iface_tl_ops = {
     .ep_pending_add           = uct_srd_ep_pending_add,
     .ep_pending_purge         = uct_srd_ep_pending_purge,
     .iface_flush              = uct_srd_iface_flush,
-    .iface_fence              = uct_srd_iface_fence,
+    .iface_fence              = (uct_iface_fence_func_t)
+        ucs_empty_function_return_unsupported,
     .iface_progress_enable    = uct_base_iface_progress_enable,
     .iface_progress_disable   = uct_base_iface_progress_disable,
     .iface_progress           = uct_srd_iface_progress,

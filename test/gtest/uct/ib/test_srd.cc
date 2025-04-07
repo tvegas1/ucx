@@ -86,6 +86,78 @@ protected:
         }
     }
 
+
+    ucs_status_t test_get_bcopy() {
+        mapped_buffer srcbuf(4096, 0ul, *m_e2);
+        mapped_buffer dstbuf(4096, 0ul, *m_e1);
+
+        m_comp.count   = 1;
+        m_comp.m_count = 0;
+
+        srcbuf.pattern_fill(m_seed);
+        ucs_status_t status = uct_ep_get_bcopy(m_e1->ep(0),
+                                               (uct_unpack_callback_t)memcpy,
+                                               dstbuf.ptr(), dstbuf.length(),
+                                               srcbuf.addr(), srcbuf.rkey(),
+                                               &m_comp);
+        if ((status != UCS_INPROGRESS) &&
+            (status != UCS_OK)) {
+            return status;
+        }
+
+        ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS, status);
+        wait_for_value(&m_comp.m_count, 1, true);
+        dstbuf.pattern_check(m_seed);
+        return UCS_OK;
+    }
+
+    ucs_status_t test_get_zcopy() {
+        mapped_buffer srcbuf(4096, 0ul, *m_e2);
+        mapped_buffer dstbuf(4096, 0ul, *m_e1);
+
+        m_comp.count   = 1;
+        m_comp.m_count = 0;
+
+        UCS_TEST_GET_BUFFER_IOV(iov, iovcnt, dstbuf.ptr(), dstbuf.length(),
+                                dstbuf.memh(), 1);
+
+        srcbuf.pattern_fill(m_seed);
+        ucs_status_t status = uct_ep_get_zcopy(m_e1->ep(0), iov, iovcnt,
+                                               srcbuf.addr(), srcbuf.rkey(),
+                                               &m_comp);
+        if ((status != UCS_INPROGRESS) &&
+            (status != UCS_OK)) {
+            return status;
+        }
+
+        ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS, status);
+        wait_for_value(&m_comp.m_count, 1, true);
+        dstbuf.pattern_check(m_seed);
+        return UCS_OK;
+    }
+
+    template <typename F>
+    void test_fence(F && send_cb) {
+        int count = 0;
+        int c = 1;
+        ASSERT_UCS_OK(uct_iface_set_am_handler(m_e2->iface(), 31,
+            [](void *arg, void *data, size_t length, unsigned flags) {
+                (*reinterpret_cast<int *>(arg))++;
+                return UCS_OK;
+            }, &count, 0));
+
+        progress_ctl();
+
+        ASSERT_UCS_OK(uct_ep_am_short(m_e1->ep(0), 31, 0x123, &c, 1));
+        ASSERT_UCS_OK(uct_ep_fence(m_e1->ep(0), 0));
+        ASSERT_UCS_STATUS_EQ(UCS_ERR_NO_RESOURCE, send_cb());
+        wait_for_value(&count, 1, true);
+        EXPECT_EQ(1, count);
+
+        ASSERT_UCS_OK(send_cb());
+        ASSERT_UCS_OK(send_cb());
+    }
+
     completion                m_comp;
     static constexpr uint64_t m_seed = 0x54321;
     static int                m_count;
@@ -319,39 +391,16 @@ UCS_TEST_P(test_srd, get_zcopy_destroy_outstanding)
 
 UCS_TEST_P(test_srd, get_zcopy)
 {
-    mapped_buffer srcbuf(4096, 0ul, *m_e2);
-    mapped_buffer dstbuf(4096, 0ul, *m_e1);
-
-    UCS_TEST_GET_BUFFER_IOV(iov, iovcnt, dstbuf.ptr(), dstbuf.length(),
-                            dstbuf.memh(), 1);
-
     progress_ctl();
 
-    srcbuf.pattern_fill(m_seed);
-    ucs_status_t status = uct_ep_get_zcopy(m_e1->ep(0), iov, iovcnt,
-                                           srcbuf.addr(), srcbuf.rkey(),
-                                           &m_comp);
-    ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS, status);
-    wait_for_value(&m_comp.m_count, 1, true);
-    dstbuf.pattern_check(m_seed);
+    ASSERT_UCS_OK(test_get_zcopy());
 }
 
 UCS_TEST_P(test_srd, get_bcopy)
 {
-    mapped_buffer srcbuf(4096, 0ul, *m_e2);
-    mapped_buffer dstbuf(4096, 0ul, *m_e1);
-
     progress_ctl();
 
-    srcbuf.pattern_fill(m_seed);
-    ucs_status_t status = uct_ep_get_bcopy(m_e1->ep(0),
-                                           (uct_unpack_callback_t)memcpy,
-                                           dstbuf.ptr(), dstbuf.length(),
-                                           srcbuf.addr(), srcbuf.rkey(),
-                                           &m_comp);
-    ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS, status);
-    wait_for_value(&m_comp.m_count, 1, true);
-    dstbuf.pattern_check(m_seed);
+    ASSERT_UCS_OK(test_get_bcopy());
 }
 
 UCS_TEST_P(test_srd, get_bcopy_no_resource)
@@ -511,6 +560,24 @@ UCS_TEST_P(test_srd, destroy_ep_before_ctl_resp)
     m_e1->destroy_ep(1);
 
     progress_ctl();
+}
+
+UCS_TEST_P(test_srd, fence_no_resource_am_short)
+{
+    test_fence([&]() {
+        int c = 1;
+        return uct_ep_am_short(m_e1->ep(0), 31, 0x123, &c, 1);
+    });
+}
+
+UCS_TEST_P(test_srd, fence_no_resource_get_bcopy)
+{
+    test_fence([&]() { return test_get_bcopy(); });
+}
+
+UCS_TEST_P(test_srd, fence_no_resource_get_zcopy)
+{
+    test_fence([&]() { return test_get_zcopy(); });
 }
 
 UCT_INSTANTIATE_SRD_TEST_CASE(test_srd)
