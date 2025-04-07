@@ -10,9 +10,10 @@
 #include "srd_def.h"
 
 
-typedef struct uct_srd_ep_flag {
+typedef enum uct_srd_ep_flag {
     UCT_SRD_EP_FLAG_CANCELED = UCS_BIT(0), /* Endpoint was flush canceled */
-    UCT_SRD_EP_FLAG_AH_ADDED = UCS_BIT(1)  /* Remote has added AH */
+    UCT_SRD_EP_FLAG_AH_ADDED = UCS_BIT(1), /* Remote has added AH */
+    UCT_SRD_EP_FLAG_FENCE    = UCS_BIT(2)  /* EP has a fence operation queued */
 } uct_srd_ep_flag_t;
 
 
@@ -23,7 +24,6 @@ typedef struct uct_srd_ep {
     uint32_t            dest_qpn;         /* Remote QP */
     int32_t             pending;          /* Count requests in pending queue */
     struct ibv_ah       *ah;              /* Remote peer */
-    int                 ah_added;         /* true if remote has added our AH */
     uct_srd_psn_t       psn;              /* Next PSN to send */
     uint8_t             path_index;
     ucs_arbiter_group_t pending_group;    /* Queue of pending requests */
@@ -53,6 +53,9 @@ ucs_status_t uct_srd_ep_am_zcopy(uct_ep_h tl_ep, uint8_t id, const void *header,
                                  unsigned header_length, const uct_iov_t *iov,
                                  size_t iovcnt, unsigned flags,
                                  uct_completion_t *comp);
+ucs_status_t uct_srd_ep_fence(uct_ep_h ep, unsigned flags);
+ucs_status_t uct_srd_ep_flush(uct_ep_h ep_h, unsigned flags,
+                              uct_completion_t *comp);
 
 void uct_srd_ep_send_op_completion(uct_srd_send_op_t *send_op);
 
