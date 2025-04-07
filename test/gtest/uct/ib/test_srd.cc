@@ -6,7 +6,6 @@
 
 #include <uct/uct_test.h>
 
-
 // FIXME: Add SRD transport to UCT_TEST_IB_TLS when possible
 class test_srd : public uct_test {
 public:
@@ -86,6 +85,15 @@ protected:
         }
     }
 
+    void pending_purge_check(int expected_count) {
+        int count = 0;
+        uct_ep_pending_purge(m_e1->ep(0),
+                [](uct_pending_req_t*, void *arg) {
+                    (*reinterpret_cast<int*>(arg))++;
+                },
+                &count);
+        ASSERT_EQ(expected_count, count);
+    }
 
     ucs_status_t test_get_bcopy() {
         mapped_buffer srcbuf(4096, 0ul, *m_e2);
@@ -137,7 +145,7 @@ protected:
     }
 
     template <typename F>
-    void test_fence(F && send_cb) {
+    void test_fence(F && send_cb, bool wait_progress = true) {
         int count = 0;
         int c = 1;
         ASSERT_UCS_OK(uct_iface_set_am_handler(m_e2->iface(), 31,
@@ -151,18 +159,46 @@ protected:
         ASSERT_UCS_OK(uct_ep_am_short(m_e1->ep(0), 31, 0x123, &c, 1));
         ASSERT_UCS_OK(uct_ep_fence(m_e1->ep(0), 0));
         ASSERT_UCS_STATUS_EQ(UCS_ERR_NO_RESOURCE, send_cb());
-        wait_for_value(&count, 1, true);
-        EXPECT_EQ(1, count);
+
+        if (wait_progress) {
+            wait_for_value(&count, 1, true);
+            EXPECT_EQ(1, count);
+        }
 
         ASSERT_UCS_OK(send_cb());
         ASSERT_UCS_OK(send_cb());
+    }
+
+    void test_flush_comp(int flags, ucs_status_t expect_status) {
+        int c = 1;
+        completion comp[2];
+
+        auto noop = [](void *arg, void *data, size_t length, unsigned flags) {
+            return UCS_OK;
+        };
+
+        ASSERT_UCS_OK(uct_iface_set_am_handler(m_e2->iface(), 31, noop, NULL,
+                                               0));
+        ASSERT_UCS_OK(uct_ep_am_short(m_e1->ep(0), 31, 0x123, &c, 1));
+
+        ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS,
+                             uct_ep_flush(m_e1->ep(0), flags, &comp[0]));
+        ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS,
+                             uct_ep_flush(m_e1->ep(0), flags, &comp[1]));
+        wait_for_value(&comp[1].m_count, 1, true);
+
+        ASSERT_EQ(comp[0].m_count, 1);
+        ASSERT_EQ(comp[1].m_count, 1);
+        ASSERT_EQ(expect_status, comp[0].status);
+        ASSERT_EQ(expect_status, comp[1].status);
     }
 
     completion                m_comp;
     static constexpr uint64_t m_seed = 0x54321;
     static int                m_count;
 
-    uct_pending_req_t         m_req[3];
+    static constexpr int m_req_count = 3;
+    uct_pending_req_t         m_req[m_req_count];
     entity *m_e1, *m_e2, *m_e3;
 };
 
@@ -578,6 +614,135 @@ UCS_TEST_P(test_srd, fence_no_resource_get_bcopy)
 UCS_TEST_P(test_srd, fence_no_resource_get_zcopy)
 {
     test_fence([&]() { return test_get_zcopy(); });
+}
+
+// TODO: Add a test to check that pending is not dequeued whith a fence?
+UCS_TEST_P(test_srd, fence_no_resource_pending)
+{
+    int step = 0;
+    ucs_status_t status;
+
+    m_req[0].func = [](uct_pending_req_t*) { return UCS_OK; };
+
+    test_fence([&]() {
+        step++;
+        if (step == 1) {
+            /* Can add to pending since fence is pending */
+            status = uct_ep_pending_add(m_e1->ep(0), &m_req[0], 0);
+            ASSERT_UCS_OK(status);
+            return UCS_ERR_NO_RESOURCE;
+        }
+
+        /* Could send, should not be able to add to pending */
+        ASSERT_UCS_STATUS_EQ(
+                         UCS_ERR_BUSY,
+                         uct_ep_pending_add(m_e1->ep(0), &m_req[1], 0));
+        return UCS_OK;
+    });
+
+    /* Pending must have already been executed */
+    pending_purge_check(0);
+}
+
+UCS_TEST_P(test_srd, flush_no_outstanding)
+{
+    ASSERT_UCS_OK(uct_ep_flush(m_e1->ep(0), 0, NULL));
+    ASSERT_UCS_OK(uct_ep_flush(m_e1->ep(0), UCT_FLUSH_FLAG_CANCEL, NULL));
+}
+
+UCS_TEST_P(test_srd, flush_pending_no_resource)
+{
+    m_req[0].func = [](uct_pending_req_t*) { return UCS_OK; };
+
+    /* Pending added as CTL message were not exchanged */
+    ASSERT_UCS_OK(uct_ep_pending_add(m_e1->ep(0), &m_req[0], 0));
+    ASSERT_UCS_STATUS_EQ(UCS_ERR_NO_RESOURCE, uct_ep_flush(m_e1->ep(0), 0, NULL));
+
+    pending_purge_check(1);
+}
+
+UCS_TEST_P(test_srd, flush_pending_canceled_no_outstanding)
+{
+    m_req[0].func = [](uct_pending_req_t*) { return UCS_OK; };
+
+    /* Pending added as CTL message were not exchanged */
+    ASSERT_UCS_OK(uct_ep_pending_add(m_e1->ep(0), &m_req[0], 0));
+    ASSERT_UCS_OK(uct_ep_flush(m_e1->ep(0), UCT_FLUSH_FLAG_CANCEL, NULL));
+
+    pending_purge_check(0);
+}
+
+UCS_TEST_P(test_srd, flush_outstanding)
+{
+    int c = 1;
+    ASSERT_UCS_OK(uct_ep_am_short(m_e1->ep(0), 31, 0x123, &c, 1));
+    ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS, uct_ep_flush(m_e1->ep(0), 0, NULL));
+}
+
+UCS_TEST_P(test_srd, flush_pending_canceled_outstanding)
+{
+    int c = 1;
+    m_req[0].func = [](uct_pending_req_t*) { return UCS_OK; };
+
+    ASSERT_UCS_OK(uct_ep_am_short(m_e1->ep(0), 31, 0x123, &c, 1));
+
+    /* Pending added as CTL message were not exchanged */
+    ASSERT_UCS_OK(uct_ep_pending_add(m_e1->ep(0), &m_req[0], 0));
+    ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS,
+        uct_ep_flush(m_e1->ep(0), UCT_FLUSH_FLAG_CANCEL, NULL));
+
+    pending_purge_check(0);
+}
+
+UCS_TEST_P(test_srd, flush_comp)
+{
+    test_flush_comp(0, UCS_OK);
+}
+
+UCS_TEST_P(test_srd, flush_comp_cancel)
+{
+    test_flush_comp(UCT_FLUSH_FLAG_CANCEL, UCS_ERR_CANCELED);
+}
+
+UCS_TEST_P(test_srd, iface_flush_comp_unsupported)
+{
+    ASSERT_UCS_STATUS_EQ(UCS_ERR_UNSUPPORTED, uct_iface_flush(m_e1->iface(),
+                                                              0, &m_comp));
+}
+
+UCS_TEST_P(test_srd, iface_flush_no_outstanding)
+{
+    m_e1->connect_to_iface(1, *m_e2);
+    m_e1->connect_to_iface(2, *m_e2);
+    m_e1->connect_to_iface(3, *m_e3);
+
+    ASSERT_UCS_OK(uct_iface_flush(m_e1->iface(), 0, NULL));
+}
+
+UCS_TEST_P(test_srd, iface_flush_inprogress)
+{
+    m_e1->connect_to_iface(1, *m_e2);
+    m_e1->connect_to_iface(2, *m_e2);
+    m_e1->connect_to_iface(3, *m_e3);
+
+    int c = 1, count = 0;
+    auto counter_func = [](void *arg, void *data, size_t length,
+                           unsigned flags) {
+        (*reinterpret_cast<int*>(arg))++;
+        return UCS_OK;
+    };
+
+    ASSERT_UCS_OK(uct_iface_set_am_handler(m_e2->iface(), 31, counter_func,
+                                           &count, 0));
+
+    ASSERT_UCS_OK(uct_ep_am_short(m_e1->ep(1), 31, 0x123, &c, 1));
+    ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS,
+                         uct_iface_flush(m_e1->iface(), 0, NULL));
+    ASSERT_UCS_STATUS_EQ(UCS_INPROGRESS,
+                         uct_iface_flush(m_e1->iface(), 0, NULL));
+    wait_for_value(&count, 1, true);
+    ASSERT_EQ(1, count);
+    ASSERT_UCS_OK(uct_iface_flush(m_e1->iface(), 0, NULL));
 }
 
 UCT_INSTANTIATE_SRD_TEST_CASE(test_srd)

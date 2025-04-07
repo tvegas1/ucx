@@ -177,6 +177,7 @@ uct_srd_ep_pending_add(uct_ep_h tl_ep, uct_pending_req_t *req, unsigned flags)
     uct_srd_iface_t *iface = ucs_derived_of(tl_ep->iface, uct_srd_iface_t);
 
     if (uct_srd_iface_can_tx(iface) && (ep->pending < 1) &&
+        !uct_srd_ep_skip_fence(ep) &&
         (ep->flags & UCT_SRD_EP_FLAG_AH_ADDED)) {
         return UCS_ERR_BUSY;
     }
