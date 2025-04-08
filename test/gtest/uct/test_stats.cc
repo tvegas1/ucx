@@ -616,7 +616,9 @@ UCS_TEST_SKIP_COND_P(test_uct_stats, pending_add,
                                            UCT_CB_FLAG_ASYNC));
 
     // Progress any pending communication
-    short_progress_loop();
+    for (auto count = 20; count > 0; count--) {
+        short_progress_loop();
+    }
 
     // Check that counter is not increased if pending_add returns NOT_OK
     EXPECT_EQ(UCS_ERR_BUSY, uct_ep_pending_add(sender().ep(0), &p_reqs[0], 0));

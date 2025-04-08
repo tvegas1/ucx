@@ -610,6 +610,7 @@ static ucs_status_t uct_srd_wc_to_ucs_status(struct ibv_wc *wc)
         return UCS_OK;
     case IBV_WC_REM_ACCESS_ERR:
     case IBV_WC_REM_OP_ERR:
+    case IBV_WC_REM_INV_RD_REQ_ERR:
         return UCS_ERR_CONNECTION_RESET;
     case IBV_WC_RETRY_EXC_ERR:
     case IBV_WC_RNR_RETRY_EXC_ERR:
@@ -642,8 +643,8 @@ uct_srd_iface_poll_tx(uct_srd_iface_t *iface)
         if (ucs_unlikely(wc[i].status != IBV_WC_SUCCESS)) {
             status = uct_srd_wc_to_ucs_status(&wc[i]);
             iface->super.ops->handle_failure(&iface->super, &wc[i], status);
-            ucs_mpool_put(send_op);
-            continue;
+
+            send_op->comp_cb = (uct_srd_send_op_comp_t)ucs_empty_function;
         }
 
         uct_srd_ep_send_op_completion(send_op);
@@ -893,7 +894,7 @@ uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
     iface_attr->cap.get.opt_zcopy_align = UCS_SYS_PCI_MAX_PAYLOAD;
 
     iface_attr->cap.flags = UCT_IFACE_FLAG_CONNECT_TO_IFACE |
-                            UCT_IFACE_FLAG_PENDING | UCT_IFACE_FLAG_EP_CHECK |
+                            UCT_IFACE_FLAG_PENDING |
                             UCT_IFACE_FLAG_CB_SYNC |
                             UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE;
     iface_attr->iface_addr_len = sizeof(uct_srd_iface_addr_t);
@@ -1020,6 +1021,8 @@ uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
 static uct_iface_ops_t uct_srd_iface_tl_ops = {
     .ep_flush                 = uct_srd_ep_flush,
     .ep_fence                 = uct_srd_ep_fence,
+    .ep_check                 = (uct_ep_check_func_t)
+        ucs_empty_function_return_unsupported,
     .ep_create                = UCS_CLASS_NEW_FUNC_NAME(uct_srd_ep_t),
     .ep_get_address           = (uct_ep_get_address_func_t)
         ucs_empty_function_return_unsupported,
