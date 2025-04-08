@@ -569,11 +569,22 @@ public:
         perform_nbx(op, sbuf, size, (uint64_t)target, rkey);
     }
 
+    // SRD needs both sides to progress before being able to post RMA
+    void progress_connect() {
+        for (auto count = 30; count > 0; count--) {
+            ucp_worker_progress(receiver().worker());
+            ucp_worker_progress(sender().worker());
+            usleep(100);
+        }
+    }
+
     void test_ep_based_fence_common(op_type_t op) {
         mem_buffer sbuf(TEST_BUF_SIZE, UCS_MEMORY_TYPE_HOST);
         mapped_buffer rbuf(TEST_BUF_SIZE, receiver());
         rbuf.memset(0);
         sbuf.memset(CHAR_MAX);
+
+        progress_connect();
 
         ucs::handle<ucp_rkey_h> rkey;
         rbuf.rkey(sender(), rkey);
