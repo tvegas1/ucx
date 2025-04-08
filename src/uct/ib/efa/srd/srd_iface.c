@@ -142,7 +142,7 @@ uct_srd_iface_ctl_op_send(uct_srd_iface_t *iface, uct_srd_ctl_op_t *ctl_op)
     /* Post the request, no action required on TX completion */
     send_op = uct_srd_iface_get_send_op(iface);
     if (send_op == NULL) {
-        ucs_error("iface=%p send_op allocationd failed for ctl op send", iface);
+        ucs_debug("iface=%p send_op allocationd failed for ctl op send", iface);
         return UCS_ERR_NO_MEMORY;
     }
 
