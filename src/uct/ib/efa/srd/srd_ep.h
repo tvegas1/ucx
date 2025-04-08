@@ -11,9 +11,10 @@
 
 
 typedef enum uct_srd_ep_flag {
-    UCT_SRD_EP_FLAG_CANCELED = UCS_BIT(0), /* Endpoint was flush canceled */
-    UCT_SRD_EP_FLAG_AH_ADDED = UCS_BIT(1), /* Remote has added AH */
-    UCT_SRD_EP_FLAG_FENCE    = UCS_BIT(2)  /* EP has a fence operation queued */
+    UCT_SRD_EP_FLAG_CANCELED    = UCS_BIT(0), /* Endpoint was flush canceled */
+    UCT_SRD_EP_FLAG_AH_ADDED    = UCS_BIT(1), /* Remote has added AH */
+    UCT_SRD_EP_FLAG_FENCE       = UCS_BIT(2), /* EP fence operation queued */
+    UCT_SRD_EP_FLAG_IFACE_FENCE = UCS_BIT(3)  /* EP has iface_fence operation */
 } uct_srd_ep_flag_t;
 
 

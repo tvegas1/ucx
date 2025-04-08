@@ -745,4 +745,63 @@ UCS_TEST_P(test_srd, iface_flush_inprogress)
     ASSERT_UCS_OK(uct_iface_flush(m_e1->iface(), 0, NULL));
 }
 
+UCS_TEST_P(test_srd, iface_fence_none)
+{
+    ASSERT_UCS_OK(uct_iface_fence(m_e1->iface(), 0));
+}
+
+UCS_TEST_P(test_srd, iface_fence_outstanding)
+{
+    m_e1->connect_to_iface(1, *m_e2);
+    m_e1->connect_to_iface(2, *m_e2);
+    m_e1->connect_to_iface(3, *m_e3);
+
+    int c = 1, count = 0;
+    auto counter_func = [](void *arg, void *data, size_t length,
+                           unsigned flags) {
+        (*reinterpret_cast<int*>(arg))++;
+        return UCS_OK;
+    };
+
+    progress_ctl();
+
+    ASSERT_UCS_OK(uct_iface_set_am_handler(m_e2->iface(), 31, counter_func,
+                                           &count, 0));
+    ASSERT_UCS_OK(uct_ep_am_short(m_e1->ep(1), 31, 0x123, &c, 1));
+    ASSERT_UCS_OK(uct_ep_am_short(m_e1->ep(2), 31, 0x123, &c, 1));
+
+    m_req[0].func = [](uct_pending_req_t*) { return UCS_OK; };
+    /* Cannot be added we are ready to send */
+    ASSERT_UCS_STATUS_EQ(UCS_ERR_BUSY,
+                         uct_ep_pending_add(m_e1->ep(0), &m_req[0], 0));
+    ASSERT_UCS_OK(uct_iface_fence(m_e1->iface(), 0));
+    ASSERT_UCS_OK(uct_ep_pending_add(m_e1->ep(0), &m_req[0], 0));
+
+    ASSERT_UCS_STATUS_EQ(UCS_ERR_NO_RESOURCE,
+                         uct_ep_am_short(m_e1->ep(0), 31, 0x123, &c, 1));
+    ASSERT_UCS_STATUS_EQ(UCS_ERR_NO_RESOURCE,
+                         uct_ep_am_short(m_e1->ep(1), 31, 0x123, &c, 1));
+    ASSERT_UCS_STATUS_EQ(UCS_ERR_NO_RESOURCE,
+                         uct_ep_am_short(m_e1->ep(2), 31, 0x123, &c, 1));
+    ASSERT_UCS_STATUS_EQ(UCS_ERR_NO_RESOURCE,
+                         uct_ep_am_short(m_e1->ep(3), 31, 0x123, &c, 1));
+
+    wait_for_value(&count, 2, true);
+    ASSERT_EQ(2, count);
+
+    /* Iface fence on empty outstanding queues */
+    ASSERT_UCS_OK(uct_iface_fence(m_e1->iface(), 0));
+
+    /* Pending cannot be added as we are ready to transmit */
+    ASSERT_UCS_STATUS_EQ(UCS_ERR_BUSY,
+                         uct_ep_pending_add(m_e1->ep(0), &m_req[1], 0));
+
+    ASSERT_UCS_OK(uct_ep_am_short(m_e1->ep(1), 31, 0x123, &c, 1));
+    wait_for_value(&count, 3, true);
+    ASSERT_EQ(3, count);
+
+    /* Pending was executed too */
+    pending_purge_check(0);
+}
+
 UCT_INSTANTIATE_SRD_TEST_CASE(test_srd)

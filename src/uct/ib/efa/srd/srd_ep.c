@@ -83,16 +83,18 @@ uct_srd_ep_skip_pending(uct_srd_ep_t *ep, uct_srd_iface_t *iface)
 }
 
 static UCS_F_ALWAYS_INLINE int
-uct_srd_ep_skip_fence(uct_srd_ep_t *ep)
+uct_srd_ep_skip_fence(uct_srd_ep_t *ep, uct_srd_iface_t *iface)
 {
-    return (ep->flags & UCT_SRD_EP_FLAG_FENCE) &&
-           !ucs_list_is_empty(&ep->outstanding_list);
+    return (iface->tx.in_fence > 0) ||
+        ((ep->flags & UCT_SRD_EP_FLAG_FENCE) &&
+         !ucs_list_is_empty(&ep->outstanding_list));
 }
 
 static UCS_F_ALWAYS_INLINE int
 uct_srd_ep_can_tx(uct_srd_ep_t *ep, uct_srd_iface_t *iface)
 {
-    return !uct_srd_ep_skip_pending(ep, iface) && !uct_srd_ep_skip_fence(ep);
+    return !uct_srd_ep_skip_pending(ep, iface) &&
+           !uct_srd_ep_skip_fence(ep, iface);
 }
 
 static void uct_srd_ep_send_op_user_completion(uct_srd_send_op_t *send_op,
@@ -114,6 +116,7 @@ void uct_srd_ep_send_op_completion(uct_srd_send_op_t *send_op)
     uct_srd_ep_t *ep = send_op->ep;
     uct_srd_send_op_t *flush_op;
     ucs_status_t comp_status;
+    uct_srd_iface_t *iface;
 
     ucs_list_del(&send_op->list);
 
@@ -132,7 +135,7 @@ void uct_srd_ep_send_op_completion(uct_srd_send_op_t *send_op)
                         ep, send_op, send_op->ep);
 
             if (flush_op->comp_cb != uct_srd_ep_send_op_flush_completion) {
-                break;
+                break; /* Not a flush operation */
             }
 
             /*
@@ -143,6 +146,13 @@ void uct_srd_ep_send_op_completion(uct_srd_send_op_t *send_op)
             ucs_list_del(&flush_op->list);
             flush_op->comp_cb(flush_op, comp_status);
             ucs_mpool_put(flush_op);
+        }
+
+        if ((ep->flags & UCT_SRD_EP_FLAG_IFACE_FENCE) &&
+            ucs_list_is_empty(&ep->outstanding_list)) {
+            iface = ucs_derived_of(ep->super.super.iface, uct_srd_iface_t);
+            iface->tx.in_fence--;
+            ep->flags &= ~UCT_SRD_EP_FLAG_IFACE_FENCE;
         }
     }
 
@@ -168,6 +178,10 @@ static void uct_srd_ep_send_op_purge(uct_srd_ep_t *ep)
 
     ucs_list_splice_tail(&iface->tx.op_list, &ep->outstanding_list);
     ucs_list_head_init(&ep->outstanding_list);
+    if (ep->flags & UCT_SRD_EP_FLAG_IFACE_FENCE) {
+        iface->tx.in_fence--;
+        ep->flags &= ~UCT_SRD_EP_FLAG_IFACE_FENCE;
+    }
 }
 
 ucs_status_t
@@ -177,7 +191,7 @@ uct_srd_ep_pending_add(uct_ep_h tl_ep, uct_pending_req_t *req, unsigned flags)
     uct_srd_iface_t *iface = ucs_derived_of(tl_ep->iface, uct_srd_iface_t);
 
     if (uct_srd_iface_can_tx(iface) && (ep->pending < 1) &&
-        !uct_srd_ep_skip_fence(ep) &&
+        !uct_srd_ep_skip_fence(ep, iface) &&
         (ep->flags & UCT_SRD_EP_FLAG_AH_ADDED)) {
         return UCS_ERR_BUSY;
     }
@@ -203,7 +217,7 @@ uct_srd_ep_do_pending(ucs_arbiter_t *arbiter, ucs_arbiter_group_t *group,
 
     /* No TX available: no dispatch can progress before next tx cqe progress */
     if (!uct_srd_iface_can_tx(iface) ||
-        uct_srd_ep_skip_fence(ep)) {
+        uct_srd_ep_skip_fence(ep, iface)) {
         return UCS_ARBITER_CB_RESULT_STOP;
     }
 

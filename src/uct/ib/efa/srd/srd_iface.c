@@ -498,6 +498,7 @@ static UCS_CLASS_INIT_FUNC(uct_srd_iface_t, uct_md_h md, uct_worker_h worker,
     uct_ud_send_wr_init(&self->tx.wr_desc, self->tx.sge, 0);
 
     self->tx.in_pending   = 0;
+    self->tx.in_fence     = 0;
     self->super.config.sl = uct_ib_iface_config_select_sl(&config->super);
 
     while (self->rx.available >= self->super.config.rx_max_batch) {
@@ -550,6 +551,8 @@ static UCS_CLASS_CLEANUP_FUNC(uct_srd_iface_t)
     ucs_mpool_cleanup(&self->tx.send_op_mp, 1);
     ucs_mpool_cleanup(&self->tx.send_desc_mp, 1);
     UCS_STATS_NODE_FREE(self->stats);
+    ucs_assertv(self->tx.in_fence == 0, "iface=%p tx_in_fence=%d", self,
+                self->tx.in_fence);
 }
 
 UCS_CLASS_DEFINE(uct_srd_iface_t, uct_ib_iface_t);
@@ -901,6 +904,23 @@ static ucs_status_t uct_srd_iface_flush(uct_iface_h tl_iface, unsigned flags,
     return UCS_OK;
 }
 
+static ucs_status_t uct_srd_iface_fence(uct_iface_h tl_iface, unsigned flags)
+{
+    uct_srd_iface_t *iface = ucs_derived_of(tl_iface, uct_srd_iface_t);
+    uct_srd_ep_t *ep;
+
+    kh_foreach_value(&iface->ep_hash, ep, {
+        if (!(ep->flags & UCT_SRD_EP_FLAG_IFACE_FENCE) &&
+            !ucs_list_is_empty(&ep->outstanding_list)) {
+            ep->flags |= UCT_SRD_EP_FLAG_IFACE_FENCE;
+            iface->tx.in_fence++;
+        }
+    });
+
+    UCT_TL_IFACE_STAT_FENCE(&iface->super.super);
+    return UCS_OK;
+}
+
 static ucs_status_t
 uct_srd_query_tl_devices(uct_md_h md, uct_tl_device_resource_t **tl_devices_p,
                          unsigned *num_tl_devices_p)
@@ -943,8 +963,7 @@ static uct_iface_ops_t uct_srd_iface_tl_ops = {
     .ep_pending_add           = uct_srd_ep_pending_add,
     .ep_pending_purge         = uct_srd_ep_pending_purge,
     .iface_flush              = uct_srd_iface_flush,
-    .iface_fence              = (uct_iface_fence_func_t)
-        ucs_empty_function_return_unsupported,
+    .iface_fence              = uct_srd_iface_fence,
     .iface_progress_enable    = uct_base_iface_progress_enable,
     .iface_progress_disable   = uct_base_iface_progress_disable,
     .iface_progress           = uct_srd_iface_progress,
