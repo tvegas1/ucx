@@ -839,8 +839,7 @@ uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
     iface_attr->cap.am.opt_zcopy_align  = UCS_SYS_PCI_MAX_PAYLOAD;
     iface_attr->cap.get.opt_zcopy_align = UCS_SYS_PCI_MAX_PAYLOAD;
 
-    iface_attr->cap.flags = UCT_IFACE_FLAG_AM_BCOPY | UCT_IFACE_FLAG_AM_ZCOPY |
-                            UCT_IFACE_FLAG_CONNECT_TO_IFACE |
+    iface_attr->cap.flags = UCT_IFACE_FLAG_CONNECT_TO_IFACE |
                             UCT_IFACE_FLAG_PENDING | UCT_IFACE_FLAG_EP_CHECK |
                             UCT_IFACE_FLAG_CB_SYNC |
                             UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE;
@@ -869,6 +868,26 @@ uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
     iface_attr->cap.get.max_iov   = iface->config.max_send_sge;
     iface_attr->cap.get.min_zcopy =
             iface->super.config.max_inl_cqe[UCT_IB_DIR_TX] + 1;
+
+    if (iface_attr->cap.am.max_bcopy > 0) {
+        iface_attr->cap.flags |= UCT_IFACE_FLAG_AM_BCOPY;
+    }
+
+    if (iface_attr->cap.am.max_zcopy > 0) {
+        iface_attr->cap.flags |= UCT_IFACE_FLAG_AM_ZCOPY;
+    }
+
+    if (iface_attr->cap.am.max_short > 0) {
+        iface_attr->cap.flags |= UCT_IFACE_FLAG_AM_SHORT;
+    }
+
+    if (iface_attr->cap.get.max_bcopy > 0) {
+        iface_attr->cap.flags |= UCT_IFACE_FLAG_GET_BCOPY;
+    }
+
+    if (iface_attr->cap.get.max_zcopy > 0) {
+        iface_attr->cap.flags |= UCT_IFACE_FLAG_GET_ZCOPY;
+    }
 
     return status;
 }
