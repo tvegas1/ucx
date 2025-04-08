@@ -36,6 +36,8 @@ UCS_CLASS_DECLARE_NEW_FUNC(uct_srd_ep_t, uct_ep_t, const uct_ep_params_t*);
 UCS_CLASS_DECLARE_DELETE_FUNC(uct_srd_ep_t, uct_ep_t);
 
 
+int uct_srd_ep_is_connected(const uct_ep_h tl_ep,
+                            const uct_ep_is_connected_params_t *params);
 ucs_status_t uct_srd_ep_am_short(uct_ep_h tl_ep, uint8_t id, uint64_t hdr,
                                  const void *buffer, unsigned length);
 ucs_status_t uct_srd_ep_am_short_iov(uct_ep_h tl_ep, uint8_t id,
