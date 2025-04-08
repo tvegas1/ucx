@@ -602,6 +602,10 @@ bool uct_test::has_transport(const std::string& tl_name) const {
     return (GetParam()->tl_name == tl_name);
 }
 
+bool uct_test::has_srd() const {
+    return has_transport("srd");
+}
+
 bool uct_test::has_ud() const {
     return (has_transport("ud_verbs") || has_transport("ud_mlx5"));
 }
@@ -615,7 +619,7 @@ bool uct_test::has_rc_or_dc() const {
 }
 
 bool uct_test::has_ib() const {
-    return (has_rc_or_dc() || has_ud());
+    return (has_rc_or_dc() || has_ud() || has_srd());
 }
 
 bool uct_test::has_mm() const {
