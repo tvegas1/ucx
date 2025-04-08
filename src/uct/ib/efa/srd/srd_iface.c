@@ -192,6 +192,34 @@ uct_srd_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *iface_addr)
     return UCS_OK;
 }
 
+static void uct_srd_iface_handle_failure(uct_ib_iface_t *ib_iface, void *arg,
+                                         ucs_status_t ep_status)
+{
+    uct_srd_iface_t *iface     = ucs_derived_of(&ib_iface->super, uct_srd_iface_t);
+    struct ibv_wc *wc          = arg;
+    uct_srd_send_op_t *send_op = (uct_srd_send_op_t*)wc->wr_id;
+    uct_srd_ep_t *ep           = send_op->ep;
+    ucs_log_level_t log_lvl    = UCS_LOG_LEVEL_FATAL;
+    ucs_status_t status;
+
+    if (ep == NULL) {
+        ucs_debug("iface=%p wc=%p wr_id=%p failure in tx cqe without ep",
+                  iface, wc, send_op);
+        return;
+    }
+
+    if (ep->flags & UCT_SRD_EP_FLAG_ERR_HANDLER_INVOKED) {
+        return;
+    }
+
+    ep->flags |= UCT_SRD_EP_FLAG_ERR_HANDLER_INVOKED;
+    status  = uct_iface_handle_ep_err(&iface->super.super.super,
+                                      &ep->super.super, ep_status);
+    log_lvl = uct_base_iface_failure_log_level(&ib_iface->super, status,
+                                               ep_status);
+    UCT_IB_IFACE_VERBS_COMPLETION_LOG(log_lvl, "send", &iface->super, 0, wc);
+}
+
 static uct_ib_iface_ops_t uct_srd_iface_ops = {
     .super = {
         .iface_estimate_perf   = uct_base_iface_estimate_perf,
@@ -209,8 +237,7 @@ static uct_ib_iface_ops_t uct_srd_iface_ops = {
     .create_cq      = uct_ib_verbs_create_cq,
     .destroy_cq     = uct_ib_verbs_destroy_cq,
     .event_cq       = (uct_ib_iface_event_cq_func_t)ucs_empty_function,
-    .handle_failure = (uct_ib_iface_handle_failure_func_t)
-            ucs_empty_function_do_assert
+    .handle_failure = uct_srd_iface_handle_failure
 };
 
 static ucs_status_t
@@ -575,6 +602,26 @@ ucs_config_field_t uct_srd_iface_config_table[] = {
     {NULL}
 };
 
+static ucs_status_t uct_srd_wc_to_ucs_status(struct ibv_wc *wc)
+{
+    switch (wc->status)
+    {
+    case IBV_WC_SUCCESS:
+        return UCS_OK;
+    case IBV_WC_REM_ACCESS_ERR:
+    case IBV_WC_REM_OP_ERR:
+        return UCS_ERR_CONNECTION_RESET;
+    case IBV_WC_RETRY_EXC_ERR:
+    case IBV_WC_RNR_RETRY_EXC_ERR:
+    case IBV_WC_REM_ABORT_ERR:
+        return UCS_ERR_ENDPOINT_TIMEOUT;
+    case IBV_WC_WR_FLUSH_ERR:
+        return UCS_ERR_CANCELED;
+    default:
+        return UCS_ERR_IO_ERROR;
+    }
+}
+
 static UCS_F_ALWAYS_INLINE unsigned
 uct_srd_iface_poll_tx(uct_srd_iface_t *iface)
 {
@@ -582,6 +629,7 @@ uct_srd_iface_poll_tx(uct_srd_iface_t *iface)
     struct ibv_wc wc[num_wcs];
     ucs_status_t status;
     int i;
+    uct_srd_send_op_t *send_op;
 
     status = uct_ib_poll_cq(iface->super.cq[UCT_IB_DIR_TX], &num_wcs, wc);
     if (status != UCS_OK) {
@@ -589,12 +637,16 @@ uct_srd_iface_poll_tx(uct_srd_iface_t *iface)
     }
 
     for (i = 0; i < num_wcs; i++) {
+        send_op = (uct_srd_send_op_t*)wc[i].wr_id;
+
         if (ucs_unlikely(wc[i].status != IBV_WC_SUCCESS)) {
-            UCT_IB_IFACE_VERBS_COMPLETION_ERR("send", &iface->super, i, wc);
+            status = uct_srd_wc_to_ucs_status(&wc[i]);
+            iface->super.ops->handle_failure(&iface->super, &wc[i], status);
+            ucs_mpool_put(send_op);
             continue;
         }
 
-        uct_srd_ep_send_op_completion((uct_srd_send_op_t*)wc[i].wr_id);
+        uct_srd_ep_send_op_completion(send_op);
     }
 
     iface->tx.available += num_wcs;

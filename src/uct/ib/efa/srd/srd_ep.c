@@ -314,6 +314,12 @@ void uct_srd_ep_pending_purge(uct_ep_h tl_ep, uct_pending_purge_callback_t cb,
                             uct_srd_ep_pending_purge_cb, &args);
 }
 
+void uct_srd_ep_purge(uct_srd_ep_t *ep)
+{
+    uct_srd_ep_send_op_purge(ep);
+    uct_srd_ep_pending_purge(&ep->super.super, NULL, NULL);
+}
+
 static UCS_CLASS_CLEANUP_FUNC(uct_srd_ep_t)
 {
     uct_srd_iface_t *iface = ucs_derived_of(self->super.super.iface,
@@ -321,9 +327,8 @@ static UCS_CLASS_CLEANUP_FUNC(uct_srd_ep_t)
 
     ucs_trace_func("");
 
-    uct_srd_ep_send_op_purge(self);
+    uct_srd_ep_purge(self);
     uct_srd_iface_remove_ep(iface, self);
-    uct_srd_ep_pending_purge(&self->super.super, NULL, NULL);
     ucs_arbiter_group_cleanup(&self->pending_group);
 }
 

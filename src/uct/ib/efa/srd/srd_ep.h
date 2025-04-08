@@ -14,7 +14,9 @@ typedef enum uct_srd_ep_flag {
     UCT_SRD_EP_FLAG_CANCELED    = UCS_BIT(0), /* Endpoint was flush canceled */
     UCT_SRD_EP_FLAG_AH_ADDED    = UCS_BIT(1), /* Remote has added AH */
     UCT_SRD_EP_FLAG_FENCE       = UCS_BIT(2), /* EP fence operation queued */
-    UCT_SRD_EP_FLAG_IFACE_FENCE = UCS_BIT(3)  /* EP has iface_fence operation */
+    UCT_SRD_EP_FLAG_IFACE_FENCE = UCS_BIT(3), /* EP has iface_fence operation */
+    UCT_SRD_EP_FLAG_ERR_HANDLER_INVOKED
+                                = UCS_BIT(4)  /* EP error handler was invoked */
 } uct_srd_ep_flag_t;
 
 
@@ -59,6 +61,7 @@ ucs_status_t uct_srd_ep_am_zcopy(uct_ep_h tl_ep, uint8_t id, const void *header,
 ucs_status_t uct_srd_ep_fence(uct_ep_h ep, unsigned flags);
 ucs_status_t uct_srd_ep_flush(uct_ep_h ep_h, unsigned flags,
                               uct_completion_t *comp);
+void uct_srd_ep_purge(uct_srd_ep_t *ep);
 
 void uct_srd_ep_send_op_completion(uct_srd_send_op_t *send_op);
 
