@@ -615,6 +615,9 @@ UCS_TEST_SKIP_COND_P(test_uct_stats, pending_add,
     EXPECT_UCS_OK(uct_iface_set_am_handler(receiver().iface(), 0, am_handler, 0,
                                            UCT_CB_FLAG_ASYNC));
 
+    // Progress any pending communication
+    short_progress_loop();
+
     // Check that counter is not increased if pending_add returns NOT_OK
     EXPECT_EQ(UCS_ERR_BUSY, uct_ep_pending_add(sender().ep(0), &p_reqs[0], 0));
     EXPECT_STAT(sender, uct_ep, UCT_EP_STAT_PENDING, 0UL);
@@ -622,9 +625,7 @@ UCS_TEST_SKIP_COND_P(test_uct_stats, pending_add,
     // Check that counter gets increased on every successful pending_add returns NOT_OK
     fill_tx_q(0);
 
-    UCT_TEST_CALL_AND_TRY_AGAIN(
-        uct_ep_am_bcopy(sender_ep(), 0, mapped_buffer::pack,
-                        lbuf, 0), len);
+    len = uct_ep_am_bcopy(sender_ep(), 0, mapped_buffer::pack, lbuf, 0);
     if (len == (ssize_t)lbuf->length()) {
         UCS_TEST_SKIP_R("Can't add to pending");
     }

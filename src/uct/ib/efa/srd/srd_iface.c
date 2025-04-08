@@ -866,7 +866,7 @@ uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
     /* GET */
     iface_attr->cap.get.max_bcopy = iface->config.max_get_bcopy;
     iface_attr->cap.get.max_zcopy = iface->config.max_get_zcopy;
-    iface_attr->cap.get.max_iov   = iface->config.max_send_sge;
+    iface_attr->cap.get.max_iov   = iface->config.max_recv_sge;
     iface_attr->cap.get.min_zcopy =
             iface->super.config.max_inl_cqe[UCT_IB_DIR_TX] + 1;
 
