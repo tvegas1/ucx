@@ -645,8 +645,6 @@ uct_srd_iface_poll_tx(uct_srd_iface_t *iface)
         if (ucs_unlikely(wc[i].status != IBV_WC_SUCCESS)) {
             status = uct_srd_wc_to_ucs_status(&wc[i]);
             iface->super.ops->handle_failure(&iface->super, &wc[i], status);
-
-            send_op->comp_cb = (uct_srd_send_op_comp_t)ucs_empty_function;
         }
 
         uct_srd_ep_send_op_completion(send_op);
