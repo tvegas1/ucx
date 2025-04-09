@@ -196,9 +196,9 @@ void uct_srd_ep_send_op_purge(uct_srd_ep_t *ep)
 {
     uct_srd_iface_t *iface = ucs_derived_of(ep->super.super.iface,
                                             uct_srd_iface_t);
-    uct_srd_send_op_t *send_op;
+    uct_srd_send_op_t *send_op, *next;
 
-    ucs_list_for_each(send_op, &ep->outstanding_list, list) {
+    ucs_list_for_each_safe(send_op, next, &ep->outstanding_list, list) {
         ucs_assertv(send_op->ep == ep, "send_op_ep=%p ep=%p", send_op->ep, ep);
 
         /*
@@ -206,7 +206,17 @@ void uct_srd_ep_send_op_purge(uct_srd_ep_t *ep)
          * send_op after it has been released.
          */
         send_op->comp_cb(send_op, UCS_ERR_CANCELED);
-        send_op->ep = NULL;
+
+        /*
+         * Destroy flush operation right away as ibv_poll_cq() will not return
+         * a reference to the corresponding send_op.
+         */
+        if (send_op->comp_cb == uct_srd_ep_send_op_flush_completion) {
+            ucs_list_del(&send_op->list);
+            ucs_mpool_put(send_op);
+        } else {
+            send_op->ep = NULL;
+        }
     }
 
     ucs_list_splice_tail(&iface->tx.op_list, &ep->outstanding_list);
