@@ -61,7 +61,7 @@ ucs_status_t uct_srd_ep_am_zcopy(uct_ep_h tl_ep, uint8_t id, const void *header,
 ucs_status_t uct_srd_ep_fence(uct_ep_h ep, unsigned flags);
 ucs_status_t uct_srd_ep_flush(uct_ep_h ep_h, unsigned flags,
                               uct_completion_t *comp);
-void uct_srd_ep_purge(uct_srd_ep_t *ep);
+void uct_srd_ep_send_op_purge(uct_srd_ep_t *ep);
 
 void uct_srd_ep_send_op_completion(uct_srd_send_op_t *send_op);
 

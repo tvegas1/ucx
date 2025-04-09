@@ -192,7 +192,7 @@ void uct_srd_ep_send_op_completion(uct_srd_send_op_t *send_op)
     ucs_mpool_put(send_op);
 }
 
-static void uct_srd_ep_send_op_purge(uct_srd_ep_t *ep)
+void uct_srd_ep_send_op_purge(uct_srd_ep_t *ep)
 {
     uct_srd_iface_t *iface = ucs_derived_of(ep->super.super.iface,
                                             uct_srd_iface_t);
@@ -314,12 +314,6 @@ void uct_srd_ep_pending_purge(uct_ep_h tl_ep, uct_pending_purge_callback_t cb,
                             uct_srd_ep_pending_purge_cb, &args);
 }
 
-void uct_srd_ep_purge(uct_srd_ep_t *ep)
-{
-    uct_srd_ep_send_op_purge(ep);
-    uct_srd_ep_pending_purge(&ep->super.super, NULL, NULL);
-}
-
 static UCS_CLASS_CLEANUP_FUNC(uct_srd_ep_t)
 {
     uct_srd_iface_t *iface = ucs_derived_of(self->super.super.iface,
@@ -327,7 +321,8 @@ static UCS_CLASS_CLEANUP_FUNC(uct_srd_ep_t)
 
     ucs_trace_func("");
 
-    uct_srd_ep_purge(self);
+    uct_srd_ep_send_op_purge(self);
+    uct_srd_ep_pending_purge(&self->super.super, NULL, NULL);
     uct_srd_iface_remove_ep(iface, self);
     ucs_arbiter_group_cleanup(&self->pending_group);
 }

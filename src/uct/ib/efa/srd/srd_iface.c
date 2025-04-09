@@ -208,7 +208,8 @@ static void uct_srd_iface_handle_failure(uct_ib_iface_t *ib_iface, void *arg,
         return;
     }
 
-    uct_srd_ep_purge(ep);
+    /* Keep pending but purge all outstanding */
+    uct_srd_ep_send_op_purge(ep);
 
     if (ep->flags & UCT_SRD_EP_FLAG_ERR_HANDLER_INVOKED) {
         return;
