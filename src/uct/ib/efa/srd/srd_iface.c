@@ -897,13 +897,14 @@ uct_srd_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *iface_attr)
     iface_attr->cap.flags = UCT_IFACE_FLAG_CONNECT_TO_IFACE |
                             UCT_IFACE_FLAG_PENDING |
                             UCT_IFACE_FLAG_CB_SYNC |
-                            UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE;
+                            UCT_IFACE_FLAG_ERRHANDLE_PEER_FAILURE |
+                            UCT_IFACE_FLAG_INTER_NODE;
     iface_attr->iface_addr_len = sizeof(uct_srd_iface_addr_t);
     iface_attr->ep_addr_len    = 0;
     iface_attr->max_conn_priv  = 0;
 
-    iface_attr->latency.c += 30e-9;
-    iface_attr->overhead   = 105e-9;
+    iface_attr->latency.c += 20e-9;
+    iface_attr->overhead   = 75e-9;
 
     /* AM */
     iface_attr->cap.am.max_bcopy = iface->super.config.seg_size -
