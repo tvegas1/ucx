@@ -139,7 +139,8 @@ public:
          * used, so can't assume it.
          */
         return (has_transport("dc_x") || has_transport("rc_x") ||
-                has_transport("rc_v") || has_transport("ib")) &&
+                has_transport("rc_v") || has_transport("srd") ||
+                has_transport("ib")) &&
                !is_tl_shm();
     }
 

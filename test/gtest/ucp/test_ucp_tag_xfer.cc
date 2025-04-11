@@ -1099,8 +1099,8 @@ public:
 
     bool has_rma_zcopy() {
         return has_transport("rc_v") || has_transport("rc_x") ||
-               has_transport("dc_x") ||
-               (ucp_context_find_tl_md(receiver().ucph(), "cma")  != NULL) ||
+               has_transport("dc_x") || has_transport("srd") ||
+               (ucp_context_find_tl_md(receiver().ucph(), "cma") != NULL) ||
                (ucp_context_find_tl_md(receiver().ucph(), "knem") != NULL);
     }
 
