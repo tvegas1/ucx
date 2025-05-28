@@ -255,6 +255,7 @@ ucs_status_t uct_ib_md_query(uct_md_h uct_md, uct_md_attr_v2_t *md_attr)
     memcpy(UCS_PTR_BYTE_OFFSET(md_attr->global_id, component_name_length),
            &guid, sizeof(guid));
 
+    md->cap_flags |= UCT_MD_FLAG_INVALIDATE_RMA;
     return UCS_OK;
 }
 
