@@ -2350,6 +2350,8 @@ ucs_status_t ucp_init_version(unsigned api_major_version, unsigned api_minor_ver
     ucp_context_t *context;
     ucs_status_t status;
 
+    ((ucp_params_t *)params)->features &= ~UCP_FEATURE_WAKEUP;
+
     ucp_version_check(api_major_version, api_minor_version);
 
     if (config == NULL) {
