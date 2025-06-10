@@ -236,6 +236,7 @@ ucs_status_t uct_ib_md_query(uct_md_h uct_md, uct_md_attr_v2_t *md_attr)
     uint64_t guid                = IBV_DEV_ATTR(&md->dev, sys_image_guid);
 
     uct_md_base_md_query(md_attr);
+
     md_attr->max_alloc                 = ULONG_MAX; /* TODO query device */
     md_attr->max_reg                   = ULONG_MAX; /* TODO query device */
     md_attr->flags                     = md->cap_flags;
@@ -254,8 +255,6 @@ ucs_status_t uct_ib_md_query(uct_md_h uct_md, uct_md_attr_v2_t *md_attr)
     memcpy(md_attr->global_id, md->super.component->name, component_name_length);
     memcpy(UCS_PTR_BYTE_OFFSET(md_attr->global_id, component_name_length),
            &guid, sizeof(guid));
-
-    md->cap_flags |= UCT_MD_FLAG_INVALIDATE_RMA;
     return UCS_OK;
 }
 

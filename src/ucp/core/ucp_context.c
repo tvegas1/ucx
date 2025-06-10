@@ -420,7 +420,7 @@ static ucs_config_field_t ucp_context_config_table[] = {
    "connected, useful for testing purposes only",
    ucs_offsetof(ucp_context_config_t, proto_request_reset), UCS_CONFIG_TYPE_BOOL},
 
-  {"KEEPALIVE_INTERVAL", "20s",
+  {"KEEPALIVE_INTERVAL", "inf",
    "Time interval between keepalive rounds. Must be non-zero value.",
    ucs_offsetof(ucp_context_config_t, keepalive_interval),
    UCS_CONFIG_TYPE_TIME_UNITS},
