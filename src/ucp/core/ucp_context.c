@@ -425,7 +425,7 @@ static ucs_config_field_t ucp_context_config_table[] = {
    "connected, useful for testing purposes only",
    ucs_offsetof(ucp_context_config_t, proto_request_reset), UCS_CONFIG_TYPE_BOOL},
 
-  {"KEEPALIVE_INTERVAL", "20s",
+  {"KEEPALIVE_INTERVAL", "inf",
    "Time interval between keepalive rounds. Must be non-zero value.",
    ucs_offsetof(ucp_context_config_t, keepalive_interval),
    UCS_CONFIG_TYPE_TIME_UNITS},
@@ -2360,6 +2360,8 @@ ucs_status_t ucp_init_version(unsigned api_major_version, unsigned api_minor_ver
     ucp_config_t *dfl_config = NULL;
     ucp_context_t *context;
     ucs_status_t status;
+
+    ((ucp_params_t *)params)->features &= ~UCP_FEATURE_WAKEUP;
 
     ucp_version_check(api_major_version, api_minor_version);
 
