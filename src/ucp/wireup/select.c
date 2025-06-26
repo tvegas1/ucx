@@ -2125,6 +2125,17 @@ ucp_wireup_add_rma_bw_lanes(const ucp_wireup_select_params_t *select_params,
         bw_info.max_lanes = context->config.ext.max_rndv_lanes;
     }
 
+    /* With error handling requested on the endpoint, we make sure that lanes
+     * support RMA invalidation. It is only when RNDV is disabled or that we
+     * want to enable pipelined RNDV without actual error handling suport,
+     * that we can allow lanes without RMA invalidation.
+     */
+    if ((ep_init_flags & UCP_EP_INIT_ERR_MODE_PEER_FAILURE) &&
+        ucp_context_rndv_is_enabled(context) &&
+        !context->config.ext.rndv_errh_ppln_enable) {
+        bw_info.criteria.local_md_flags |= UCT_MD_FLAG_INVALIDATE_RMA;
+    }
+
     /* Find if an AM lane needs to be separated from RMA operations. More lanes
      * can cause fence calls to last longer at scale. Applications making heavy
      * use of fence operations usually don't request the TAG feature, hence the
