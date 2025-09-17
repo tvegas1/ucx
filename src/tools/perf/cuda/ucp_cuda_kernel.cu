@@ -135,7 +135,7 @@ ucp_perf_cuda_put_single(ucp_device_mem_list_handle_h mem_list,
                          unsigned mem_list_index, const void *address,
                          uint64_t remote_address, size_t length)
 {
-    ucp_device_request_t req;
+    __shared__ ucp_device_request_t req;
     ucs_status_t status;
 
     status = ucp_device_put_single<level>(mem_list, mem_list_index, address,
