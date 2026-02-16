@@ -102,6 +102,7 @@ typedef struct {
     size_t                      align_thresh; /* Cached value of threshold for
                                                  enabling data split alignment */
     ucp_proto_multi_lane_priv_t lanes[UCP_MAX_LANES]; /* Array of lanes */
+
 } ucp_proto_multi_priv_t;
 
 

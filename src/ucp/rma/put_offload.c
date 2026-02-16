@@ -340,3 +340,145 @@ ucp_proto_t ucp_put_offload_zcopy_proto = {
     .abort    = ucp_proto_request_zcopy_abort,
     .reset    = ucp_proto_offload_zcopy_reset
 };
+
+ucp_mem_desc_t *
+ucp_rma_mpool_get(ucp_worker_h worker)
+{
+    return ucp_rndv_mpool_get(worker, UCS_MEMORY_TYPE_HOST, 0);
+}
+
+static size_t
+ucp_rma_mpool_frag_size(ucp_worker_h worker)
+{
+    return worker->context->config.ext.rndv_frag_size[UCS_MEMORY_TYPE_HOST];
+}
+
+enum {
+    UCP_PROTO_PUT_PPLN_START = UCP_PROTO_STAGE_START,
+    UCP_PROTO_PUT_PPLN_WRITE
+};
+
+/* Track copy-in */
+typedef struct ucp_proto_put_ppln {
+    uct_completion_t comp;
+    ucp_mem_desc_t   *mem_desc;
+    ucp_request_t    *req;
+} ucp_proto_put_ppln_ctx_t;
+
+static void
+ucp_proto_put_ppln_copy_in_complete(uct_completion_t *self)
+{
+    (void)self;
+}
+
+static ucs_status_t
+ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
+{
+    ucp_request_t *req           = ucs_container_of(self, ucp_request_t,
+                                                    send.uct);
+    ucp_ep_h ep                  = req->send.ep;
+    ucp_datatype_iter_t *dt_iter = &req->send.state.dt_iter;
+    ucp_worker_h worker          = ep->worker;
+    ucp_ep_h mem_type_ep         = worker->mem_type_ep[UCS_MEMORY_TYPE_CUDA];
+    const ucp_proto_multi_priv_t *mpriv
+                                 = req->send.proto_config->priv;
+    ucs_status_t status;
+    size_t i, offset, frag_count, frag_size;
+    uct_iov_t iov[1];
+    size_t iovcnt;
+    ucp_lane_index_t mem_type_rma_lane;
+    ucp_proto_put_ppln_ctx_t *ctx;
+    ucp_mem_h memh;
+
+    if (!(req->flags & UCP_REQUEST_FLAG_PROTO_INITIALIZED)) {
+        /* Make sure buffers are registered for read */
+        status = ucp_proto_request_zcopy_init(req, mpriv->reg_md_map,
+                                              NULL,
+                                              UCT_MD_MEM_ACCESS_LOCAL_READ,
+                                              UCP_DT_MASK_CONTIG_IOV);
+        if (status != UCS_OK) {
+            goto out_abort;
+        }
+
+        frag_size  = ucp_rma_mpool_frag_size(worker);
+        frag_count = (dt_iter->length + frag_size - 1) / frag_size;
+
+        ctx = ucs_malloc(sizeof(*ctx) * frag_count, "");
+        if (ctx == NULL) {
+            ucs_fatal("failed to allocat copy-in context");
+        }
+
+        /* Lookup memtype EP and lane */
+        mem_type_rma_lane = ucp_ep_config(mem_type_ep)->key.rma_bw_lanes[0];
+
+        ucs_debug("put ppln for buffer=%p len=%zu frag_size=%zu frag_count=%zu"
+                  "mem_type_ep=%p lane=%u",
+                  dt_iter->type.contig.buffer, dt_iter->length, frag_size, frag_count,
+                  mem_type_ep, mem_type_rma_lane);
+
+        /* Start all copy-in */
+        offset = 0;
+        for (i = 0; i < frag_count; i++, offset += frag_size) {
+            iov[0].buffer = dt_iter->type.contig.buffer + offset;
+            iov[0].length = ucs_min(frag_size, dt_iter->length - offset);
+            iovcnt        = 1;
+
+            ctx[i].mem_desc    = ucp_rma_mpool_get(worker);
+            memh               = ctx[i].mem_desc->memh;
+
+            ctx[i].comp.func   = ucp_proto_put_ppln_copy_in_complete;
+            ctx[i].comp.count  = 1;
+            ctx[i].comp.status = UCS_OK;
+            ctx[i].req         = req;
+
+            ucs_assertv(ucp_memh_length(memh) <= iov[0].length,
+                        "memh_length=%zu length=%zu",
+                        ucp_memh_length(memh), iov[0].length);
+
+            status = uct_ep_put_zcopy(ucp_ep_get_lane(mem_type_ep,
+                                                      mem_type_rma_lane),
+                                      iov, iovcnt,
+                                      (uint64_t)ucp_memh_address(memh),
+                                      UCT_INVALID_RKEY, &ctx[i].comp);
+            ucs_assertv_always(status == UCS_OK, "copy-in failed status=%d",
+                               status);
+        }
+
+        req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
+    }
+
+    /* Request for buffer while copy-in is being done */
+    status = UCS_OK;
+    if (status == UCS_OK) {
+        ucp_proto_request_set_stage(req, UCP_PROTO_PUT_PPLN_WRITE);
+        ucs_trace_req("req=%p moving to put_ppln_write stage", req);
+    }
+
+    return status;
+
+out_abort:
+    ucp_proto_request_abort(req, status);
+    return UCS_OK;
+}
+
+static ucs_status_t
+ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
+{
+    return UCS_INPROGRESS;
+}
+
+ucp_proto_t ucp_put_offload_zcopy_ppln_proto = {
+    .name     = "put/offload/zcopy/ppln",
+    .desc     = UCP_PROTO_ZCOPY_PPLN_DESC,
+    .flags    = 0,
+    .probe    = ucp_proto_put_offload_zcopy_probe,
+    .query    = ucp_proto_multi_query,
+    .progress = {
+        [UCP_PROTO_PUT_PPLN_START] =
+            ucp_proto_put_offload_zcopy_ppln_start_progress,
+        [UCP_PROTO_PUT_PPLN_WRITE] =
+            ucp_proto_put_offload_zcopy_ppln_write_progress,
+    },
+    .abort    = ucp_proto_request_zcopy_abort,
+    .reset    = ucp_proto_offload_zcopy_reset
+};
