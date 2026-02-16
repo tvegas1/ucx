@@ -286,6 +286,12 @@ ucp_proto_put_offload_zcopy_progress(uct_pending_req_t *self)
 }
 
 static void
+ucp_proto_put_offload_zcopy_disable_probe(const ucp_proto_init_params_t *init_params)
+{
+    (void)init_params;
+}
+
+static void
 ucp_proto_put_offload_zcopy_probe(const ucp_proto_init_params_t *init_params)
 {
     ucp_context_t *context               = init_params->worker->context;
@@ -334,7 +340,7 @@ ucp_proto_t ucp_put_offload_zcopy_proto = {
     .name     = "put/offload/zcopy",
     .desc     = UCP_PROTO_ZCOPY_DESC,
     .flags    = 0,
-    .probe    = ucp_proto_put_offload_zcopy_probe,
+    .probe    = ucp_proto_put_offload_zcopy_disable_probe,
     .query    = ucp_proto_multi_query,
     .progress = {ucp_proto_put_offload_zcopy_progress},
     .abort    = ucp_proto_request_zcopy_abort,
