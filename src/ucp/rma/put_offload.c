@@ -394,6 +394,12 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
 UCP_DEFINE_AM_WITH_PROXY(UCP_FEATURE_AM | UCP_FEATURE_RMA, UCP_AM_ID_RTS_PPLN,
                          ucp_am_handler_rts_ppln, NULL, 0);
 
+static void
+ucp_proto_put_ppln_completion(uct_completion_t *self)
+{
+    ucs_trace_req("put ppln rts ppln request completed");
+}
+
 static ucs_status_t
 ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
 {
@@ -416,7 +422,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     if (!(req->flags & UCP_REQUEST_FLAG_PROTO_INITIALIZED)) {
         /* Make sure buffers are registered for read */
         status = ucp_proto_request_zcopy_init(req, mpriv->reg_md_map,
-                                              NULL,
+                                              ucp_proto_put_ppln_completion,
                                               UCT_MD_MEM_ACCESS_LOCAL_READ,
                                               UCP_DT_MASK_CONTIG_IOV);
         if (status != UCS_OK) {
@@ -476,9 +482,11 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     if (status == UCS_OK) {
         ucp_proto_request_set_stage(req, UCP_PROTO_PUT_PPLN_WRITE);
         ucs_trace_req("req=%p moving to put_ppln_write stage", req);
+    } else {
+        ucs_trace_req("req=%p put ppln RTS_PPLN status=%d", req, status);
     }
 
-    return UCS_OK;
+    return status;
 
 out_abort:
     ucp_proto_request_abort(req, status);
