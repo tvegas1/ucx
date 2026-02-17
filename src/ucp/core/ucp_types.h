@@ -205,6 +205,7 @@ typedef enum {
                                           carrying remote ep and PSN for
                                           tracking */
     UCP_AM_ID_AM_MIDDLE_PSN     =  28,
+    UCP_AM_ID_RTS_PPLN          =  29, /* Request for buffer allocation */
     UCP_AM_ID_LAST
 } ucp_am_id_t;
 
