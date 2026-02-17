@@ -121,8 +121,8 @@ protected:
         return 100;
     }
 
-    void test_mem_types(send_func_t send_func, size_t min_size = 128,
-                        size_t max_size = default_max_size()) {
+    void test_mem_types(send_func_t send_func, size_t min_size = 256 *UCS_KBYTE,
+                        size_t max_size = 256 * UCS_KBYTE) {
         const std::vector<std::vector<ucs_memory_type_t> >& pairs =
                 ucs::supported_mem_type_pairs();
 
@@ -134,6 +134,10 @@ protected:
                 continue;
             }
 
+            if (!UCP_MEM_IS_HOST(pairs[i][0]) ||
+                !UCP_MEM_IS_HOST(pairs[i][1])) {
+                continue;
+            }
             test_message_sizes(send_func, min_size, max_size, pairs[i][0],
                                pairs[i][1], 0);
         }

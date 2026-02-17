@@ -148,13 +148,6 @@ const std::vector<ucs_memory_type_t>&  mem_buffer::supported_mem_types()
         vec.push_back(UCS_MEMORY_TYPE_HOST);
         if (is_cuda_supported()) {
             vec.push_back(UCS_MEMORY_TYPE_CUDA);
-            vec.push_back(UCS_MEMORY_TYPE_CUDA_MANAGED);
-        }
-        if (is_rocm_supported()) {
-            vec.push_back(UCS_MEMORY_TYPE_ROCM);
-        }
-        if (is_rocm_managed_supported()) {
-            vec.push_back(UCS_MEMORY_TYPE_ROCM_MANAGED);
         }
     }
 
