@@ -374,6 +374,7 @@ typedef struct ucp_proto_put_ppln {
 
 /* Request for remote buffers */
 typedef struct ucp_rts_ppln {
+    uint64_t      ep_id;
     ucp_request_t *req;
     int           count;
     ucp_md_map_t  md_map;
@@ -398,21 +399,31 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
     ucp_rts_ppln_t *rts_ppln;
     int i;
     ucp_memory_info_t mem_info;
-    ucp_rts_ppln_resp_t rts_ppln_resp;
+    union {
+        char payload[1024];
+        ucp_rts_ppln_resp_t rts_ppln_resp;
+    } u;
     void *p;
     ucp_mem_desc_t *mem_desc;
     ssize_t packed_rkey_size;
     size_t size;
+    ucp_ep_h ep = NULL;
 
     rts_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
 
+    UCP_WORKER_GET_EP_BY_ID(&ep, worker, rts_ppln->ep_id, {
+                            ucs_error("rts ppln handler: failed to get ep=%lx",
+                                      rts_ppln->ep_id);
+                            return UCS_ERR_NO_ELEM; }, "rts ppln received");
+
     ucs_trace_req("put ppln rts ppln received am_length=%zu "
-                  "frag_count=%d md_map=%lx req=%p",
-                  am_length, rts_ppln->count, rts_ppln->md_map,
+                  "ep_id=%lx ep=%p frag_count=%d md_map=0x%lx req=%p",
+                  am_length, rts_ppln->ep_id, ep,
+                  rts_ppln->count, rts_ppln->md_map,
                   rts_ppln->req);
 
-    rts_ppln_resp.rts_ppln = *rts_ppln;
-    p = (void*)(&rts_ppln_resp + 1);
+    u.rts_ppln_resp.rts_ppln = *rts_ppln;
+    p = (void*)(&u.rts_ppln_resp + 1);
     for (i = 0; i < rts_ppln->count; ++i) {
         mem_desc = ucp_rma_mpool_get(worker);
         if (mem_desc == NULL) {
@@ -423,6 +434,8 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
         *(void **)p = mem_desc;
         p += sizeof(mem_desc);
 
+        mem_info.type    = UCS_MEMORY_TYPE_HOST;
+        mem_info.sys_dev = UCS_SYS_DEVICE_ID_UNKNOWN;
         packed_rkey_size = ucp_rkey_pack_memh(
                                       worker->context,
                                       rts_ppln->md_map,
@@ -443,14 +456,37 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
         p += packed_rkey_size;
     }
 
-    size = (char *)p - (char *)&rts_ppln_resp;
+    size = (char *)p - (char *)&u.rts_ppln_resp;
+    ucs_assertv_always(size <= sizeof(u), "size=%zu max_ppln_resp=%zu",
+                       size, sizeof(u));
     ucs_trace("put ppln rts ppln received: size=%zu", size);
+
+
+    return UCS_OK;
+}
+
+UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
+                 (am_arg, am_data, am_length, am_flags), void *am_arg,
+                 void *am_data, size_t am_length, unsigned am_flags)
+{
+    ucp_worker_h worker                = am_arg;
+    ucp_rts_ppln_resp_t *rts_ppln_resp = UCS_PTR_BYTE_OFFSET(am_data, 8);
+    ucp_rts_ppln_t *rts_ppln           = &rts_ppln_resp->rts_ppln;
+
+    (void)worker;
+    ucs_trace_req("put ppln rts ppln response received am_length=%zu "
+                  "ep_id=%lx frag_count=%d md_map=0x%lx req=%p",
+                  am_length, rts_ppln->ep_id,
+                  rts_ppln->count, rts_ppln->md_map,
+                  rts_ppln->req);
 
     return UCS_OK;
 }
 
 UCP_DEFINE_AM_WITH_PROXY(UCP_FEATURE_AM | UCP_FEATURE_RMA, UCP_AM_ID_RTS_PPLN,
                          ucp_am_handler_rts_ppln, NULL, 0);
+UCP_DEFINE_AM_WITH_PROXY(UCP_FEATURE_AM | UCP_FEATURE_RMA, UCP_AM_ID_RTS_PPLN_RESP,
+                         ucp_am_handler_rts_ppln_resp, NULL, 0);
 
 static void
 ucp_proto_put_ppln_completion(uct_completion_t *self)
@@ -554,12 +590,13 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
         req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
     }
 
+    rts_ppln.ep_id  = ucp_ep_remote_id(ep);
     rts_ppln.count  = frag_count;
     rts_ppln.req    = req;
     rts_ppln.md_map = ucp_proto_multi_remote_md_map_req(req);
-    status = uct_ep_am_short(ucp_ep_get_am_uct_ep(ep),
-                             UCP_AM_ID_RTS_PPLN, 0,
-                             &rts_ppln, sizeof(rts_ppln));
+    status          = uct_ep_am_short(ucp_ep_get_am_uct_ep(ep),
+                                      UCP_AM_ID_RTS_PPLN, 0,
+                                      &rts_ppln, sizeof(rts_ppln));
 
     /* Request for buffer while copy-in is being done */
     if (status == UCS_OK) {

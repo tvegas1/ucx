@@ -206,6 +206,7 @@ typedef enum {
                                           tracking */
     UCP_AM_ID_AM_MIDDLE_PSN     =  28,
     UCP_AM_ID_RTS_PPLN          =  29, /* Request for buffer allocation */
+    UCP_AM_ID_RTS_PPLN_RESP     =  30, /* Request for buffer allocation response */
     UCP_AM_ID_LAST
 } ucp_am_id_t;
 
