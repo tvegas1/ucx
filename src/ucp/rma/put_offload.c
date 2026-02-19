@@ -383,11 +383,35 @@ ucp_proto_put_ppln_copy_in_complete(uct_completion_t *self)
     ucs_trace_req("put ppln copy-in complete comp=%p", self);
 }
 
+static void
+ucp_proto_put_frag_get_rkey(ucp_worker_h worker,
+                            ucp_mem_desc_t *mem_desc)
+{
+    size_t rkey_size;
+    void *rkey_buffer;
+
+    ucp_ep_h mem_type_ep = worker->mem_type_ep[UCS_MEMORY_TYPE_CUDA];
+    ucs_status_t status;
+
+    status = ucp_rkey_pack(worker->context, mem_desc->memh,
+                           &rkey_buffer, &rkey_size);
+    ucs_assertv_always(status == UCS_OK, "put ppln rkey_pack status=%d",
+                       status);
+}
+
 UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
                  (am_arg, am_data, am_length, am_flags), void *am_arg,
                  void *am_data, size_t am_length, unsigned am_flags)
 {
-    ucs_trace_req("put ppln rts ppln received");
+    ucp_rts_ppln_t *rts_ppln;
+
+    rts_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
+
+
+
+    ucs_trace_req("put ppln rts ppln received am_length=%zu frag_count=%d",
+                  am_length, rts_ppln->count);
+
     return UCS_OK;
 }
 
@@ -419,6 +443,9 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     ucp_proto_put_ppln_ctx_t *ctx;
     ucp_rts_ppln_t rts_ppln;
 
+    frag_size  = ucp_rma_mpool_frag_size(worker);
+    frag_count = (dt_iter->length + frag_size - 1) / frag_size;
+
     if (!(req->flags & UCP_REQUEST_FLAG_PROTO_INITIALIZED)) {
         /* Make sure buffers are registered for read */
         status = ucp_proto_request_zcopy_init(req, mpriv->reg_md_map,
@@ -428,9 +455,6 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
         if (status != UCS_OK) {
             goto out_abort;
         }
-
-        frag_size  = ucp_rma_mpool_frag_size(worker);
-        frag_count = (dt_iter->length + frag_size - 1) / frag_size;
 
         ctx = ucs_malloc(sizeof(*ctx) * frag_count, "");
         if (ctx == NULL) {
@@ -474,6 +498,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
         req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
     }
 
+    rts_ppln.count = frag_count;
     status = uct_ep_am_short(ucp_ep_get_am_uct_ep(ep),
                              UCP_AM_ID_RTS_PPLN, 0,
                              &rts_ppln, sizeof(rts_ppln));
