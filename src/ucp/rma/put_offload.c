@@ -391,23 +391,69 @@ ucp_proto_put_ppln_copy_in_complete(uct_completion_t *self)
     ucs_trace_req("put ppln copy-in complete comp=%p", self);
 }
 
+static ucs_status_t
+ucp_msg_send_progress(uct_pending_req_t *self)
+{
+    ucp_request_t *req = ucs_container_of(self, ucp_request_t, send.uct);
+    ucp_ep_t *ep       = req->send.ep;
+    ucs_status_t status;
+
+    ucs_trace_req("put ppln send progress req=%p length=%zu", req,
+                  req->send.length);
+    status = uct_ep_am_short(ucp_ep_get_am_uct_ep(ep),
+                             UCP_AM_ID_RTS_PPLN_RESP, 0,
+                             req->send.buffer, req->send.length);
+    if (status == UCS_OK) {
+        ucs_free(req->send.buffer);
+        ucp_request_put(req);
+    } else if (status != UCS_ERR_NO_RESOURCE) {
+        ucs_error("put ppln send progress failed: length=%zu status=%d",
+                  req->send.length, status);
+    }
+
+    return status;
+}
+
+static ucs_status_t
+ucp_msg_send(ucp_worker_h worker, ucp_ep_h ep, void *payload, size_t length)
+{
+    ucp_request_t *req;
+
+    req = ucp_request_get(worker);
+    if (req == NULL) {
+        ucs_error("Reply allocation failure");
+        return UCS_ERR_NO_MEMORY;
+    }
+
+    ucp_request_send_state_init(req, ucp_dt_make_contig(1), length);
+
+    req->flags                        = 0;
+    req->send.ep                      = ep;
+    req->send.buffer                  = payload;
+    req->send.length                  = length;
+    req->send.state.dt_iter.offset    = 0;
+    req->send.uct.func                = ucp_msg_send_progress;
+    req->send.mem_type                = UCS_MEMORY_TYPE_HOST;
+
+    ucp_request_send(req);
+    return UCS_OK;
+}
+
 UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
                  (am_arg, am_data, am_length, am_flags), void *am_arg,
                  void *am_data, size_t am_length, unsigned am_flags)
 {
+    size_t alloc_size = 1024;
     ucp_worker_h worker  = am_arg;
     ucp_rts_ppln_t *rts_ppln;
     int i;
     ucp_memory_info_t mem_info;
-    union {
-        char payload[1024];
-        ucp_rts_ppln_resp_t rts_ppln_resp;
-    } u;
+    ucp_rts_ppln_resp_t *rts_ppln_resp;
     void *p;
     ucp_mem_desc_t *mem_desc;
     ssize_t packed_rkey_size;
     size_t size;
-    ucp_ep_h ep = NULL;
+    ucp_ep_h ep;
 
     rts_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
 
@@ -416,14 +462,20 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
                                       rts_ppln->ep_id);
                             return UCS_ERR_NO_ELEM; }, "rts ppln received");
 
+    rts_ppln_resp = ucs_malloc(alloc_size, "rts_ppln_resp");
+    if (rts_ppln_resp == NULL) {
+        ucs_error("Failed to allocate rts_ppln_resp");
+        return UCS_ERR_NO_MEMORY;
+    }
+
     ucs_trace_req("put ppln rts ppln received am_length=%zu "
                   "ep_id=%lx ep=%p frag_count=%d md_map=0x%lx req=%p",
                   am_length, rts_ppln->ep_id, ep,
                   rts_ppln->count, rts_ppln->md_map,
                   rts_ppln->req);
 
-    u.rts_ppln_resp.rts_ppln = *rts_ppln;
-    p = (void*)(&u.rts_ppln_resp + 1);
+    rts_ppln_resp->rts_ppln = *rts_ppln;
+    p = (void*)(rts_ppln_resp + 1);
     for (i = 0; i < rts_ppln->count; ++i) {
         mem_desc = ucp_rma_mpool_get(worker);
         if (mem_desc == NULL) {
@@ -456,13 +508,12 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
         p += packed_rkey_size;
     }
 
-    size = (char *)p - (char *)&u.rts_ppln_resp;
-    ucs_assertv_always(size <= sizeof(u), "size=%zu max_ppln_resp=%zu",
-                       size, sizeof(u));
+    size = (char *)p - (char *)rts_ppln_resp;
+    ucs_assertv_always(size <= alloc_size,
+                       "size=%zu max_ppln_resp=%zu", size, alloc_size);
     ucs_trace("put ppln rts ppln received: size=%zu", size);
 
-
-    return UCS_OK;
+    return ucp_msg_send(worker, ep, rts_ppln_resp, size);
 }
 
 UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
@@ -472,13 +523,19 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
     ucp_worker_h worker                = am_arg;
     ucp_rts_ppln_resp_t *rts_ppln_resp = UCS_PTR_BYTE_OFFSET(am_data, 8);
     ucp_rts_ppln_t *rts_ppln           = &rts_ppln_resp->rts_ppln;
+    int i;
+    void *p;
 
-    (void)worker;
     ucs_trace_req("put ppln rts ppln response received am_length=%zu "
                   "ep_id=%lx frag_count=%d md_map=0x%lx req=%p",
                   am_length, rts_ppln->ep_id,
                   rts_ppln->count, rts_ppln->md_map,
                   rts_ppln->req);
+
+    p = (void *)(rts_ppln_resp + 1);
+    for (i = 0; i < rts_ppln->count; i++) {
+
+    }
 
     return UCS_OK;
 }

@@ -59,6 +59,7 @@
     _macro(UCP_AM_ID_AM_SINGLE_REPLY) \
     _macro(UCP_AM_ID_AM_FIRST_PSN) \
     _macro(UCP_AM_ID_RTS_PPLN) \
+    _macro(UCP_AM_ID_RTS_PPLN_RESP) \
     _macro(UCP_AM_ID_AM_MIDDLE_PSN)
 
 #define UCP_AM_HANDLER_DECL(_id) extern ucp_am_handler_t ucp_am_handler_##_id;
