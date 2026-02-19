@@ -374,8 +374,15 @@ typedef struct ucp_proto_put_ppln {
 
 /* Request for remote buffers */
 typedef struct ucp_rts_ppln {
-    int count;
+    ucp_request_t *req;
+    int           count;
+    ucp_md_map_t  md_map;
 } ucp_rts_ppln_t;
+
+typedef struct ucp_rts_ppln_resp {
+    ucp_rts_ppln_t rts_ppln;
+    char           packed[];
+} ucp_rts_ppln_resp_t;
 
 static void
 ucp_proto_put_ppln_copy_in_complete(uct_completion_t *self)
@@ -383,34 +390,61 @@ ucp_proto_put_ppln_copy_in_complete(uct_completion_t *self)
     ucs_trace_req("put ppln copy-in complete comp=%p", self);
 }
 
-static void
-ucp_proto_put_frag_get_rkey(ucp_worker_h worker,
-                            ucp_mem_desc_t *mem_desc)
-{
-    size_t rkey_size;
-    void *rkey_buffer;
-
-    ucp_ep_h mem_type_ep = worker->mem_type_ep[UCS_MEMORY_TYPE_CUDA];
-    ucs_status_t status;
-
-    status = ucp_rkey_pack(worker->context, mem_desc->memh,
-                           &rkey_buffer, &rkey_size);
-    ucs_assertv_always(status == UCS_OK, "put ppln rkey_pack status=%d",
-                       status);
-}
-
 UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
                  (am_arg, am_data, am_length, am_flags), void *am_arg,
                  void *am_data, size_t am_length, unsigned am_flags)
 {
+    ucp_worker_h worker  = am_arg;
     ucp_rts_ppln_t *rts_ppln;
+    int i;
+    ucp_memory_info_t mem_info;
+    ucp_rts_ppln_resp_t rts_ppln_resp;
+    void *p;
+    ucp_mem_desc_t *mem_desc;
+    ssize_t packed_rkey_size;
+    size_t size;
 
     rts_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
 
+    ucs_trace_req("put ppln rts ppln received am_length=%zu "
+                  "frag_count=%d md_map=%lx req=%p",
+                  am_length, rts_ppln->count, rts_ppln->md_map,
+                  rts_ppln->req);
 
+    rts_ppln_resp.rts_ppln = *rts_ppln;
+    p = (void*)(&rts_ppln_resp + 1);
+    for (i = 0; i < rts_ppln->count; ++i) {
+        mem_desc = ucp_rma_mpool_get(worker);
+        if (mem_desc == NULL) {
+            ucs_error("rts ppln handler: rma mpool get failed");
+            return UCS_ERR_NO_RESOURCE;
+        }
 
-    ucs_trace_req("put ppln rts ppln received am_length=%zu frag_count=%d",
-                  am_length, rts_ppln->count);
+        *(void **)p = mem_desc;
+        p += sizeof(mem_desc);
+
+        packed_rkey_size = ucp_rkey_pack_memh(
+                                      worker->context,
+                                      rts_ppln->md_map,
+                                      mem_desc->memh,
+                                      mem_desc->ptr,
+                                      ucp_rma_mpool_frag_size(worker),
+                                      &mem_info,
+                                      0, NULL,
+                                      0,
+                                      0,
+                                      p);
+        if (packed_rkey_size < 0) {
+            ucs_error("rts ppln handler: rkey pack failed size=%zd",
+                      packed_rkey_size);
+            return UCS_ERR_NO_RESOURCE;
+        }
+
+        p += packed_rkey_size;
+    }
+
+    size = (char *)p - (char *)&rts_ppln_resp;
+    ucs_trace("put ppln rts ppln received: size=%zu", size);
 
     return UCS_OK;
 }
@@ -422,6 +456,28 @@ static void
 ucp_proto_put_ppln_completion(uct_completion_t *self)
 {
     ucs_trace_req("put ppln rts ppln request completed");
+}
+
+static ucp_md_map_t
+ucp_proto_multi_remote_md_map_req(const ucp_request_t *req)
+{
+    ucp_worker_h worker                    = req->send.ep->worker;
+    const ucp_proto_config_t *proto_config = req->send.proto_config;
+    const ucp_ep_config_key_t *ep_config_key;
+    const ucp_proto_multi_priv_t *mpriv;
+    ucp_md_map_t remote_md_map = 0;
+    ucp_lane_index_t i, lane;
+
+    ep_config_key = &ucs_array_elem(&worker->ep_config,
+                                    proto_config->ep_cfg_index).key;
+    mpriv         = proto_config->priv;
+
+    for (i = 0; i < mpriv->num_lanes; i++) {
+        lane = mpriv->lanes[i].super.lane;
+        remote_md_map |= UCS_BIT(ep_config_key->lanes[lane].dst_md_index);
+    }
+
+    return remote_md_map;
 }
 
 static ucs_status_t
@@ -498,7 +554,9 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
         req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
     }
 
-    rts_ppln.count = frag_count;
+    rts_ppln.count  = frag_count;
+    rts_ppln.req    = req;
+    rts_ppln.md_map = ucp_proto_multi_remote_md_map_req(req);
     status = uct_ep_am_short(ucp_ep_get_am_uct_ep(ep),
                              UCP_AM_ID_RTS_PPLN, 0,
                              &rts_ppln, sizeof(rts_ppln));
