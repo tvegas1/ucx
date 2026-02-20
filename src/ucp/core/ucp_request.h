@@ -157,6 +157,7 @@ struct ucp_request {
     };
 
     void *ctx;
+    size_t frag_count;
 
     union {
 
