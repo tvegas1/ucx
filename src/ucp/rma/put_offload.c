@@ -376,6 +376,7 @@ typedef struct ucp_proto_put_ppln {
     uct_completion_t comp;      /* copy-in completion */
     uct_completion_t send_comp; /* remote send completion */
     ucp_mem_desc_t   *mem_desc;
+    size_t           size;      /* Size of this fragment */
     ucp_request_t    *req;
     ucp_mem_desc_t   *remote_mem_desc;
     ucp_lane_index_t lane_idx;  /* Index where the RDMA was performed */
@@ -732,6 +733,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
             ctx[i].comp.count      = 1;
             ctx[i].comp.status     = UCS_OK;
             ctx[i].req             = req;
+            ctx[i].size            = iov[0].length;
 
             ucs_assertv(iov[0].length <= frag_size,
                         "frag_size=%zu iov_length=%zu",
@@ -811,8 +813,6 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
     atp_ppln.frag_id    = i;
     atp_ppln.frag_count = req->frag_count;
 
-    ucs_assert_always(ctx[i].mem_desc == NULL);
-
     req->send.lane = ctx[i].lane_idx;
     status = uct_ep_am_short(uct_ep, UCP_AM_ID_ATP_PPLN, 0,
                              &atp_ppln, sizeof(atp_ppln));
@@ -824,6 +824,20 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
     }
 
     return status;
+}
+
+static uct_mem_h
+ucp_proto_put_ppln_get_memh(ucp_request_t *req,
+                            ucp_mem_h memh,
+                            const ucp_proto_multi_lane_priv_t *lpriv)
+{
+    ucp_md_index_t md_index = ucp_ep_md_index(req->send.ep, lpriv->super.lane);
+
+    ucs_assert_always(md_index != UCP_NULL_RESOURCE);
+    ucs_assertv(UCS_BIT(md_index) & memh->md_map,
+                "md_index=%d md_map=0x%" PRIx64, md_index, memh->md_map);
+
+    return memh->uct[md_index];
 }
 
 static ucs_status_t
@@ -865,8 +879,10 @@ ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
 
         /* Sender bounce buffer */
         iov.buffer = ctx[i].mem_desc->ptr;
-        iov.length = ucp_rma_mpool_frag_size(ep->worker);
-        iov.memh   = ctx[i].mem_desc->memh;
+        iov.length = ctx[i].size;
+        iov.memh   = ucp_proto_put_ppln_get_memh(req,
+                                                 ctx[i].mem_desc->memh, lpriv);
+
         iov.stride = 0;
         iov.count  = 1;
 
@@ -874,6 +890,10 @@ ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
         rkey_index = ucp_put_ppln_get_rkey_index(req, ctx[i].rkey, lane_idx);
         tl_rkey    = ucp_rkey_get_tl_rkey(ctx[i].rkey, rkey_index);
         uct_ep     = ucp_ep_get_lane(ep, lpriv->super.lane);
+
+        ucs_assertv_always(lane_idx == lpriv->super.lane,
+                           "lane_idx=%u lpriv_super_lane=%u",
+                           lane_idx, lpriv->super.lane);
 
         /* Release mem_desc after usage */
         ctx[i].send_comp.status = UCS_OK;
@@ -906,7 +926,7 @@ ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
 
         status = ucp_put_ppln_send_signal(req, i);
         if ((status != UCS_OK) && (status != UCS_INPROGRESS)) {
-        ucs_trace_req("put ppln write req=%p i=%d signal", req, i);
+            ucs_trace_req("put ppln write req=%p i=%d signal", req, i);
             return status;
         }
 
