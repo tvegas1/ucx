@@ -156,6 +156,8 @@ struct ucp_request {
                                                  by protocols */
     };
 
+    void *ctx;
+
     union {
 
         /* "send" part - used for tag_send, am_send, stream_send, put, get, and atomic

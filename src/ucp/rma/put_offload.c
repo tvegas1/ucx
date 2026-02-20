@@ -370,6 +370,9 @@ typedef struct ucp_proto_put_ppln {
     uct_completion_t comp;
     ucp_mem_desc_t   *mem_desc;
     ucp_request_t    *req;
+    ucp_mem_desc_t   *remote_mem_desc;
+
+    ucp_rkey_h       rkey; /* Remote bounce-buffer for RDMA */
 } ucp_proto_put_ppln_ctx_t;
 
 /* Request for remote buffers */
@@ -388,7 +391,10 @@ typedef struct ucp_rts_ppln_resp {
 static void
 ucp_proto_put_ppln_copy_in_complete(uct_completion_t *self)
 {
-    ucs_trace_req("put ppln copy-in complete comp=%p", self);
+    ucp_proto_put_ppln_ctx_t *ctx =
+        ucs_container_of(self, ucp_proto_put_ppln_ctx_t, comp);
+
+    ucs_trace_req("put ppln copy-in complete ctx=%p req=%p", ctx, ctx->req);
 }
 
 static ucs_status_t
@@ -398,11 +404,11 @@ ucp_msg_send_progress(uct_pending_req_t *self)
     ucp_ep_t *ep       = req->send.ep;
     ucs_status_t status;
 
-    ucs_trace_req("put ppln send progress req=%p length=%zu", req,
-                  req->send.length);
     status = uct_ep_am_short(ucp_ep_get_am_uct_ep(ep),
                              UCP_AM_ID_RTS_PPLN_RESP, 0,
                              req->send.buffer, req->send.length);
+    ucs_trace_req("put ppln send progress req=%p length=%zu status=%d", req,
+                  req->send.length, status);
     if (status == UCS_OK) {
         ucs_free(req->send.buffer);
         ucp_request_put(req);
@@ -454,6 +460,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
     ssize_t packed_rkey_size;
     size_t size;
     ucp_ep_h ep;
+    uint8_t *size_p;
 
     rts_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
 
@@ -485,6 +492,9 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
 
         *(void **)p = mem_desc;
         p += sizeof(mem_desc);
+        size_p = p;
+        p += sizeof(*size_p);
+
 
         mem_info.type    = UCS_MEMORY_TYPE_HOST;
         mem_info.sys_dev = UCS_SYS_DEVICE_ID_UNKNOWN;
@@ -505,7 +515,11 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
             return UCS_ERR_NO_RESOURCE;
         }
 
-        p += packed_rkey_size;
+        ucs_trace_req("put ppln rts: req=%p pack memh: mem_desc=%p packed_size=%zd",
+                      rts_ppln->req, mem_desc, packed_rkey_size);
+        ucs_assertv_always(packed_rkey_size <= UCHAR_MAX, "Bad packed size!");
+        *size_p = packed_rkey_size;
+        p      += packed_rkey_size;
     }
 
     size = (char *)p - (char *)rts_ppln_resp;
@@ -520,11 +534,16 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
                  (am_arg, am_data, am_length, am_flags), void *am_arg,
                  void *am_data, size_t am_length, unsigned am_flags)
 {
-    ucp_worker_h worker                = am_arg;
     ucp_rts_ppln_resp_t *rts_ppln_resp = UCS_PTR_BYTE_OFFSET(am_data, 8);
     ucp_rts_ppln_t *rts_ppln           = &rts_ppln_resp->rts_ppln;
     int i;
-    void *p;
+    ucp_mem_desc_t *remote_mem_desc;
+    char *p;
+    uint8_t size;
+    ucp_request_t *req;
+    ucs_status_t status;
+    ucp_proto_put_ppln_ctx_t *ctx;
+    ucp_ep_h ep;
 
     ucs_trace_req("put ppln rts ppln response received am_length=%zu "
                   "ep_id=%lx frag_count=%d md_map=0x%lx req=%p",
@@ -532,10 +551,34 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
                   rts_ppln->count, rts_ppln->md_map,
                   rts_ppln->req);
 
-    p = (void *)(rts_ppln_resp + 1);
-    for (i = 0; i < rts_ppln->count; i++) {
+    p   = (char *)rts_ppln_resp->packed;
+    req = rts_ppln->req;
+    ep  = req->send.ep;
+    ctx = req->ctx;
 
+    for (i = 0; i < rts_ppln->count; i++) {
+        remote_mem_desc = *(ucp_mem_desc_t **)p;
+        p              += sizeof(remote_mem_desc);
+        size            = *(unsigned char*)p;
+        p              += sizeof(size);
+
+        ctx[i].remote_mem_desc = NULL;
+        status = ucp_ep_rkey_unpack(ep, p, &ctx[i].rkey);
+        if (status != UCS_OK) {
+            ucs_fatal("failed to unpack rendezvous remote key received from %s: %s",
+                      ucp_ep_peer_name(ep), ucs_status_string(status));
+        }
+
+        ucs_trace_req("put ppln rts ppln response: unpacking "
+                      "req=%p remote_mem_desc=%p size=%u",
+                      req, remote_mem_desc, size);
+
+        p += size;
     }
+
+    ucs_assertv_always(am_length == (p - (char*)rts_ppln_resp) + 8,
+                       "mismatched rts ppln resp am_length=%zu "
+                       "final_size=%zu+8", am_length, (p - (char*)rts_ppln_resp));
 
     return UCS_OK;
 }
@@ -605,7 +648,8 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
             goto out_abort;
         }
 
-        ctx = ucs_malloc(sizeof(*ctx) * frag_count, "");
+        ctx      = ucs_malloc(sizeof(*ctx) * frag_count, "");
+        req->ctx = ctx;
         if (ctx == NULL) {
             ucs_fatal("failed to allocat copy-in context");
         }
@@ -625,11 +669,12 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
             iov[0].length = ucs_min(frag_size, dt_iter->length - offset);
             iovcnt        = 1;
 
-            ctx[i].mem_desc    = ucp_rma_mpool_get(worker);
-            ctx[i].comp.func   = ucp_proto_put_ppln_copy_in_complete;
-            ctx[i].comp.count  = 1;
-            ctx[i].comp.status = UCS_OK;
-            ctx[i].req         = req;
+            ctx[i].mem_desc        = ucp_rma_mpool_get(worker);
+            ctx[i].remote_mem_desc = NULL;
+            ctx[i].comp.func       = ucp_proto_put_ppln_copy_in_complete;
+            ctx[i].comp.count      = 1;
+            ctx[i].comp.status     = UCS_OK;
+            ctx[i].req             = req;
 
             ucs_assertv(iov[0].length <= frag_size,
                         "frag_size=%zu iov_length=%zu",
