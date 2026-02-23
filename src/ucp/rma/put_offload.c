@@ -486,7 +486,21 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
                  (am_arg, am_data, am_length, am_flags), void *am_arg,
                  void *am_data, size_t am_length, unsigned am_flags)
 {
-    ucs_trace_req("put ppln atp ppln received am_length=%zu", am_length);
+    ucp_atp_ppln_t *atp_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
+    ucp_request_t *req;
+    (void)req;
+
+    /* What to copy from/to */
+    ucs_trace_req("put ppln atp ppln received am_length=%zu "
+                  "ep_id=0x%lx req=%p mem_desc=%p address=0x%lx frag_id=%u "
+                  "frag_count=%u",
+                  am_length, atp_ppln->ep_id, atp_ppln->req, atp_ppln->mem_desc,
+                  atp_ppln->address, atp_ppln->frag_id, atp_ppln->frag_count);
+
+    /* Index the fragment */
+    /* Start the copy-out */
+    /* Only send completion when the last has been done */
+
     return UCS_OK;
 }
 
@@ -817,9 +831,10 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
     status = uct_ep_am_short(uct_ep, UCP_AM_ID_ATP_PPLN, 0,
                              &atp_ppln, sizeof(atp_ppln));
     if ((status == UCS_OK) || (status == UCS_INPROGRESS)) {
-        ucs_trace_req("put atp ppln req=%p frag_id=%u frag_count=%u "
+        ucs_trace_req("put atp ppln req=%p ep_id=0x%lx frag_id=%u frag_count=%u "
                       "address=0x%lx mem_desc=%p",
-                      req, atp_ppln.frag_id, atp_ppln.frag_count,
+                      req, atp_ppln.ep_id, atp_ppln.frag_id,
+                      atp_ppln.frag_count,
                       atp_ppln.address, atp_ppln.mem_desc);
     }
 
