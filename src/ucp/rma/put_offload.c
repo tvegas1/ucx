@@ -375,6 +375,7 @@ enum {
 typedef struct ucp_proto_put_ppln {
     uct_completion_t comp;      /* copy-in completion */
     uct_completion_t send_comp; /* remote send completion */
+    int              overall;   /* First fragment tracks overall */
     ucp_mem_desc_t   *mem_desc;
     size_t           size;      /* Size of this fragment */
     ucp_request_t    *req;
@@ -418,16 +419,36 @@ typedef struct {
 } ucp_atp_ppln_final_t;
 
 static void
+ucp_put_ppln_complete(ucp_request_t *req)
+{
+    ucp_proto_put_ppln_ctx_t *ctx = req->ctx;
+    int i;
+
+    ctx[0].overall++;
+    if (ctx[0].overall <= req->frag_count) {
+        return;
+    }
+
+    for (i = 0; i < req->frag_count; i++) {
+        ucp_rkey_destroy(ctx[i].rkey);
+    }
+
+    ucs_free(req->ctx);
+    ucp_proto_request_zcopy_complete(req, UCS_OK);
+}
+
+static void
 ucp_proto_put_ppln_send_zcopy_complete(uct_completion_t *self)
 {
     ucp_proto_put_ppln_ctx_t *ctx =
         ucs_container_of(self, ucp_proto_put_ppln_ctx_t, send_comp);
 
-    ucs_trace_req("put ppln zcopy complete ctx=%p req=%p status=%d",
+    ucs_trace_req("put ppln send zcopy complete ctx=%p req=%p status=%d",
                   ctx, ctx->req, self->status);
 
     ucs_mpool_put(ctx->mem_desc);
     ctx->mem_desc = NULL;
+    ucp_put_ppln_complete(ctx->req);
 }
 
 static void
@@ -440,16 +461,44 @@ ucp_proto_put_ppln_copy_in_complete(uct_completion_t *self)
                   ctx, ctx->req, self->status);
 }
 
+static size_t
+put_ppln_pack_cb(void *dest, void *arg)
+{
+    ucp_request_t *req = arg;
+
+    memcpy(dest, req->send.buffer, req->send.length);
+    return req->send.length;
+}
+
+#define UCP_PUT_PPLN_BCOPY_LIMIT 120
+
 static ucs_status_t
 ucp_msg_send_progress(uct_pending_req_t *self)
 {
     ucp_request_t *req = ucs_container_of(self, ucp_request_t, send.uct);
     ucp_ep_t *ep       = req->send.ep;
     ucs_status_t status;
+    uct_ep_h uct_ep;
+    ssize_t packed_len;
 
-    status = uct_ep_am_short(ucp_ep_get_fast_lane(ep, req->send.lane),
-                             req->send.proto.am_id, 0,
-                             req->send.buffer, req->send.length);
+    uct_ep = ucp_ep_get_fast_lane(ep, req->send.lane);
+
+    if (req->send.length > UCP_PUT_PPLN_BCOPY_LIMIT) {
+        packed_len = uct_ep_am_bcopy(uct_ep, req->send.proto.am_id,
+                                     put_ppln_pack_cb, req, 0);
+        if (packed_len > 0) {
+            ucs_assertv_always(packed_len == req->send.length,
+                               "packed_len=%zu req->send.length=%zu",
+                               packed_len, req->send.length);
+            status = UCS_OK;
+        } else {
+            status = (ucs_status_t)packed_len;
+        }
+    } else {
+        status = uct_ep_am_short(uct_ep,
+                                 req->send.proto.am_id, 0xffffffffffffffff,
+                                 req->send.buffer, req->send.length);
+    }
     ucs_trace_req("put ppln send progress req=%p length=%zu status=%d", req,
                   req->send.length, status);
     if (status == UCS_OK) {
@@ -503,6 +552,7 @@ ucp_proto_put_ppln_copy_out_complete(uct_completion_t *self)
     ucp_atp_ppln_final_t *atp_final;
 
     ucs_mpool_put(entry->mem_desc);
+    entry->mem_desc = NULL;
 
     data->frag_done++;
     ucs_trace_req("put ppln copy-out completed frag_done=%d/%d",
@@ -530,11 +580,11 @@ ucp_proto_put_ppln_copy_out_complete(uct_completion_t *self)
 static ucs_status_t
 ucp_am_handler_atp_ppln_final(ucp_atp_ppln_final_t *ppln_final)
 {
-    ucs_status_t status    = UCS_OK;
-    ucp_request_t *request = ppln_final->request;
+    ucp_request_t *request        = ppln_final->request;
+    ucs_status_t status           = UCS_OK;
 
     ucs_trace_req("put ppln: atp ppln_final request=%p", request);
-    ucp_proto_request_zcopy_complete(request, UCS_OK);
+    ucp_put_ppln_complete(request);
     return status;
 }
 
@@ -696,7 +746,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
     size = (char *)p - (char *)rts_ppln_resp;
     ucs_assertv_always(size <= alloc_size,
                        "size=%zu max_ppln_resp=%zu", size, alloc_size);
-    ucs_trace("put ppln rts ppln received: size=%zu", size);
+    ucs_trace("put ppln rts ppln received: sending size=%zu", size);
 
     return ucp_msg_send(worker, ep, UCP_AM_ID_RTS_PPLN_RESP,
                         rts_ppln_resp, size);
@@ -706,8 +756,8 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
                  (am_arg, am_data, am_length, am_flags), void *am_arg,
                  void *am_data, size_t am_length, unsigned am_flags)
 {
-    ucp_rts_ppln_resp_t *rts_ppln_resp = UCS_PTR_BYTE_OFFSET(am_data, 8);
-    ucp_rts_ppln_t *rts_ppln           = &rts_ppln_resp->rts_ppln;
+    ucp_rts_ppln_resp_t *rts_ppln_resp;
+    ucp_rts_ppln_t *rts_ppln;
     int i;
     ucp_mem_desc_t *remote_mem_desc;
     char *p;
@@ -718,11 +768,19 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
     ucp_ep_h ep;
     uint64_t rva;
 
+    if (*(uint64_t*)am_data == 0xffffffffffffffff) {
+        rts_ppln_resp = UCS_PTR_BYTE_OFFSET(am_data, 8);
+    } else {
+        rts_ppln_resp = UCS_PTR_BYTE_OFFSET(am_data, 0);
+    }
+
+    rts_ppln = &rts_ppln_resp->rts_ppln;
+
     ucs_trace_req("put ppln rts ppln response received am_length=%zu "
-                  "ep_id=%lx frag_count=%d md_map=0x%lx req=%p",
+                  "ep_id=%lx frag_count=%d md_map=0x%lx req=%p ctx=%p",
                   am_length, rts_ppln->ep_id,
                   rts_ppln->count, rts_ppln->md_map,
-                  rts_ppln->req);
+                  rts_ppln->req, rts_ppln->req->ctx);
 
     p   = (char *)rts_ppln_resp->packed;
     req = rts_ppln->req;
@@ -740,6 +798,9 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
         ctx[i].remote_mem_desc = remote_mem_desc;
         ctx[i].rva             = rva;
 
+        ucs_trace_req("req=%p i=%u ctx=%p mem_desc=%p",
+                      req, i, &ctx[i], ctx[i].mem_desc);
+
         status = ucp_ep_rkey_unpack(ep, p, &ctx[i].rkey);
         if (status != UCS_OK) {
             ucs_fatal("failed to unpack rendezvous remote key received from %s: %s",
@@ -747,15 +808,15 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
         }
 
         ucs_trace_req("put ppln rts ppln response: unpacking "
-                      "req=%p remote_mem_desc=%p rva=%lx size=%u",
-                      req, remote_mem_desc, ctx[i].rva, size);
+                      "req=%p remote_mem_desc=%p rva=%lx size=%u ctx->mem_desc=%p",
+                      req, remote_mem_desc, ctx[i].rva, size, ctx[i].mem_desc);
 
         p += size;
     }
 
-    ucs_assertv_always(am_length == (p - (char*)rts_ppln_resp) + 8,
+    ucs_assertv_always(am_length == (p - (char*)am_data),
                        "mismatched rts ppln resp am_length=%zu "
-                       "final_size=%zu+8", am_length, (p - (char*)rts_ppln_resp));
+                       "final_size=%zu", am_length, (p - (char*)am_data));
 
     ucp_request_send(req);
     return UCS_OK;
@@ -840,10 +901,10 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
         /* Lookup memtype EP and lane */
         mem_type_rma_lane = ucp_ep_config(mem_type_ep)->key.rma_bw_lanes[0];
 
-        ucs_debug("put ppln for buffer=%p len=%zu frag_size=%zu frag_count=%zu"
-                  "mem_type_ep=%p lane=%u",
+        ucs_debug("put ppln for buffer=%p len=%zu frag_size=%zu frag_count=%zu "
+                  "mem_type_ep=%p lane=%u ctx=%p",
                   dt_iter->type.contig.buffer, dt_iter->length, frag_size, frag_count,
-                  mem_type_ep, mem_type_rma_lane);
+                  mem_type_ep, mem_type_rma_lane, req->ctx);
 
         /* Start all copy-in */
         offset = 0;
@@ -853,6 +914,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
             iovcnt        = 1;
 
             ctx[i].flags           = 0;
+            ctx[i].overall         = 0;
             ctx[i].mem_desc        = ucp_rma_mpool_get(worker);
             ctx[i].remote_mem_desc = NULL;
             ctx[i].comp.func       = ucp_proto_put_ppln_copy_in_complete;
@@ -864,6 +926,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
             ucs_assertv(iov[0].length <= frag_size,
                         "frag_size=%zu iov_length=%zu",
                         frag_size, iov[0].length);
+            ucs_assert(ctx[i].mem_desc != NULL);
 
             status = uct_ep_put_zcopy(ucp_ep_get_lane(mem_type_ep,
                                                       mem_type_rma_lane),
@@ -1030,6 +1093,8 @@ ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
 
         status = uct_ep_put_zcopy(uct_ep, &iov, 1, ctx[i].rva, tl_rkey,
                                   &ctx[i].send_comp);
+        ucs_trace_req("put ppln write req=%p ctx=%p i=%u status=%d",
+                      req, ctx, i, status);
         if ((status != UCS_OK) && (status != UCS_INPROGRESS)) {
             return status;
         }
