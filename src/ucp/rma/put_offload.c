@@ -408,6 +408,7 @@ typedef struct ucp_atp_pppln {
 
     ucp_mem_desc_t *mem_desc;   /* Source for copy-out */
     uint64_t       address;     /* Destination for copy-out */
+    size_t         length;
 } ucp_atp_ppln_t;
 
 static void
@@ -494,11 +495,16 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
 {
     ucp_atp_ppln_t *atp_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
     ucp_worker_h worker      = am_arg;
+    ucp_ep_h mem_type_ep     = worker->mem_type_ep[UCS_MEMORY_TYPE_CUDA];
+    ucp_lane_index_t mem_type_rma_lane;
     ucp_ep_h ep;
     ucp_ep_rma_ppln_data_t *ppln_data;
+    uct_iov_t iov[1] = {};
+    size_t iovcnt;
+    ucs_status_t status;
 
     /* What to copy from/to */
-    ucs_trace_req("put ppln atp ppln received am_length=%zu "
+    ucs_trace_req("put ppln atp_ppln received am_length=%zu "
                   "ep_id=0x%lx req=%p mem_desc=%p address=0x%lx frag_id=%u "
                   "frag_count=%u",
                   am_length, atp_ppln->ep_id, atp_ppln->req, atp_ppln->mem_desc,
@@ -506,7 +512,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
 
     /* Find the corresponding endpoint */
     UCP_WORKER_GET_EP_BY_ID(&ep, worker, atp_ppln->ep_id, {
-                            ucs_error("atp ppln handler: failed to get ep=%lx",
+                            ucs_error("atp_ppln handler: failed to get ep=%lx",
                                       atp_ppln->ep_id);
                             return UCS_ERR_NO_ELEM; }, "atp ppln received");
 
@@ -523,10 +529,25 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
         ppln_data->comp.status = UCS_OK;
     }
 
+    iov[0].buffer = atp_ppln->mem_desc->ptr;
+    iov[0].length = atp_ppln->length;
+    iovcnt        = 1;
 
-    /* Index the fragment */
     /* Start the copy-out */
-    /* Only send completion when the last has been done */
+    mem_type_rma_lane = ucp_ep_config(mem_type_ep)->key.rma_bw_lanes[0];
+    status            = uct_ep_put_zcopy(ucp_ep_get_lane(mem_type_ep,
+                                                         mem_type_rma_lane),
+                                         iov, iovcnt, atp_ppln->address, 
+                                         UCT_INVALID_RKEY, &ppln_data->comp);
+    ucs_trace_req("put ppln atp_ppln copy-out src=%p dst=%p size=%zu req=%p "
+                  "ep=%p", 
+                  iov[0].buffer, (void *)atp_ppln->address, iov[0].length,
+                  ppln_data->request, ppln_data->ep);
+    if (status == UCS_OK) {
+        ucp_proto_put_ppln_copy_out_complete(&ppln_data->comp);
+    } else if (status != UCS_INPROGRESS) {
+        ucs_fatal("put ppln copy-out failed status=%d", status);
+    }
 
     return UCS_OK;
 }
@@ -724,7 +745,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
                                  = req->send.proto_config->priv;
     ucs_status_t status;
     size_t i, offset, frag_count, frag_size;
-    uct_iov_t iov[1];
+    uct_iov_t iov[1] = {};
     size_t iovcnt;
     ucp_lane_index_t mem_type_rma_lane;
     ucp_proto_put_ppln_ctx_t *ctx;
@@ -853,16 +874,17 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
     atp_ppln.req        = req;
     atp_ppln.frag_id    = i;
     atp_ppln.frag_count = req->frag_count;
+    atp_ppln.length     = ctx[i].size;
 
     req->send.lane = ctx[i].lane_idx;
     status = uct_ep_am_short(uct_ep, UCP_AM_ID_ATP_PPLN, 0,
                              &atp_ppln, sizeof(atp_ppln));
     if ((status == UCS_OK) || (status == UCS_INPROGRESS)) {
         ucs_trace_req("put atp ppln req=%p ep_id=0x%lx frag_id=%u frag_count=%u "
-                      "address=0x%lx mem_desc=%p",
+                      "address=0x%lx size=%zu mem_desc=%p",
                       req, atp_ppln.ep_id, atp_ppln.frag_id,
                       atp_ppln.frag_count,
-                      atp_ppln.address, atp_ppln.mem_desc);
+                      atp_ppln.address, ctx[i].size, atp_ppln.mem_desc);
     }
 
     return status;
