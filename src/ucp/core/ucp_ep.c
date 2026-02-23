@@ -228,6 +228,7 @@ static ucp_ep_h ucp_ep_allocate(ucp_worker_h worker, const char *peer_name)
     ep->ext->ka_last_round                = 0;
 #endif
     ep->ext->peer_mem                     = NULL;
+    ep->ext->rma_ppln                     = NULL;
     ep->ext->unflushed_lanes              = 0;
     ep->ext->fence_seq                    = 0;
     ep->ext->uct_eps                      = NULL;
@@ -286,6 +287,53 @@ void ucp_ep_peer_mem_destroy(ucp_context_h context,
     ucs_assertv(status == UCS_OK, "%s", ucs_status_string(status));
 
     ucp_rkey_destroy(ppln_data->rkey);
+}
+
+__KHASH_IMPL(ucp_ep_rma_ppln, kh_inline, uint64_t,
+             ucp_ep_rma_ppln_data_t*, 1,
+             kh_int64_hash_func, kh_int64_hash_equal);
+
+ucp_ep_rma_ppln_data_t*
+ucp_ep_rma_ppln_data_get(ucp_ep_h ep, ucp_request_t *remote_request)
+{
+    khash_t(ucp_ep_rma_ppln) *rma_ppln = ep->ext->rma_ppln;
+    ucp_ep_rma_ppln_data_t **data;
+    int ret;
+    khiter_t iter;
+
+    if (ucs_unlikely(rma_ppln == NULL)) {
+        ep->ext->rma_ppln = rma_ppln = kh_init(ucp_ep_rma_ppln);
+    }
+
+    iter = kh_put(ucp_ep_rma_ppln, rma_ppln, (uint64_t)remote_request, &ret);
+    ucs_assert_always(ret != UCS_KH_PUT_FAILED);
+    data = &kh_val(rma_ppln, iter);
+
+    if (ucs_likely(ret == UCS_KH_PUT_KEY_PRESENT)) {
+        ucs_assert_always(*data != NULL);
+        return *data;
+    }
+
+    *data = ucs_malloc(sizeof(**data), "rma_ppln_data");
+    if (*data == NULL) {
+        ucs_fatal("Failed to allocate rma ppln data");
+    }
+    memset(*data, 0, sizeof(**data));
+
+    return *data;
+}
+
+void
+ucp_ep_rma_ppln_data_remove(ucp_ep_h ep, ucp_request_t *remote_request)
+{
+    khash_t(ucp_ep_rma_ppln) *rma_ppln = ep->ext->rma_ppln;
+    khiter_t iter;
+
+    iter = kh_get(ucp_ep_rma_ppln, rma_ppln, (uint64_t)remote_request);
+    if (iter != kh_end(rma_ppln)) {
+        ucs_free(kh_val(rma_ppln, iter));
+        kh_del(ucp_ep_rma_ppln, rma_ppln, iter);
+    }
 }
 
 ucp_ep_peer_mem_data_t*
@@ -520,6 +568,11 @@ void ucp_ep_destroy_base(ucp_ep_h ep)
 
         kh_destroy(ucp_ep_peer_mem_hash, ep->ext->peer_mem);
     }
+
+    if (ep->ext->rma_ppln != NULL) {
+        kh_destroy(ucp_ep_rma_ppln, ep->ext->rma_ppln);
+    }
+
     ucp_ep_deallocate(ep);
 }
 

@@ -482,13 +482,20 @@ ucp_msg_send(ucp_worker_h worker, ucp_ep_h ep, void *payload, size_t length)
     return UCS_OK;
 }
 
+static void
+ucp_proto_put_ppln_copy_out_complete(uct_completion_t *self)
+{
+    (void)self;
+}
+
 UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
                  (am_arg, am_data, am_length, am_flags), void *am_arg,
                  void *am_data, size_t am_length, unsigned am_flags)
 {
     ucp_atp_ppln_t *atp_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
-    ucp_request_t *req;
-    (void)req;
+    ucp_worker_h worker      = am_arg;
+    ucp_ep_h ep;
+    ucp_ep_rma_ppln_data_t *ppln_data;
 
     /* What to copy from/to */
     ucs_trace_req("put ppln atp ppln received am_length=%zu "
@@ -496,6 +503,26 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
                   "frag_count=%u",
                   am_length, atp_ppln->ep_id, atp_ppln->req, atp_ppln->mem_desc,
                   atp_ppln->address, atp_ppln->frag_id, atp_ppln->frag_count);
+
+    /* Find the corresponding endpoint */
+    UCP_WORKER_GET_EP_BY_ID(&ep, worker, atp_ppln->ep_id, {
+                            ucs_error("atp ppln handler: failed to get ep=%lx",
+                                      atp_ppln->ep_id);
+                            return UCS_ERR_NO_ELEM; }, "atp ppln received");
+
+    ppln_data = ucp_ep_rma_ppln_data_get(ep, atp_ppln->req);
+    if (ppln_data->frag_count == 0) {
+        /* First ATP arrived */
+        ppln_data->frag_count  = atp_ppln->frag_count;
+        ppln_data->frag_done   = 0;
+        ppln_data->ep          = ep;
+        ppln_data->request     = atp_ppln->req;
+
+        ppln_data->comp.func   = ucp_proto_put_ppln_copy_out_complete;
+        ppln_data->comp.count  = ppln_data->frag_count;
+        ppln_data->comp.status = UCS_OK;
+    }
+
 
     /* Index the fragment */
     /* Start the copy-out */

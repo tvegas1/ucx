@@ -376,8 +376,29 @@ typedef struct {
     void             *local_ptr;
 } ucp_ep_peer_mem_data_t;
 
-
 KHASH_DECLARE(ucp_ep_peer_mem_hash, uint64_t, ucp_ep_peer_mem_data_t);
+
+typedef struct {
+    /* Number of fragments to copy-out for the request */
+    int              frag_count;
+
+    /* Number of completed copy-out */
+    int              frag_done;
+
+    /* Copy-out global completion */
+    uct_completion_t comp;
+
+    /* Owner endpoint */
+    ucp_ep_h         ep;
+
+    /* Remote request */
+    ucp_request_t    *request;
+} ucp_ep_rma_ppln_data_t;
+
+KHASH_DECLARE(ucp_ep_rma_ppln, uint64_t, ucp_ep_rma_ppln_data_t*);
+ucp_ep_rma_ppln_data_t* ucp_ep_rma_ppln_data_get(ucp_ep_h ep,
+                                                 ucp_request_t *remote_request);
+void ucp_ep_rma_ppln_data_remove(ucp_ep_h ep, ucp_request_t *remote_request);
 
 
 typedef enum {
@@ -527,6 +548,8 @@ typedef struct ucp_ep_ext {
     ucp_request_t                 *close_req;    /* Close protocol request */
     khash_t(ucp_ep_peer_mem_hash) *peer_mem;     /* Hash of remote memory segments
                                                     used by 2-stage ppln rndv proto */
+    khash_t(ucp_ep_rma_ppln)      *rma_ppln;     /* Track RMA copy out */
+
     /* List of requests which are waiting for remote completion */
     ucs_hlist_head_t              proto_reqs;
 #if UCS_ENABLE_ASSERT
