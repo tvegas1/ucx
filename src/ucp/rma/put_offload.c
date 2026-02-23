@@ -411,6 +411,12 @@ typedef struct ucp_atp_pppln {
     size_t         length;
 } ucp_atp_ppln_t;
 
+/* Signal sender all copy-out are ready */
+typedef struct {
+    uint64_t      ep_id;        /* Make it invalid */
+    ucp_request_t *request;     /* Sender request */
+} ucp_atp_ppln_final_t;
+
 static void
 ucp_proto_put_ppln_send_zcopy_complete(uct_completion_t *self)
 {
@@ -442,7 +448,7 @@ ucp_msg_send_progress(uct_pending_req_t *self)
     ucs_status_t status;
 
     status = uct_ep_am_short(ucp_ep_get_fast_lane(ep, req->send.lane),
-                             UCP_AM_ID_RTS_PPLN_RESP, 0,
+                             req->send.proto.am_id, 0,
                              req->send.buffer, req->send.length);
     ucs_trace_req("put ppln send progress req=%p length=%zu status=%d", req,
                   req->send.length, status);
@@ -458,7 +464,8 @@ ucp_msg_send_progress(uct_pending_req_t *self)
 }
 
 static ucs_status_t
-ucp_msg_send(ucp_worker_h worker, ucp_ep_h ep, void *payload, size_t length)
+ucp_msg_send(ucp_worker_h worker, ucp_ep_h ep, uint16_t am_id,
+             void *payload, size_t length)
 {
     ucp_request_t *req;
 
@@ -476,6 +483,7 @@ ucp_msg_send(ucp_worker_h worker, ucp_ep_h ep, void *payload, size_t length)
     req->send.buffer               = payload;
     req->send.length               = length;
     req->send.state.dt_iter.offset = 0;
+    req->send.proto.am_id          = am_id;
     req->send.uct.func             = ucp_msg_send_progress;
     req->send.mem_type             = UCS_MEMORY_TYPE_HOST;
 
@@ -486,7 +494,48 @@ ucp_msg_send(ucp_worker_h worker, ucp_ep_h ep, void *payload, size_t length)
 static void
 ucp_proto_put_ppln_copy_out_complete(uct_completion_t *self)
 {
-    (void)self;
+    ucp_ep_rma_ppln_data_entry_t *entry =
+        ucs_container_of(self, ucp_ep_rma_ppln_data_entry_t, comp);
+    ucp_ep_rma_ppln_data_t *data        = entry->data;
+    ucp_ep_h ep                         = data->ep;
+
+    ucs_status_t status;
+    ucp_atp_ppln_final_t *atp_final;
+
+    ucs_mpool_put(entry->mem_desc);
+
+    data->frag_done++;
+    ucs_trace_req("put ppln copy-out completed frag_done=%d/%d",
+                  data->frag_done, data->frag_count);
+    if (data->frag_done < data->frag_count) {
+        return;
+    }
+
+    atp_final = ucs_malloc(sizeof(*atp_final), "atp_final");
+    if (atp_final == NULL) {
+        ucs_fatal("ppln copy out alloc failed");
+    }
+
+    atp_final->ep_id   = 0;
+    atp_final->request = data->request;
+    status = ucp_msg_send(ep->worker, ep, UCP_AM_ID_ATP_PPLN,
+                          atp_final, sizeof(*atp_final));
+    if (status != UCS_OK) {
+        ucs_fatal("ppln copy out complete failure status=%d", status);
+    }
+
+    ucp_ep_rma_ppln_data_remove(ep, data->request);
+}
+
+static ucs_status_t
+ucp_am_handler_atp_ppln_final(ucp_atp_ppln_final_t *ppln_final)
+{
+    ucs_status_t status    = UCS_OK;
+    ucp_request_t *request = ppln_final->request;
+
+    ucs_trace_req("put ppln: atp ppln_final request=%p", request);
+    ucp_proto_request_zcopy_complete(request, UCS_OK);
+    return status;
 }
 
 UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
@@ -502,6 +551,16 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
     uct_iov_t iov[1] = {};
     size_t iovcnt;
     ucs_status_t status;
+    ucp_ep_rma_ppln_data_entry_t *entry;
+    ucp_atp_ppln_final_t *atp_ppln_final;
+
+    if (atp_ppln->ep_id == 0) {
+        ucs_assert_always((sizeof(*atp_ppln_final) + 8) == am_length);
+        atp_ppln_final = (ucp_atp_ppln_final_t *)atp_ppln;
+        return ucp_am_handler_atp_ppln_final(atp_ppln_final);
+    } 
+
+    ucs_assert_always((sizeof(*atp_ppln) + 8) == am_length);
 
     /* What to copy from/to */
     ucs_trace_req("put ppln atp_ppln received am_length=%zu "
@@ -516,18 +575,22 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
                                       atp_ppln->ep_id);
                             return UCS_ERR_NO_ELEM; }, "atp ppln received");
 
-    ppln_data = ucp_ep_rma_ppln_data_get(ep, atp_ppln->req);
+    ppln_data = ucp_ep_rma_ppln_data_get(ep, atp_ppln->req,
+                                         atp_ppln->frag_count);
     if (ppln_data->frag_count == 0) {
         /* First ATP arrived */
         ppln_data->frag_count  = atp_ppln->frag_count;
         ppln_data->frag_done   = 0;
         ppln_data->ep          = ep;
         ppln_data->request     = atp_ppln->req;
-
-        ppln_data->comp.func   = ucp_proto_put_ppln_copy_out_complete;
-        ppln_data->comp.count  = ppln_data->frag_count;
-        ppln_data->comp.status = UCS_OK;
     }
+
+    entry              = &ppln_data->entry[atp_ppln->frag_id];
+    entry->mem_desc    = atp_ppln->mem_desc;
+    entry->data        = ppln_data;
+    entry->comp.func   = ucp_proto_put_ppln_copy_out_complete;
+    entry->comp.count  = 1;
+    entry->comp.status = UCS_OK;
 
     iov[0].buffer = atp_ppln->mem_desc->ptr;
     iov[0].length = atp_ppln->length;
@@ -538,13 +601,13 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
     status            = uct_ep_put_zcopy(ucp_ep_get_lane(mem_type_ep,
                                                          mem_type_rma_lane),
                                          iov, iovcnt, atp_ppln->address, 
-                                         UCT_INVALID_RKEY, &ppln_data->comp);
+                                         UCT_INVALID_RKEY, &entry->comp);
     ucs_trace_req("put ppln atp_ppln copy-out src=%p dst=%p size=%zu req=%p "
                   "ep=%p", 
                   iov[0].buffer, (void *)atp_ppln->address, iov[0].length,
                   ppln_data->request, ppln_data->ep);
     if (status == UCS_OK) {
-        ucp_proto_put_ppln_copy_out_complete(&ppln_data->comp);
+        ucp_proto_put_ppln_copy_out_complete(&entry->comp);
     } else if (status != UCS_INPROGRESS) {
         ucs_fatal("put ppln copy-out failed status=%d", status);
     }
@@ -635,7 +698,8 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
                        "size=%zu max_ppln_resp=%zu", size, alloc_size);
     ucs_trace("put ppln rts ppln received: size=%zu", size);
 
-    return ucp_msg_send(worker, ep, rts_ppln_resp, size);
+    return ucp_msg_send(worker, ep, UCP_AM_ID_RTS_PPLN_RESP,
+                        rts_ppln_resp, size);
 }
 
 UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,

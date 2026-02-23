@@ -378,26 +378,39 @@ typedef struct {
 
 KHASH_DECLARE(ucp_ep_peer_mem_hash, uint64_t, ucp_ep_peer_mem_data_t);
 
-typedef struct {
-    /* Number of fragments to copy-out for the request */
-    int              frag_count;
+typedef struct ucp_ep_rma_ppln_data ucp_ep_rma_ppln_data_t;
 
-    /* Number of completed copy-out */
-    int              frag_done;
+typedef struct {
+    /* Memory descriptor to release */
+    ucp_mem_desc_t              *mem_desc;
+
+    /* Owner structure */
+    struct ucp_ep_rma_ppln_data *data;
 
     /* Copy-out global completion */
-    uct_completion_t comp;
+    uct_completion_t            comp;
+} ucp_ep_rma_ppln_data_entry_t;
+
+struct ucp_ep_rma_ppln_data {
+    /* Number of fragments to copy-out for the request */
+    int                          frag_count;
+
+    /* Number of completed copy-out */
+    int                          frag_done;
 
     /* Owner endpoint */
-    ucp_ep_h         ep;
+    ucp_ep_h                     ep;
 
     /* Remote request */
-    ucp_request_t    *request;
-} ucp_ep_rma_ppln_data_t;
+    ucp_request_t                *request;
+
+    ucp_ep_rma_ppln_data_entry_t entry[];
+};
 
 KHASH_DECLARE(ucp_ep_rma_ppln, uint64_t, ucp_ep_rma_ppln_data_t*);
 ucp_ep_rma_ppln_data_t* ucp_ep_rma_ppln_data_get(ucp_ep_h ep,
-                                                 ucp_request_t *remote_request);
+                                                 ucp_request_t *remote_request,
+                                                 int frag_count);
 void ucp_ep_rma_ppln_data_remove(ucp_ep_h ep, ucp_request_t *remote_request);
 
 

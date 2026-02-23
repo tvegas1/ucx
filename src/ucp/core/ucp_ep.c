@@ -294,7 +294,8 @@ __KHASH_IMPL(ucp_ep_rma_ppln, kh_inline, uint64_t,
              kh_int64_hash_func, kh_int64_hash_equal);
 
 ucp_ep_rma_ppln_data_t*
-ucp_ep_rma_ppln_data_get(ucp_ep_h ep, ucp_request_t *remote_request)
+ucp_ep_rma_ppln_data_get(ucp_ep_h ep, ucp_request_t *remote_request,
+                         int frag_count)
 {
     khash_t(ucp_ep_rma_ppln) *rma_ppln = ep->ext->rma_ppln;
     ucp_ep_rma_ppln_data_t **data;
@@ -314,7 +315,8 @@ ucp_ep_rma_ppln_data_get(ucp_ep_h ep, ucp_request_t *remote_request)
         return *data;
     }
 
-    *data = ucs_malloc(sizeof(**data), "rma_ppln_data");
+    *data = ucs_malloc(frag_count * sizeof(*(*data)->entry) + sizeof(**data),
+                       "rma_ppln_data");
     if (*data == NULL) {
         ucs_fatal("Failed to allocate rma ppln data");
     }
