@@ -368,13 +368,15 @@ enum {
 /* State tracking for the request */
 enum {
     UCP_PROTO_PUT_PPLN_SENT    = UCS_BIT(0),
-    UCP_PROTO_PUT_PPLN_AM_SENT = UCS_BIT(1)
+    UCP_PROTO_PUT_PPLN_AM_SENT = UCS_BIT(1),
+    UCP_PROTO_PUT_PPLN_PENDING = UCS_BIT(2),
 };
 
 /* Track copy-in */
 typedef struct ucp_proto_put_ppln {
     uct_completion_t comp;      /* copy-in completion */
     uct_completion_t send_comp; /* remote send completion */
+    int              idx;
     int              overall;   /* First fragment tracks overall */
     ucp_mem_desc_t   *mem_desc;
     size_t           size;      /* Size of this fragment */
@@ -434,6 +436,7 @@ ucp_put_ppln_complete(ucp_request_t *req)
     }
 
     ucs_free(req->ctx);
+    ucs_debug("PUT PPLN complete req=%p", req);
     ucp_proto_request_zcopy_complete(req, UCS_OK);
 }
 
@@ -443,8 +446,8 @@ ucp_proto_put_ppln_send_zcopy_complete(uct_completion_t *self)
     ucp_proto_put_ppln_ctx_t *ctx =
         ucs_container_of(self, ucp_proto_put_ppln_ctx_t, send_comp);
 
-    ucs_trace_req("put ppln send zcopy complete ctx=%p req=%p status=%d",
-                  ctx, ctx->req, self->status);
+    ucs_debug("put ppln send zcopy complete ctx=%p idx=%d req=%p status=%d",
+                  ctx, ctx->idx, ctx->req, self->status);
 
     ucs_mpool_put(ctx->mem_desc);
     ctx->mem_desc = NULL;
@@ -456,9 +459,14 @@ ucp_proto_put_ppln_copy_in_complete(uct_completion_t *self)
 {
     ucp_proto_put_ppln_ctx_t *ctx =
         ucs_container_of(self, ucp_proto_put_ppln_ctx_t, comp);
+    ucp_proto_put_ppln_ctx_t *first_ctx = ctx->req->ctx;
 
-    ucs_trace_req("put ppln copy-in complete ctx=%p req=%p status=%d",
-                  ctx, ctx->req, self->status);
+    ucs_debug("put ppln copy-in complete ctx=%p idx=%d req=%p status=%d",
+                  ctx, ctx->idx, ctx->req, self->status);
+
+    if (!(first_ctx[0].flags & UCP_PROTO_PUT_PPLN_PENDING)) {
+        ucp_request_send(ctx->req);
+    }
 }
 
 static size_t
@@ -499,7 +507,7 @@ ucp_msg_send_progress(uct_pending_req_t *self)
                                  req->send.proto.am_id, 0xffffffffffffffff,
                                  req->send.buffer, req->send.length);
     }
-    ucs_trace_req("put ppln send progress req=%p length=%zu status=%d", req,
+    ucs_debug("put ppln send progress req=%p length=%zu status=%d", req,
                   req->send.length, status);
     if (status == UCS_OK) {
         ucs_free(req->send.buffer);
@@ -555,7 +563,7 @@ ucp_proto_put_ppln_copy_out_complete(uct_completion_t *self)
     entry->mem_desc = NULL;
 
     data->frag_done++;
-    ucs_trace_req("put ppln copy-out completed frag_done=%d/%d",
+    ucs_debug("put ppln copy-out completed frag_done=%d/%d",
                   data->frag_done, data->frag_count);
     if (data->frag_done < data->frag_count) {
         return;
@@ -583,7 +591,7 @@ ucp_am_handler_atp_ppln_final(ucp_atp_ppln_final_t *ppln_final)
     ucp_request_t *request        = ppln_final->request;
     ucs_status_t status           = UCS_OK;
 
-    ucs_trace_req("put ppln: atp ppln_final request=%p", request);
+    ucs_debug("put ppln: atp ppln_final request=%p", request);
     ucp_put_ppln_complete(request);
     return status;
 }
@@ -613,7 +621,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
     ucs_assert_always((sizeof(*atp_ppln) + 8) == am_length);
 
     /* What to copy from/to */
-    ucs_trace_req("put ppln atp_ppln received am_length=%zu "
+    ucs_debug("put ppln atp_ppln received am_length=%zu "
                   "ep_id=0x%lx req=%p mem_desc=%p address=0x%lx frag_id=%u "
                   "frag_count=%u",
                   am_length, atp_ppln->ep_id, atp_ppln->req, atp_ppln->mem_desc,
@@ -652,7 +660,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
                                                          mem_type_rma_lane),
                                          iov, iovcnt, atp_ppln->address, 
                                          UCT_INVALID_RKEY, &entry->comp);
-    ucs_trace_req("put ppln atp_ppln copy-out src=%p dst=%p size=%zu req=%p "
+    ucs_debug("put ppln atp_ppln copy-out src=%p dst=%p size=%zu req=%p "
                   "ep=%p", 
                   iov[0].buffer, (void *)atp_ppln->address, iov[0].length,
                   ppln_data->request, ppln_data->ep);
@@ -669,7 +677,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
                  (am_arg, am_data, am_length, am_flags), void *am_arg,
                  void *am_data, size_t am_length, unsigned am_flags)
 {
-    size_t alloc_size = 1024;
+    size_t alloc_size = 32 * 1024;
     ucp_worker_h worker  = am_arg;
     ucp_rts_ppln_t *rts_ppln;
     int i;
@@ -695,7 +703,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
         return UCS_ERR_NO_MEMORY;
     }
 
-    ucs_trace_req("put ppln rts ppln received am_length=%zu "
+    ucs_debug("put ppln rts ppln received am_length=%zu "
                   "ep_id=%lx ep=%p frag_count=%d md_map=0x%lx req=%p",
                   am_length, rts_ppln->ep_id, ep,
                   rts_ppln->count, rts_ppln->md_map,
@@ -736,7 +744,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
             return UCS_ERR_NO_RESOURCE;
         }
 
-        ucs_trace_req("put ppln rts: req=%p pack memh: mem_desc=%p rva=%p packed_size=%zd",
+        ucs_debug("put ppln rts: req=%p pack memh: mem_desc=%p rva=%p packed_size=%zd",
                       rts_ppln->req, mem_desc, mem_desc->ptr, packed_rkey_size);
         ucs_assertv_always(packed_rkey_size <= UCHAR_MAX, "Bad packed size!");
         *size_p = packed_rkey_size;
@@ -776,7 +784,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
 
     rts_ppln = &rts_ppln_resp->rts_ppln;
 
-    ucs_trace_req("put ppln rts ppln response received am_length=%zu "
+    ucs_debug("put ppln rts ppln response received am_length=%zu "
                   "ep_id=%lx frag_count=%d md_map=0x%lx req=%p ctx=%p",
                   am_length, rts_ppln->ep_id,
                   rts_ppln->count, rts_ppln->md_map,
@@ -798,7 +806,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
         ctx[i].remote_mem_desc = remote_mem_desc;
         ctx[i].rva             = rva;
 
-        ucs_trace_req("req=%p i=%u ctx=%p mem_desc=%p",
+        ucs_debug("req=%p i=%u ctx=%p mem_desc=%p",
                       req, i, &ctx[i], ctx[i].mem_desc);
 
         status = ucp_ep_rkey_unpack(ep, p, &ctx[i].rkey);
@@ -807,7 +815,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
                       ucp_ep_peer_name(ep), ucs_status_string(status));
         }
 
-        ucs_trace_req("put ppln rts ppln response: unpacking "
+        ucs_debug("put ppln rts ppln response: unpacking "
                       "req=%p remote_mem_desc=%p rva=%lx size=%u ctx->mem_desc=%p",
                       req, remote_mem_desc, ctx[i].rva, size, ctx[i].mem_desc);
 
@@ -832,7 +840,7 @@ UCP_DEFINE_AM_WITH_PROXY(UCP_FEATURE_AM | UCP_FEATURE_RMA, UCP_AM_ID_RTS_PPLN_RE
 static void
 ucp_proto_put_ppln_completion(uct_completion_t *self)
 {
-    ucs_trace_req("put ppln rts ppln request completed");
+    ucs_debug("put ppln rts ppln request completed");
 }
 
 static ucp_md_map_t
@@ -913,6 +921,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
             iov[0].length = ucs_min(frag_size, dt_iter->length - offset);
             iovcnt        = 1;
 
+            ctx[i].idx             = i;
             ctx[i].flags           = 0;
             ctx[i].overall         = 0;
             ctx[i].mem_desc        = ucp_rma_mpool_get(worker);
@@ -952,11 +961,17 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     /* Request for buffer while copy-in is being done */
     if (status == UCS_OK) {
         ucp_proto_request_set_stage(req, UCP_PROTO_PUT_PPLN_WRITE);
-        ucs_trace_req("req=%p moving to put_ppln_write stage", req);
+        ucs_debug("req=%p moving to put_ppln_write stage", req);
     } else {
-        ucs_trace_req("req=%p put ppln RTS_PPLN status=%d", req, status);
+        ucs_debug("req=%p put ppln RTS_PPLN status=%d", req, status);
     }
 
+    ctx = req->ctx;
+    if (status == UCS_ERR_NO_RESOURCE) {
+        ctx[0].flags |= UCP_PROTO_PUT_PPLN_PENDING;
+    } else {
+        ctx[0].flags &= ~UCP_PROTO_PUT_PPLN_PENDING;
+    }
     return status;
 
 out_abort:
@@ -991,6 +1006,9 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
 
     uct_ep = ucp_ep_get_lane(req->send.ep, ctx[i].lane_idx);
 
+    status = uct_ep_fence(uct_ep, 0);
+    ucs_assertv_always(status == UCS_OK, "fence status=%d", status);
+
     /* What to copy from/to */
     atp_ppln.mem_desc   = ctx[i].remote_mem_desc;
     atp_ppln.address    = req->send.rma.remote_addr +
@@ -1007,7 +1025,7 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
     status = uct_ep_am_short(uct_ep, UCP_AM_ID_ATP_PPLN, 0,
                              &atp_ppln, sizeof(atp_ppln));
     if ((status == UCS_OK) || (status == UCS_INPROGRESS)) {
-        ucs_trace_req("put atp ppln req=%p ep_id=0x%lx frag_id=%u frag_count=%u "
+        ucs_debug("put atp ppln req=%p ep_id=0x%lx frag_id=%u frag_count=%u "
                       "address=0x%lx size=%zu mem_desc=%p",
                       req, atp_ppln.ep_id, atp_ppln.frag_id,
                       atp_ppln.frag_count,
@@ -1049,24 +1067,32 @@ ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
     ucp_md_index_t rkey_index;
     uct_ep_h uct_ep;
 
-    ucs_trace_req("put ppln write req=%p", req);
+    ucs_debug("put ppln write req=%p", req);
 
     mpriv = req->send.proto_config->priv;
 
     /* Post all ready transfers and retry if transport is not ready */
     for (i = 0; i < req->frag_count; i++) {
+        if ((ctx[i].flags & UCP_PROTO_PUT_PPLN_SENT)) {
+            continue;
+        }
+
         if (ctx[i].remote_mem_desc == NULL) {
             /* Did not receive the information for remote bounce buf */
             continue;
         }
 
-        if ((ctx[i].flags & UCP_PROTO_PUT_PPLN_SENT)) {
+        lane_idx       = req->send.multi_lane_idx;
+        req->send.lane = lane_idx;                 /* For pending queueing */
+        lpriv          = &mpriv->lanes[lane_idx];
+
+        /* Wait for copy-in to complete */
+        if (ctx[i].comp.count == 1) {
             continue;
         }
 
-        req->send.lane = lane_idx;                 /* For pending queueing */
-        lane_idx       = req->send.multi_lane_idx;
-        lpriv          = &mpriv->lanes[lane_idx];
+        ucs_assertv_always(ctx[i].comp.count == 0, "copy_in_count=%u",
+                           ctx[i].comp.count);
 
         /* Sender bounce buffer */
         iov.buffer = ctx[i].mem_desc->ptr;
@@ -1093,16 +1119,16 @@ ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
 
         status = uct_ep_put_zcopy(uct_ep, &iov, 1, ctx[i].rva, tl_rkey,
                                   &ctx[i].send_comp);
-        ucs_trace_req("put ppln write req=%p ctx=%p i=%u status=%d",
+        ucs_debug("put ppln write req=%p ctx=%p i=%u status=%d",
                       req, ctx, i, status);
         if ((status != UCS_OK) && (status != UCS_INPROGRESS)) {
-            return status;
+            goto done;
         }
 
         /* Signaling must be done on the same lane */
         ctx[i].lane_idx = lane_idx;
         ctx[i].flags   |= UCP_PROTO_PUT_PPLN_SENT;
-        ucs_trace_req("put ppln write req=%p i=%d lane_idx=%u va=%p rva=0x%lx",
+        ucs_debug("put ppln write req=%p i=%d lane_idx=%u va=%p rva=0x%lx",
                       req, i, lane_idx, iov.buffer, ctx[i].rva);
 
         ucp_proto_multi_advance_lane_idx(req, mpriv->num_lanes, lane_shift);
@@ -1114,18 +1140,21 @@ ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
             continue;
         }
 
-        status = uct_ep_fence(uct_ep, 0);
-        ucs_assertv_always(status == UCS_OK, "fence status=%d", status);
-
         status = ucp_put_ppln_send_signal(req, i);
         if ((status != UCS_OK) && (status != UCS_INPROGRESS)) {
-            ucs_trace_req("put ppln write req=%p i=%d signal", req, i);
-            return status;
+            ucs_debug("put ppln write req=%p i=%d signal", req, i);
+            goto done;
         }
 
         ctx[i].flags |= UCP_PROTO_PUT_PPLN_AM_SENT;
     }
 
+done:
+    if (status == UCS_ERR_NO_RESOURCE) {
+        ctx[0].flags |= UCP_PROTO_PUT_PPLN_PENDING;
+    } else {
+        ctx[0].flags &= ~UCP_PROTO_PUT_PPLN_PENDING;
+    }
     return status;
 }
 

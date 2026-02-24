@@ -134,10 +134,6 @@ protected:
                 continue;
             }
 
-            if (!UCP_MEM_IS_HOST(pairs[i][0]) ||
-                !UCP_MEM_IS_HOST(pairs[i][1])) {
-                continue;
-            }
             test_message_sizes(send_func, min_size, max_size, pairs[i][0],
                                pairs[i][1], 0);
         }
