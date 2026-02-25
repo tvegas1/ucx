@@ -1082,9 +1082,9 @@ ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
             continue;
         }
 
-        lane_idx       = req->send.multi_lane_idx;
-        req->send.lane = lane_idx;                 /* For pending queueing */
-        lpriv          = &mpriv->lanes[lane_idx];
+        lpriv          = &mpriv->lanes[req->send.multi_lane_idx];
+        req->send.lane = lpriv->super.lane;  /* For pending queueing */
+        lane_idx       = lpriv->super.lane;
 
         /* Wait for copy-in to complete */
         if (ctx[i].comp.count == 1) {
@@ -1103,14 +1103,14 @@ ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self)
         iov.stride = 0;
         iov.count  = 1;
 
+        ucs_assertv_always(lane_idx == lpriv->super.lane,
+                           "lane_idx=%u lpriv_super_lane=%u",
+                           lane_idx, lpriv->super.lane);
+
         /* Receiver bounce buffer with unpacked rkey */
         rkey_index = ucp_put_ppln_get_rkey_index(req, ctx[i].rkey, lane_idx);
         tl_rkey    = ucp_rkey_get_tl_rkey(ctx[i].rkey, rkey_index);
         uct_ep     = ucp_ep_get_lane(ep, lpriv->super.lane);
-
-        ucs_assertv_always(lane_idx == lpriv->super.lane,
-                           "lane_idx=%u lpriv_super_lane=%u",
-                           lane_idx, lpriv->super.lane);
 
         /* Release mem_desc after usage */
         ctx[i].send_comp.status = UCS_OK;
