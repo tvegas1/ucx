@@ -809,7 +809,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
         ucs_debug("req=%p i=%u ctx=%p mem_desc=%p",
                       req, i, &ctx[i], ctx[i].mem_desc);
 
-        status = ucp_ep_rkey_unpack(ep, p, &ctx[i].rkey);
+        status = ucp_ep_rkey_unpack_reachable(ep, p, size, &ctx[i].rkey);
         if (status != UCS_OK) {
             ucs_fatal("failed to unpack rendezvous remote key received from %s: %s",
                       ucp_ep_peer_name(ep), ucs_status_string(status));
