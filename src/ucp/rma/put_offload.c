@@ -330,6 +330,8 @@ ucp_proto_put_offload_zcopy_probe(const ucp_proto_init_params_t *init_params)
     ucp_proto_multi_probe(&params);
 }
 
+static ucs_memory_type_t frag_mem_type = UCS_MEMORY_TYPE_HOST;
+
 static void
 ucp_proto_put_offload_zcopy_ppln_probe(const ucp_proto_init_params_t *init_params)
 {
@@ -372,6 +374,22 @@ ucp_proto_put_offload_zcopy_ppln_probe(const ucp_proto_init_params_t *init_param
     const ucp_proto_select_param_t *select_param = init_params->select_param;
     const ucp_rkey_config_key_t *rkey_config_key = init_params->rkey_config_key;
 
+    const char *mode = getenv("UCX_RMA_PPLN");
+    if (mode) {
+        if (!strcmp(mode, "disabled")) {
+            ucs_warn("Disabled UCX RMA PPLN");
+            return;
+        } else if (!strcmp(mode, "host_frag")) {
+            ucs_warn("Using HOST fragment");
+            frag_mem_type = UCS_MEMORY_TYPE_HOST;
+        } else if (!strcmp(mode, "cuda_frag")) {
+            ucs_warn("Using CUDA fragment");
+            frag_mem_type = UCS_MEMORY_TYPE_CUDA;
+        } else {
+            ucs_fatal("UCX_RMA_PPLM=<host_frag|cuda_frag|disabled>");
+        }
+    }
+
     /* Exclude intra-node and self: only use for inter-node */
     if (!ucp_ep_config_is_inter_node(init_params->ep_config_key)) {
         return;
@@ -405,14 +423,14 @@ ucp_proto_t ucp_put_offload_zcopy_proto = {
 ucp_mem_desc_t *
 ucp_rma_mpool_get(ucp_worker_h worker)
 {
-    return ucp_rndv_mpool_get(worker, UCS_MEMORY_TYPE_HOST,
-                              UCS_SYS_DEVICE_ID_UNKNOWN);
+    return ucp_rndv_mpool_get(worker, frag_mem_type,
+        (frag_mem_type == UCS_MEMORY_TYPE_HOST?  UCS_SYS_DEVICE_ID_UNKNOWN : 0));
 }
 
 static size_t
 ucp_rma_mpool_frag_size(ucp_worker_h worker)
 {
-    return worker->context->config.ext.rndv_frag_size[UCS_MEMORY_TYPE_HOST];
+    return worker->context->config.ext.rndv_frag_size[frag_mem_type];
 }
 
 enum {
@@ -780,8 +798,9 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
         size_p = p;
         p += sizeof(*size_p);
 
-        mem_info.type    = UCS_MEMORY_TYPE_HOST;
-        mem_info.sys_dev = UCS_SYS_DEVICE_ID_UNKNOWN;
+        mem_info.type    = frag_mem_type;
+        mem_info.sys_dev = (frag_mem_type == UCS_MEMORY_TYPE_HOST?
+            UCS_SYS_DEVICE_ID_UNKNOWN : 0);
         packed_rkey_size = ucp_rkey_pack_memh(
                                       worker->context,
                                       rts_ppln->md_map,
