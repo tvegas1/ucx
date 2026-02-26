@@ -121,8 +121,8 @@ protected:
         return 100;
     }
 
-    void test_mem_types(send_func_t send_func, size_t min_size = 256 *UCS_KBYTE,
-                        size_t max_size = 256 * UCS_KBYTE) {
+    void test_mem_types(send_func_t send_func, size_t min_size = 128,
+                        size_t max_size = default_max_size()) {
         const std::vector<std::vector<ucs_memory_type_t> >& pairs =
                 ucs::supported_mem_type_pairs();
 

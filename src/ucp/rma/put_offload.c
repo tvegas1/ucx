@@ -17,6 +17,8 @@
 #include <ucp/proto/proto_multi.inl>
 #include <ucp/proto/proto_single.inl>
 
+#define GTEST_MODE 0
+
 static ucs_status_t ucp_proto_put_offload_short_progress(uct_pending_req_t *self)
 {
     ucp_request_t *req                   = ucs_container_of(self, ucp_request_t,
@@ -323,6 +325,9 @@ ucp_proto_put_offload_zcopy_probe(const ucp_proto_init_params_t *init_params)
         .opt_align_offs      = UCP_PROTO_COMMON_OFFSET_INVALID,
     };
 
+#if GTEST_MODE == 1
+    return;
+#endif
     if (!ucp_proto_init_check_op(init_params, UCS_BIT(UCP_OP_ID_PUT))) {
         return;
     }
@@ -390,6 +395,7 @@ ucp_proto_put_offload_zcopy_ppln_probe(const ucp_proto_init_params_t *init_param
         }
     }
 
+#if GTEST_MODE == 0
     /* Exclude intra-node and self: only use for inter-node */
     if (!ucp_ep_config_is_inter_node(init_params->ep_config_key)) {
         return;
@@ -401,6 +407,10 @@ ucp_proto_put_offload_zcopy_ppln_probe(const ucp_proto_init_params_t *init_param
         !UCP_MEM_IS_CUDA(rkey_config_key->mem_type)) {
         return;
     }
+#else
+    (void)select_param;
+    (void)rkey_config_key;
+#endif
 
     if (!ucp_proto_init_check_op(init_params, UCS_BIT(UCP_OP_ID_PUT))) {
         return;
@@ -509,7 +519,8 @@ ucp_put_ppln_complete(ucp_request_t *req)
     }
 
     ucs_free(req->ctx);
-    ucs_debug("PUT PPLN complete req=%p", req);
+    ucs_debug("PUT PPLN complete req=%p ep=%p", req, req->send.ep);
+    ucp_ep_rma_remote_request_completed(req->send.ep);
     ucp_proto_request_zcopy_complete(req, UCS_OK);
 }
 
@@ -636,8 +647,8 @@ ucp_proto_put_ppln_copy_out_complete(uct_completion_t *self)
     entry->mem_desc = NULL;
 
     data->frag_done++;
-    ucs_debug("put ppln copy-out completed frag_done=%d/%d",
-                  data->frag_done, data->frag_count);
+    ucs_debug("put ppln copy-out completed req=%p frag_done=%d/%d",
+                  data->request, data->frag_done, data->frag_count);
     if (data->frag_done < data->frag_count) {
         return;
     }
@@ -965,6 +976,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     if (!(req->flags & UCP_REQUEST_FLAG_PROTO_INITIALIZED)) {
         req->send.multi_lane_idx = 0;
 
+
         /* Make sure buffers are registered for read */
         status = ucp_proto_request_zcopy_init(req, mpriv->reg_md_map,
                                               ucp_proto_put_ppln_completion,
@@ -983,9 +995,9 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
         /* Lookup memtype EP and lane */
         mem_type_rma_lane = ucp_ep_config(mem_type_ep)->key.rma_bw_lanes[0];
 
-        ucs_debug("put ppln for buffer=%p len=%zu frag_size=%zu frag_count=%zu "
+        ucs_debug("put ppln req=%p for buffer=%p len=%zu frag_size=%zu frag_count=%zu "
                   "mem_type_ep=%p lane=%u ctx=%p",
-                  dt_iter->type.contig.buffer, dt_iter->length, frag_size, frag_count,
+                  req, dt_iter->type.contig.buffer, dt_iter->length, frag_size, frag_count,
                   mem_type_ep, mem_type_rma_lane, req->ctx);
 
         /* Start all copy-in */
@@ -1033,8 +1045,10 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
                                       &rts_ppln, sizeof(rts_ppln));
 
     /* Request for buffer while copy-in is being done */
-    if (status == UCS_OK) {
+    if ((status == UCS_OK) || (status == UCS_INPROGRESS)) {
         ucp_proto_request_set_stage(req, UCP_PROTO_PUT_PPLN_WRITE);
+        ucp_worker_flush_ops_count_add(ep->worker, +1);
+        ucp_ep_rma_remote_request_sent(ep); // Force flush to wait
         ucs_debug("req=%p moving to put_ppln_write stage", req);
     } else {
         ucs_debug("req=%p put ppln RTS_PPLN status=%d", req, status);
