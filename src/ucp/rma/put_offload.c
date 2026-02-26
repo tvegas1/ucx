@@ -369,9 +369,18 @@ ucp_proto_put_offload_zcopy_ppln_probe(const ucp_proto_init_params_t *init_param
         .middle.lane_type    = UCP_LANE_TYPE_RMA_BW,
         .opt_align_offs      = UCP_PROTO_COMMON_OFFSET_INVALID,
     };
+    const ucp_proto_select_param_t *select_param = init_params->select_param;
+    const ucp_rkey_config_key_t *rkey_config_key = init_params->rkey_config_key;
 
     /* Exclude intra-node and self: only use for inter-node */
     if (!ucp_ep_config_is_inter_node(init_params->ep_config_key)) {
+        return;
+    }
+
+    /* Only CUDA to CUDA */
+    if (!UCP_MEM_IS_CUDA(select_param->mem_type) ||
+        (rkey_config_key == NULL) ||
+        !UCP_MEM_IS_CUDA(rkey_config_key->mem_type)) {
         return;
     }
 
