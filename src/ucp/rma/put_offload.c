@@ -17,8 +17,6 @@
 #include <ucp/proto/proto_multi.inl>
 #include <ucp/proto/proto_single.inl>
 
-#define GTEST_MODE 0
-
 static ucs_status_t ucp_proto_put_offload_short_progress(uct_pending_req_t *self)
 {
     ucp_request_t *req                   = ucs_container_of(self, ucp_request_t,
@@ -337,6 +335,47 @@ ucp_proto_put_offload_zcopy_probe(const ucp_proto_init_params_t *init_params)
 
 static ucs_memory_type_t frag_mem_type = UCS_MEMORY_TYPE_HOST;
 
+int ucp_proto_rma_ppln_env_and_check(const ucp_proto_init_params_t *init_params)
+{
+    const ucp_proto_select_param_t *select_param = init_params->select_param;
+    const ucp_rkey_config_key_t *rkey_config_key = init_params->rkey_config_key;
+
+    const char *mode = getenv("UCX_RMA_PPLN");
+    if (mode) {
+        if (!strcmp(mode, "disabled")) {
+            ucs_warn("Disabled UCX RMA PPLN");
+            return 0;
+        } else if (!strcmp(mode, "host_frag")) {
+            ucs_warn("Using HOST fragment");
+            frag_mem_type = UCS_MEMORY_TYPE_HOST;
+        } else if (!strcmp(mode, "cuda_frag")) {
+            ucs_warn("Using CUDA fragment");
+            frag_mem_type = UCS_MEMORY_TYPE_CUDA;
+        } else {
+            ucs_fatal("UCX_RMA_PPLM=<host_frag|cuda_frag|disabled>");
+        }
+    }
+
+#if GTEST_MODE == 0
+    /* Exclude intra-node and self: only use for inter-node */
+    if (!ucp_ep_config_is_inter_node(init_params->ep_config_key)) {
+        return 0;
+    }
+
+    /* Only CUDA to CUDA */
+    if (!UCP_MEM_IS_CUDA(select_param->mem_type) ||
+        (rkey_config_key == NULL) ||
+        !UCP_MEM_IS_CUDA(rkey_config_key->mem_type)) {
+        return 0;
+    }
+#else
+    (void)select_param;
+    (void)rkey_config_key;
+#endif
+
+    return 1;
+}
+
 static void
 ucp_proto_put_offload_zcopy_ppln_probe(const ucp_proto_init_params_t *init_params)
 {
@@ -360,7 +399,7 @@ ucp_proto_put_offload_zcopy_ppln_probe(const ucp_proto_init_params_t *init_param
         .super.memtype_op    = UCT_EP_OP_LAST,
         .super.flags         = UCP_PROTO_COMMON_INIT_FLAG_SEND_ZCOPY    |
                                UCP_PROTO_COMMON_INIT_FLAG_RECV_ZCOPY    |
-                               UCP_PROTO_COMMON_INIT_FLAG_REMOTE_ACCESS |
+                               /* UCP_PROTO_COMMON_INIT_FLAG_REMOTE_ACCESS | */
                                UCP_PROTO_COMMON_INIT_FLAG_ERR_HANDLING,
         .super.exclude_map   = 0,
         .super.reg_mem_info  = ucp_proto_common_select_param_mem_info(
@@ -376,41 +415,10 @@ ucp_proto_put_offload_zcopy_ppln_probe(const ucp_proto_init_params_t *init_param
         .middle.lane_type    = UCP_LANE_TYPE_RMA_BW,
         .opt_align_offs      = UCP_PROTO_COMMON_OFFSET_INVALID,
     };
-    const ucp_proto_select_param_t *select_param = init_params->select_param;
-    const ucp_rkey_config_key_t *rkey_config_key = init_params->rkey_config_key;
 
-    const char *mode = getenv("UCX_RMA_PPLN");
-    if (mode) {
-        if (!strcmp(mode, "disabled")) {
-            ucs_warn("Disabled UCX RMA PPLN");
-            return;
-        } else if (!strcmp(mode, "host_frag")) {
-            ucs_warn("Using HOST fragment");
-            frag_mem_type = UCS_MEMORY_TYPE_HOST;
-        } else if (!strcmp(mode, "cuda_frag")) {
-            ucs_warn("Using CUDA fragment");
-            frag_mem_type = UCS_MEMORY_TYPE_CUDA;
-        } else {
-            ucs_fatal("UCX_RMA_PPLM=<host_frag|cuda_frag|disabled>");
-        }
-    }
-
-#if GTEST_MODE == 0
-    /* Exclude intra-node and self: only use for inter-node */
-    if (!ucp_ep_config_is_inter_node(init_params->ep_config_key)) {
+    if (!ucp_proto_rma_ppln_env_and_check(init_params)) {
         return;
     }
-
-    /* Only CUDA to CUDA */
-    if (!UCP_MEM_IS_CUDA(select_param->mem_type) ||
-        (rkey_config_key == NULL) ||
-        !UCP_MEM_IS_CUDA(rkey_config_key->mem_type)) {
-        return;
-    }
-#else
-    (void)select_param;
-    (void)rkey_config_key;
-#endif
 
     if (!ucp_proto_init_check_op(init_params, UCS_BIT(UCP_OP_ID_PUT))) {
         return;
@@ -437,7 +445,7 @@ ucp_rma_mpool_get(ucp_worker_h worker)
         (frag_mem_type == UCS_MEMORY_TYPE_HOST?  UCS_SYS_DEVICE_ID_UNKNOWN : 0));
 }
 
-static size_t
+size_t
 ucp_rma_mpool_frag_size(ucp_worker_h worker)
 {
     return worker->context->config.ext.rndv_frag_size[frag_mem_type];
@@ -472,14 +480,6 @@ typedef struct ucp_proto_put_ppln {
     uint64_t         rva;       /* Remote bounce-buffer address */
     ucp_rkey_h       rkey;      /* Remote bounce-buffer for RDMA */
 } ucp_proto_put_ppln_ctx_t;
-
-/* Request for remote buffers */
-typedef struct ucp_rts_ppln {
-    uint64_t      ep_id;
-    ucp_request_t *req;
-    int           count;
-    ucp_md_map_t  md_map;
-} ucp_rts_ppln_t;
 
 typedef struct ucp_rts_ppln_resp {
     ucp_rts_ppln_t rts_ppln;
@@ -759,13 +759,11 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
     return UCS_OK;
 }
 
-UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
-                 (am_arg, am_data, am_length, am_flags), void *am_arg,
-                 void *am_data, size_t am_length, unsigned am_flags)
+ucs_status_t
+ucp_proto_rma_ppln_send_rts_resp(ucp_worker_h worker, ucp_ep_h ep,
+                                 ucp_rts_ppln_t *rts_ppln)
 {
     size_t alloc_size = 32 * 1024;
-    ucp_worker_h worker  = am_arg;
-    ucp_rts_ppln_t *rts_ppln;
     int i;
     ucp_memory_info_t mem_info;
     ucp_rts_ppln_resp_t *rts_ppln_resp;
@@ -773,27 +771,13 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
     ucp_mem_desc_t *mem_desc;
     ssize_t packed_rkey_size;
     size_t size;
-    ucp_ep_h ep;
     uint8_t *size_p;
-
-    rts_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
-
-    UCP_WORKER_GET_EP_BY_ID(&ep, worker, rts_ppln->ep_id, {
-                            ucs_error("rts ppln handler: failed to get ep=%lx",
-                                      rts_ppln->ep_id);
-                            return UCS_ERR_NO_ELEM; }, "rts ppln received");
 
     rts_ppln_resp = ucs_malloc(alloc_size, "rts_ppln_resp");
     if (rts_ppln_resp == NULL) {
         ucs_error("Failed to allocate rts_ppln_resp");
         return UCS_ERR_NO_MEMORY;
     }
-
-    ucs_debug("put ppln rts ppln received am_length=%zu "
-                  "ep_id=%lx ep=%p frag_count=%d md_map=0x%lx req=%p",
-                  am_length, rts_ppln->ep_id, ep,
-                  rts_ppln->count, rts_ppln->md_map,
-                  rts_ppln->req);
 
     rts_ppln_resp->rts_ppln = *rts_ppln;
     p = (void*)(rts_ppln_resp + 1);
@@ -831,8 +815,10 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
             return UCS_ERR_NO_RESOURCE;
         }
 
-        ucs_debug("put ppln rts: req=%p pack memh: mem_desc=%p rva=%p packed_size=%zd",
-                      rts_ppln->req, mem_desc, mem_desc->ptr, packed_rkey_size);
+        ucs_debug("put ppln rts ppln resp prepare: ep_id=0x%lx req=%p "
+                  "pack memh: mem_desc=%p rva=%p packed_size=%zd",
+                  rts_ppln->ep_id, rts_ppln->req, mem_desc, mem_desc->ptr,
+                  packed_rkey_size);
         ucs_assertv_always(packed_rkey_size <= UCHAR_MAX, "Bad packed size!");
         *size_p = packed_rkey_size;
         p      += packed_rkey_size;
@@ -847,10 +833,158 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
                         rts_ppln_resp, size);
 }
 
+UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
+                 (am_arg, am_data, am_length, am_flags), void *am_arg,
+                 void *am_data, size_t am_length, unsigned am_flags)
+{
+    ucp_rts_ppln_t *rts_ppln;
+    ucp_worker_h worker  = am_arg;
+    ucp_ep_h ep;
+
+    rts_ppln = UCS_PTR_BYTE_OFFSET(am_data, 8);
+
+    UCP_WORKER_GET_EP_BY_ID(&ep, worker, rts_ppln->ep_id, {
+                            ucs_error("rts ppln handler: failed to get ep=%lx",
+                                      rts_ppln->ep_id);
+                            return UCS_ERR_NO_ELEM; }, "rts ppln received");
+
+    ucs_debug("put ppln rts ppln received am_length=%zu "
+                  "ep_id=%lx ep=%p frag_count=%d md_map=0x%lx req=%p",
+                  am_length, rts_ppln->ep_id, ep,
+                  rts_ppln->count, rts_ppln->md_map,
+                  rts_ppln->req);
+
+    rts_ppln->ep_id = 0; /* It's not a self initiated rts_resp */
+    return ucp_proto_rma_ppln_send_rts_resp(worker, ep, rts_ppln);
+}
+
+static ucs_status_t
+ucp_proto_put_offload_zcopy_lookup(ucp_worker_h worker, ucp_ep_h ep,
+                                   ucp_request_t *req, size_t length)
+{
+    ucp_ep_config_t *ep_config = ucp_ep_config(ep);
+    ucp_proto_select_param_t sel_param;
+    ucs_status_t status;
+
+    ucp_proto_select_param_init(&sel_param, UCP_OP_ID_PUT, 0, 0,
+                                req->send.state.dt_iter.dt_class,
+                                &req->send.state.dt_iter.mem_info, 1);
+
+    ucp_proto_request_send_init(req, ep, 0);
+    status = ucp_proto_request_lookup_proto(worker, ep, req,
+                                            &ep_config->proto_select,
+                                            UCP_WORKER_CFG_INDEX_NULL,
+                                            &sel_param, length);
+    return status;
+}
+
+static void
+ucp_proto_put_ppln_completion(uct_completion_t *self)
+{
+    ucs_debug("put ppln rts ppln request completed");
+}
+
+static ucs_status_t
+ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self);
+
+static void
+ucp_proto_rma_ppln_request_init(ucp_request_t *req, void *buffer, size_t length)
+{
+    ucp_worker_h worker = req->send.ep->worker;
+    size_t frag_size  = ucp_rma_mpool_frag_size(worker);
+    size_t frag_count = (length + frag_size - 1) / frag_size;
+    ucp_proto_put_ppln_ctx_t *ctx;
+    size_t i, offset;
+
+    ucs_debug("put ppln req=%p for buffer=%p len=%zu frag_size=%zu frag_count=%zu "
+              "ctx=%p",
+              req, buffer, length, frag_size, frag_count, req->ctx);
+
+    req->send.multi_lane_idx = 0;
+    req->frag_count          = frag_count;
+
+
+    ctx      = ucs_malloc(sizeof(*ctx) * frag_count, "");
+    req->ctx = ctx;
+    if (ctx == NULL) {
+        ucs_fatal("failed to allocat copy-in context");
+    }
+    offset = 0;
+    for (i = 0; i < frag_count; i++, offset += frag_size) {
+        ctx[i].idx             = i;
+        ctx[i].start_copy_in   = 0;
+        ctx[i].flags           = 0;
+        ctx[i].overall         = 0;
+        ctx[i].mem_desc        = ucp_rma_mpool_get(worker);
+        ctx[i].remote_mem_desc = NULL;
+        ctx[i].comp.func       = ucp_proto_put_ppln_copy_in_complete;
+        ctx[i].comp.count      = 1;
+        ctx[i].comp.status     = UCS_OK;
+        ctx[i].req             = req;
+        ctx[i].size            = ucs_min(frag_size, length - offset);
+    }
+}
+
+static ucp_request_t *
+ucp_proto_rma_ppln_request_create(ucp_worker_h worker, ucp_rts_ppln_t *rts_ppln)
+{
+    ucp_request_t *req           = ucp_request_get(worker);
+    ucp_datatype_iter_t *dt_iter = &req->send.state.dt_iter;
+    ucp_ep_h ep;
+    ucs_status_t status;
+    const ucp_proto_multi_priv_t *mpriv;
+
+    if (req == NULL) {
+        ucs_fatal("get-ppln req allocation failure");
+    }
+
+    UCP_WORKER_GET_EP_BY_ID(&ep, worker, rts_ppln->ep_id, {
+                    ucs_error("rts_ppln create for GET: failed to get ep=%lx",
+                              rts_ppln->ep_id);
+                    return NULL; }, "rts ppln create for GET");
+
+    req->flags                       = 0;
+    req->send.lane                   = ucp_ep_get_am_lane(ep);
+    req->send.ep                     = ep;
+    req->send.uct.func               = ucp_msg_send_progress;
+    req->send.state.dt_iter.mem_info.type =
+        UCS_MEMORY_TYPE_CUDA;
+
+    ucp_request_send_state_init(req, ucp_dt_make_contig(1),
+                                rts_ppln->get.length);
+
+    dt_iter->offset             = 0;
+    dt_iter->type.contig.buffer = rts_ppln->get.buffer;
+    dt_iter->length             = rts_ppln->get.length;
+    dt_iter->dt_class           = UCP_DATATYPE_CONTIG;
+
+    /* Proto selection, expect put-ppln here */
+    status = ucp_proto_put_offload_zcopy_lookup(worker, ep, req,
+                                                rts_ppln->get.length);
+    if (status != UCS_OK) {
+        ucs_fatal("Failed to select put-ppln after receiving get-ppln msg");
+    }
+
+    /* Make sure buffers are registered for read */
+    mpriv  = req->send.proto_config->priv;
+    status = ucp_proto_request_zcopy_init(req, mpriv->reg_md_map,
+                                          ucp_proto_put_ppln_completion,
+                                          UCT_MD_MEM_ACCESS_LOCAL_READ,
+                                          UCP_DT_MASK_CONTIG_IOV);
+    ucs_assertv_always(status == UCS_OK, "Failed setting up request status=%d",
+                       status);
+
+    ucp_proto_rma_ppln_request_init(req, dt_iter->type.contig.buffer,
+                                    dt_iter->length);
+    req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
+    return req;
+}
+
 UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
                  (am_arg, am_data, am_length, am_flags), void *am_arg,
                  void *am_data, size_t am_length, unsigned am_flags)
 {
+    ucp_worker_h worker = am_arg;
     ucp_rts_ppln_resp_t *rts_ppln_resp;
     ucp_rts_ppln_t *rts_ppln;
     int i;
@@ -872,13 +1006,23 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
     rts_ppln = &rts_ppln_resp->rts_ppln;
 
     ucs_debug("put ppln rts ppln response received am_length=%zu "
-                  "ep_id=%lx frag_count=%d md_map=0x%lx req=%p ctx=%p",
-                  am_length, rts_ppln->ep_id,
+                  "ep_id=0x%lx (%s) frag_count=%d md_map=0x%lx req=%p ctx=%p",
+                  am_length, rts_ppln->ep_id, (rts_ppln->ep_id != 0? "GET" : "PUT"),
                   rts_ppln->count, rts_ppln->md_map,
                   rts_ppln->req, rts_ppln->req->ctx);
 
+    if (rts_ppln->ep_id) {
+        /* GET request: need to instantiate a local request and track the
+         * remote request */
+        req = ucp_proto_rma_ppln_request_create(worker, rts_ppln);
+        ctx = req->ctx;
+        ctx[0].flags |= UCP_PROTO_PUT_PPLN_RTS_SENT;
+    } else {
+        /* PUT request: lookup the original existing request */
+        req = rts_ppln->req;
+    }
+
     p   = (char *)rts_ppln_resp->packed;
-    req = rts_ppln->req;
     ep  = req->send.ep;
     ctx = req->ctx;
 
@@ -903,7 +1047,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln_resp,
         }
 
         ucs_debug("put ppln rts ppln response: unpacking "
-                      "req=%p remote_mem_desc=%p rva=%lx size=%u ctx->mem_desc=%p",
+                      "req=%p remote_mem_desc=%p rva=0x%lx size=%u ctx->mem_desc=%p",
                       req, remote_mem_desc, ctx[i].rva, size, ctx[i].mem_desc);
 
         p += size;
@@ -923,12 +1067,6 @@ UCP_DEFINE_AM_WITH_PROXY(UCP_FEATURE_AM | UCP_FEATURE_RMA, UCP_AM_ID_RTS_PPLN,
                          ucp_am_handler_rts_ppln, NULL, 0);
 UCP_DEFINE_AM_WITH_PROXY(UCP_FEATURE_AM | UCP_FEATURE_RMA, UCP_AM_ID_RTS_PPLN_RESP,
                          ucp_am_handler_rts_ppln_resp, NULL, 0);
-
-static void
-ucp_proto_put_ppln_completion(uct_completion_t *self)
-{
-    ucs_debug("put ppln rts ppln request completed");
-}
 
 static ucp_md_map_t
 ucp_proto_multi_remote_md_map_req(const ucp_request_t *req)
@@ -953,10 +1091,6 @@ ucp_proto_multi_remote_md_map_req(const ucp_request_t *req)
 }
 
 static ucs_status_t
-ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self);
-
-
-static ucs_status_t
 ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
 {
     ucp_request_t *req           = ucs_container_of(self, ucp_request_t,
@@ -968,7 +1102,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     const ucp_proto_multi_priv_t *mpriv
                                  = req->send.proto_config->priv;
     ucs_status_t status;
-    size_t i, offset, frag_count, frag_size;
+    size_t i, offset, frag_size;
     uct_iov_t iov[1] = {};
     size_t iovcnt;
     ucp_lane_index_t mem_type_rma_lane;
@@ -976,23 +1110,14 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     ucp_rts_ppln_t rts_ppln;
     ucs_status_t copy_status;
 
-    frag_size       = ucp_rma_mpool_frag_size(worker);
-    frag_count      = (dt_iter->length + frag_size - 1) / frag_size;
-    req->frag_count = frag_count;
-    mpriv = req->send.proto_config->priv;
+    frag_size = ucp_rma_mpool_frag_size(worker);
+    mpriv     = req->send.proto_config->priv;
 
     /* Lookup memtype EP and lane */
     mem_type_rma_lane = ucp_ep_config(mem_type_ep)->key.rma_bw_lanes[0];
 
     /* Initialize the request */
     if (!(req->flags & UCP_REQUEST_FLAG_PROTO_INITIALIZED)) {
-        req->send.multi_lane_idx = 0;
-
-        ucs_debug("put ppln req=%p for buffer=%p len=%zu frag_size=%zu frag_count=%zu "
-                  "mem_type_ep=%p lane=%u ctx=%p",
-                  req, dt_iter->type.contig.buffer, dt_iter->length,
-                  frag_size, frag_count,
-                  mem_type_ep, mem_type_rma_lane, req->ctx);
 
         /* Make sure buffers are registered for read */
         status = ucp_proto_request_zcopy_init(req, mpriv->reg_md_map,
@@ -1003,26 +1128,8 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
             goto out_abort;
         }
 
-        ctx      = ucs_malloc(sizeof(*ctx) * frag_count, "");
-        req->ctx = ctx;
-        if (ctx == NULL) {
-            ucs_fatal("failed to allocat copy-in context");
-        }
-        offset = 0;
-        for (i = 0; i < frag_count; i++, offset += frag_size) {
-            ctx[i].idx             = i;
-            ctx[i].start_copy_in   = 0;
-            ctx[i].flags           = 0;
-            ctx[i].overall         = 0;
-            ctx[i].mem_desc        = ucp_rma_mpool_get(worker);
-            ctx[i].remote_mem_desc = NULL;
-            ctx[i].comp.func       = ucp_proto_put_ppln_copy_in_complete;
-            ctx[i].comp.count      = 1;
-            ctx[i].comp.status     = UCS_OK;
-            ctx[i].req             = req;
-            ctx[i].size            = ucs_min(frag_size, dt_iter->length - offset);
-        }
-
+        ucp_proto_rma_ppln_request_init(req, dt_iter->type.contig.buffer,
+                                        dt_iter->length);
         req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
     }
 
@@ -1031,7 +1138,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     /* Send the RTS remote bounce buffer request */
     if (!(ctx[0].flags & UCP_PROTO_PUT_PPLN_RTS_SENT)) {
         rts_ppln.ep_id  = ucp_ep_remote_id(ep);
-        rts_ppln.count  = frag_count;
+        rts_ppln.count  = req->frag_count;
         rts_ppln.req    = req;
         rts_ppln.md_map = ucp_proto_multi_remote_md_map_req(req);
         req->send.lane  = ucp_ep_get_am_lane(ep);
@@ -1054,7 +1161,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     }
 
     /* Start all copy-in */
-    for (i = ctx[0].start_copy_in; i < frag_count; i++) {
+    for (i = ctx[0].start_copy_in; i < req->frag_count; i++) {
 
         if ((i >= ctx[0].start_copy_in + 4)) {
             break;

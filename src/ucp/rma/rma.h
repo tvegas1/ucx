@@ -113,4 +113,28 @@ ucs_status_t ucp_ep_fence_weak(ucp_ep_h ep);
 
 ucs_status_t ucp_ep_fence_strong(ucp_ep_h ep);
 
+#define GTEST_MODE 1
+
+/* Request for remote buffers */
+typedef struct ucp_rts_ppln {
+    uint64_t      ep_id;
+    ucp_request_t *req;
+    int           count;
+    ucp_md_map_t  md_map;
+
+    /* Information needed when initializing get-ppln */
+    struct {
+        void      *buffer;
+        size_t    length;
+    } get;
+} ucp_rts_ppln_t;
+
+int ucp_proto_rma_ppln_env_and_check(const ucp_proto_init_params_t *init_params);
+
+size_t ucp_rma_mpool_frag_size(ucp_worker_h worker);
+
+ucs_status_t
+ucp_proto_rma_ppln_send_rts_resp(ucp_worker_h worker, ucp_ep_h ep,
+                                 ucp_rts_ppln_t *rts_ppln);
+
 #endif
