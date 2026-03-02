@@ -523,7 +523,7 @@ ucp_put_ppln_complete(ucp_request_t *req)
     }
 
     ucs_free(req->ctx);
-    ucs_debug("PUT PPLN complete req=%p ep=%p", req, req->send.ep);
+    ucs_debug("PPLN complete req=%p ep=%p", req, req->send.ep);
 
     if (ctx[0].remote_req == 0) {
         /* Originally a PUT request, tracking flush */
@@ -671,6 +671,7 @@ ucp_proto_put_ppln_copy_out_complete(uct_completion_t *self)
         ucs_free(data);
         ucp_ep_rma_remote_request_completed(req->send.ep); /* Flush tracking */
         ucp_proto_request_zcopy_complete(req, UCS_OK);
+        ucs_debug("put ppln copy-out req=%p completed is GET", req);
         return;
     }
 
@@ -992,6 +993,7 @@ ucp_proto_rma_ppln_request_create(ucp_worker_h worker, ucp_rts_ppln_t *rts_ppln)
     req->send.uct.func               = ucp_msg_send_progress;
     req->send.state.dt_iter.mem_info.type =
         UCS_MEMORY_TYPE_CUDA;
+    req->send.rma.remote_addr        = (uint64_t)rts_ppln->get.buffer;
 
     ucp_request_send_state_init(req, ucp_dt_make_contig(1),
                                 rts_ppln->get.length);
@@ -1312,6 +1314,9 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
                       atp_ppln.req);
         if (ctx[0].remote_req != NULL) {
             ctx[0].atp_sent++;
+            if (ctx[0].atp_sent == req->frag_count) {
+                ucp_put_ppln_complete(req);
+            }
         }
     }
 
