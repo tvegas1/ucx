@@ -332,6 +332,11 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
         req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
     }
 
+    req->send.lane = ucp_ep_get_am_lane(req->send.ep);
+    if (!(req->send.ep->flags & UCP_EP_FLAG_FLUSH_STATE_VALID)) {
+        return UCS_ERR_NO_RESOURCE;
+    }
+
     /* Forge a self-initiated response with a non-null ep_id */
     rts_ppln.ep_id  = ucp_ep_remote_id(req->send.ep);
     rts_ppln.req    = req;
@@ -348,10 +353,9 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
     /* Allocate the bounce buffers and trigger the message */
     ep     = req->send.ep;
     status = ucp_proto_rma_ppln_send_rts_resp(ep->worker, ep, &rts_ppln);
-    if ((status == UCS_OK) || (status == UCS_INPROGRESS)) {
-        ucp_worker_flush_ops_count_add(ep->worker, +1);
-        ucp_ep_rma_remote_request_sent(ep); // Force flush to wait
-    }
+    ucs_assertv_always(status == UCS_OK, "GET sending rts resp status=%d", status);
+    ucp_worker_flush_ops_count_add(ep->worker, +1);
+    ucp_ep_rma_remote_request_sent(ep); // Force flush to wait
     return status;
 
 out_abort:

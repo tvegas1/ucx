@@ -522,14 +522,22 @@ ucp_put_ppln_complete(ucp_request_t *req)
         ucp_rkey_destroy(ctx[i].rkey);
     }
 
-    ucs_free(req->ctx);
-    ucs_debug("PPLN complete req=%p ep=%p", req, req->send.ep);
+    ucs_debug("PPLN complete req=%p ep=%p remote_req=%p",
+              req, req->send.ep, ctx[0].remote_req);
 
-    if (ctx[0].remote_req == 0) {
+    if (ctx[0].remote_req != 0) {
+        ucs_free(req->ctx);
         /* Originally a PUT request, tracking flush */
-        ucp_ep_rma_remote_request_completed(req->send.ep);
+        ucp_proto_request_zcopy_complete(req, UCS_OK);
+        ucp_request_put(req);
+#if 0
+ucp_proto_request_zcopy_clean(ucp_request_t *req, unsigned dt_mask)
+#endif
+        return;
     }
 
+    ucs_free(req->ctx);
+    ucp_ep_rma_remote_request_completed(req->send.ep);
     ucp_proto_request_zcopy_complete(req, UCS_OK);
 }
 
@@ -539,8 +547,8 @@ ucp_proto_put_ppln_send_zcopy_complete(uct_completion_t *self)
     ucp_proto_put_ppln_ctx_t *ctx =
         ucs_container_of(self, ucp_proto_put_ppln_ctx_t, send_comp);
 
-    ucs_debug("put ppln send zcopy complete ctx=%p idx=%d req=%p status=%d",
-                  ctx, ctx->idx, ctx->req, self->status);
+    ucs_debug("put ppln send zcopy complete ctx=%p idx=%d mem_desc=%p req=%p status=%d",
+                  ctx, ctx->idx, ctx->mem_desc, ctx->req, self->status);
 
     ucs_mpool_put(ctx->mem_desc);
     ctx->mem_desc = NULL;
