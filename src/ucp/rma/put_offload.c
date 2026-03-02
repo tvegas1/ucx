@@ -479,6 +479,8 @@ typedef struct ucp_proto_put_ppln {
     unsigned         flags;
     uint64_t         rva;       /* Remote bounce-buffer address */
     ucp_rkey_h       rkey;      /* Remote bounce-buffer for RDMA */
+    ucp_request_t    *remote_req; /* Valid in case of get */
+    int              atp_sent;    /* Track remaining atp to be sent */
 } ucp_proto_put_ppln_ctx_t;
 
 typedef struct ucp_rts_ppln_resp {
@@ -522,7 +524,12 @@ ucp_put_ppln_complete(ucp_request_t *req)
 
     ucs_free(req->ctx);
     ucs_debug("PUT PPLN complete req=%p ep=%p", req, req->send.ep);
-    ucp_ep_rma_remote_request_completed(req->send.ep);
+
+    if (ctx[0].remote_req == 0) {
+        /* Originally a PUT request, tracking flush */
+        ucp_ep_rma_remote_request_completed(req->send.ep);
+    }
+
     ucp_proto_request_zcopy_complete(req, UCS_OK);
 }
 
@@ -644,23 +651,36 @@ ucp_proto_put_ppln_copy_out_complete(uct_completion_t *self)
 
     ucs_status_t status;
     ucp_atp_ppln_final_t *atp_final;
+    ucp_request_t *req;
 
     ucs_mpool_put(entry->mem_desc);
     entry->mem_desc = NULL;
 
     data->frag_done++;
-    ucs_debug("put ppln copy-out completed req=%p frag_done=%d/%d",
-                  data->request, data->frag_done, data->frag_count);
+    ucs_debug("put ppln copy-out completed req=%p ep=%p frag_done=%d/%d",
+                  data->request, data->ep, data->frag_done, data->frag_count);
     if (data->frag_done < data->frag_count) {
         return;
     }
 
+    if (data->ep == NULL) {
+        /* GET request local completion only */
+        req = data->request;
+        ucs_assertv_always(req->ctx == data, "req->ctx=%p data=%p",
+                           req->ctx, data);
+        ucs_free(data);
+        ucp_ep_rma_remote_request_completed(req->send.ep); /* Flush tracking */
+        ucp_proto_request_zcopy_complete(req, UCS_OK);
+        return;
+    }
+
+    /* PUT request, need to send back ACK */
     atp_final = ucs_malloc(sizeof(*atp_final), "atp_final");
     if (atp_final == NULL) {
         ucs_fatal("ppln copy out alloc failed");
     }
 
-    atp_final->ep_id   = 0;
+    atp_final->ep_id   = 1;
     atp_final->request = data->request;
     status = ucp_msg_send(ep->worker, ep, UCP_AM_ID_ATP_PPLN,
                           atp_final, sizeof(*atp_final));
@@ -697,8 +717,9 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
     ucs_status_t status;
     ucp_ep_rma_ppln_data_entry_t *entry;
     ucp_atp_ppln_final_t *atp_ppln_final;
+    ucp_request_t *req;
 
-    if (atp_ppln->ep_id == 0) {
+    if (atp_ppln->ep_id == 1) {
         ucs_assert_always((sizeof(*atp_ppln_final) + 8) == am_length);
         atp_ppln_final = (ucp_atp_ppln_final_t *)atp_ppln;
         return ucp_am_handler_atp_ppln_final(atp_ppln_final);
@@ -714,13 +735,33 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
                   atp_ppln->address, atp_ppln->frag_id, atp_ppln->frag_count);
 
     /* Find the corresponding endpoint */
-    UCP_WORKER_GET_EP_BY_ID(&ep, worker, atp_ppln->ep_id, {
-                            ucs_error("atp_ppln handler: failed to get ep=%lx",
-                                      atp_ppln->ep_id);
-                            return UCS_ERR_NO_ELEM; }, "atp ppln received");
+    if (atp_ppln->ep_id != 0) {
+        /* It's a GET we will have to respond */
+        UCP_WORKER_GET_EP_BY_ID(&ep, worker, atp_ppln->ep_id, {
+                                ucs_error("atp_ppln handler: failed to get ep=%lx",
+                                          atp_ppln->ep_id);
+                                return UCS_ERR_NO_ELEM; }, "atp ppln received");
+    } else {
+        ep = NULL;
+    }
 
-    ppln_data = ucp_ep_rma_ppln_data_get(ep, atp_ppln->req,
-                                         atp_ppln->frag_count);
+    if (ep) {
+        /* Get request */
+        ppln_data = ucp_ep_rma_ppln_data_get(ep, atp_ppln->req,
+                                             atp_ppln->frag_count);
+    } else {
+        /* Put request */
+        req = atp_ppln->req;
+        if (req->ctx == NULL) {
+            req->ctx = ucs_malloc(atp_ppln->frag_count *
+                                  sizeof(*ppln_data->entry) + sizeof(*ppln_data),
+                                  "GET atp ppln data");
+            memset(req->ctx, 0, sizeof(*ppln_data));
+        }
+
+        ppln_data = req->ctx;
+    }
+
     if (ppln_data->frag_count == 0) {
         /* First ATP arrived */
         ppln_data->frag_count  = atp_ppln->frag_count;
@@ -815,8 +856,8 @@ ucp_proto_rma_ppln_send_rts_resp(ucp_worker_h worker, ucp_ep_h ep,
             return UCS_ERR_NO_RESOURCE;
         }
 
-        ucs_debug("put ppln rts ppln resp prepare: ep_id=0x%lx req=%p "
-                  "pack memh: mem_desc=%p rva=%p packed_size=%zd",
+        ucs_debug("put/get ppln rts ppln resp prepare: ep_id=0x%lx req=%p "
+                  "pack memh: mem_desc=%p mem_desc_rva=%p packed_size=%zd",
                   rts_ppln->ep_id, rts_ppln->req, mem_desc, mem_desc->ptr,
                   packed_rkey_size);
         ucs_assertv_always(packed_rkey_size <= UCHAR_MAX, "Bad packed size!");
@@ -900,9 +941,8 @@ ucp_proto_rma_ppln_request_init(ucp_request_t *req, void *buffer, size_t length)
               "ctx=%p",
               req, buffer, length, frag_size, frag_count, req->ctx);
 
-    req->send.multi_lane_idx = 0;
-    req->frag_count          = frag_count;
-
+    req->send.multi_lane_idx  = 0;
+    req->frag_count           = frag_count;
 
     ctx      = ucs_malloc(sizeof(*ctx) * frag_count, "");
     req->ctx = ctx;
@@ -922,6 +962,8 @@ ucp_proto_rma_ppln_request_init(ucp_request_t *req, void *buffer, size_t length)
         ctx[i].comp.status     = UCS_OK;
         ctx[i].req             = req;
         ctx[i].size            = ucs_min(frag_size, length - offset);
+        ctx[i].remote_req      = NULL;
+        ctx[i].atp_sent        = 0;
     }
 }
 
@@ -933,6 +975,7 @@ ucp_proto_rma_ppln_request_create(ucp_worker_h worker, ucp_rts_ppln_t *rts_ppln)
     ucp_ep_h ep;
     ucs_status_t status;
     const ucp_proto_multi_priv_t *mpriv;
+    ucp_proto_put_ppln_ctx_t *ctx;
 
     if (req == NULL) {
         ucs_fatal("get-ppln req allocation failure");
@@ -958,6 +1001,9 @@ ucp_proto_rma_ppln_request_create(ucp_worker_h worker, ucp_rts_ppln_t *rts_ppln)
     dt_iter->length             = rts_ppln->get.length;
     dt_iter->dt_class           = UCP_DATATYPE_CONTIG;
 
+    ucs_debug("put ppln create request req=%p from GET source_va=%p size=%zu",
+              req, rts_ppln->get.buffer, rts_ppln->get.length);
+
     /* Proto selection, expect put-ppln here */
     status = ucp_proto_put_offload_zcopy_lookup(worker, ep, req,
                                                 rts_ppln->get.length);
@@ -976,7 +1022,10 @@ ucp_proto_rma_ppln_request_create(ucp_worker_h worker, ucp_rts_ppln_t *rts_ppln)
 
     ucp_proto_rma_ppln_request_init(req, dt_iter->type.contig.buffer,
                                     dt_iter->length);
-    req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
+
+    ctx               = req->ctx;
+    ctx[0].remote_req = rts_ppln->req;
+    req->flags       |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
     return req;
 }
 
@@ -1236,21 +1285,34 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
         (i * ucp_rma_mpool_frag_size(req->send.ep->worker));
 
     /* Where to send back the final ack to */
-    atp_ppln.ep_id      = ucp_ep_remote_id(req->send.ep);
-    atp_ppln.req        = req;
+    if (ctx[0].remote_req == NULL) {
+        /* Originally a PUT request */
+        atp_ppln.ep_id = ucp_ep_remote_id(req->send.ep);
+        atp_ppln.req   = req;
+    } else {
+        /* Originally a GET request */
+        atp_ppln.ep_id = 0;
+        atp_ppln.req   = ctx[0].remote_req;
+    }
+
     atp_ppln.frag_id    = i;
     atp_ppln.frag_count = req->frag_count;
     atp_ppln.length     = ctx[i].size;
+
 
     req->send.lane = ctx[i].lane_idx;
     status = uct_ep_am_short(uct_ep, UCP_AM_ID_ATP_PPLN, 0,
                              &atp_ppln, sizeof(atp_ppln));
     if ((status == UCS_OK) || (status == UCS_INPROGRESS)) {
         ucs_debug("put atp ppln req=%p ep_id=0x%lx frag_id=%u frag_count=%u "
-                      "address=0x%lx size=%zu mem_desc=%p",
+                      "address=0x%lx size=%zu mem_desc=%p remote_req=%p",
                       req, atp_ppln.ep_id, atp_ppln.frag_id,
                       atp_ppln.frag_count,
-                      atp_ppln.address, ctx[i].size, atp_ppln.mem_desc);
+                      atp_ppln.address, ctx[i].size, atp_ppln.mem_desc,
+                      atp_ppln.req);
+        if (ctx[0].remote_req != NULL) {
+            ctx[0].atp_sent++;
+        }
     }
 
     return status;

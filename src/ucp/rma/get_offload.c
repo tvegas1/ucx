@@ -311,6 +311,7 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
     ucp_datatype_iter_t *dt_iter        = &req->send.state.dt_iter;
     size_t frag_size;
     ucp_rts_ppln_t rts_ppln;
+    ucp_ep_h ep;
 
     frag_size = ucp_rma_mpool_frag_size(req->send.ep->worker);
 
@@ -326,6 +327,7 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
         ucp_proto_multi_request_init(req);
 
         req->frag_count = (dt_iter->length + frag_size - 1) / frag_size;
+        req->ctx        = NULL;
 
         req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;
     }
@@ -338,14 +340,18 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
     rts_ppln.get.buffer = (void *)req->send.rma.remote_addr;
     rts_ppln.get.length = req->send.state.dt_iter.length;
 
-    ucs_debug("get ppln rts_resp req=%p ep=%p rva=%p length=%zu",
+    ucs_debug("get ppln rts_resp get_req=%p ep=%p final_rva=%p length=%zu "
+              "frag_count=%zu",
               req, req->send.ep, (void*)req->send.rma.remote_addr,
-              req->send.state.dt_iter.length);
+              req->send.state.dt_iter.length, req->frag_count);
 
     /* Allocate the bounce buffers and trigger the message */
-    status = ucp_proto_rma_ppln_send_rts_resp(req->send.ep->worker,
-                                              req->send.ep,
-                                              &rts_ppln);
+    ep     = req->send.ep;
+    status = ucp_proto_rma_ppln_send_rts_resp(ep->worker, ep, &rts_ppln);
+    if ((status == UCS_OK) || (status == UCS_INPROGRESS)) {
+        ucp_worker_flush_ops_count_add(ep->worker, +1);
+        ucp_ep_rma_remote_request_sent(ep); // Force flush to wait
+    }
     return status;
 
 out_abort:
