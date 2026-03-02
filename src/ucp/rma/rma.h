@@ -124,6 +124,7 @@ typedef struct ucp_rts_ppln {
 
     /* Information needed when initializing get-ppln */
     struct {
+        void      *final_buffer;
         void      *buffer;
         size_t    length;
     } get;

@@ -531,7 +531,7 @@ ucp_put_ppln_complete(ucp_request_t *req)
         ucp_proto_request_zcopy_complete(req, UCS_OK);
         ucp_request_put(req);
 #if 0
-ucp_proto_request_zcopy_clean(ucp_request_t *req, unsigned dt_mask)
+        ucp_proto_request_zcopy_clean(ucp_request_t *req, unsigned dt_mask)
 #endif
         return;
     }
@@ -999,9 +999,8 @@ ucp_proto_rma_ppln_request_create(ucp_worker_h worker, ucp_rts_ppln_t *rts_ppln)
     req->send.lane                   = ucp_ep_get_am_lane(ep);
     req->send.ep                     = ep;
     req->send.uct.func               = ucp_msg_send_progress;
-    req->send.state.dt_iter.mem_info.type =
-        UCS_MEMORY_TYPE_CUDA;
-    req->send.rma.remote_addr        = (uint64_t)rts_ppln->get.buffer;
+    req->send.state.dt_iter.mem_info.type = UCS_MEMORY_TYPE_CUDA;
+    req->send.rma.remote_addr        = (uint64_t)rts_ppln->get.final_buffer;
 
     ucp_request_send_state_init(req, ucp_dt_make_contig(1),
                                 rts_ppln->get.length);
