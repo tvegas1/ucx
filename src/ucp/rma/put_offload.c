@@ -364,8 +364,8 @@ int ucp_proto_rma_ppln_env_and_check(const ucp_proto_init_params_t *init_params)
 
     /* Only CUDA to CUDA */
     if (!UCP_MEM_IS_CUDA(select_param->mem_type) ||
-        (rkey_config_key == NULL) ||
-        !UCP_MEM_IS_CUDA(rkey_config_key->mem_type)) {
+        ((rkey_config_key != NULL) &&
+         !UCP_MEM_IS_CUDA(rkey_config_key->mem_type))) {
         return 0;
     }
 #else
