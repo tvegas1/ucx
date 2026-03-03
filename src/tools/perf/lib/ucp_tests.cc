@@ -515,6 +515,7 @@ public:
     {
         void *request;
         void *ptr;
+        int i;
 
         /* coverity[switch_selector_expr_is_constant] */
         switch (CMD) {
@@ -565,7 +566,9 @@ public:
             /* coverity[switch_selector_expr_is_constant] */
             switch (TYPE) {
             case UCX_PERF_TEST_TYPE_STREAM_UNI:
-                progress_responder();
+                for (i = 0; i < 100000; i++) {
+                    progress_responder();
+                }
                 return UCS_OK;
             default:
                 return UCS_ERR_INVALID_PARAM;
