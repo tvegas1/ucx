@@ -113,7 +113,7 @@ ucs_status_t ucp_ep_fence_weak(ucp_ep_h ep);
 
 ucs_status_t ucp_ep_fence_strong(ucp_ep_h ep);
 
-#define GTEST_MODE 1
+#define GTEST_MODE 0
 
 /* Request for remote buffers */
 typedef struct ucp_rts_ppln {
@@ -127,6 +127,8 @@ typedef struct ucp_rts_ppln {
         void      *final_buffer;
         void      *buffer;
         size_t    length;
+        unsigned  mem_type;
+        ucs_sys_device_t sys_dev;
     } get;
 } ucp_rts_ppln_t;
 

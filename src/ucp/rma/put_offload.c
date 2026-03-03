@@ -999,7 +999,10 @@ ucp_proto_rma_ppln_request_create(ucp_worker_h worker, ucp_rts_ppln_t *rts_ppln)
     req->send.lane                   = ucp_ep_get_am_lane(ep);
     req->send.ep                     = ep;
     req->send.uct.func               = ucp_msg_send_progress;
-    req->send.state.dt_iter.mem_info.type = UCS_MEMORY_TYPE_CUDA;
+    req->send.state.dt_iter.mem_info.type
+                                     = rts_ppln->get.mem_type;
+    req->send.state.dt_iter.mem_info.sys_dev
+                                     = rts_ppln->get.sys_dev;
     req->send.rma.remote_addr        = (uint64_t)rts_ppln->get.final_buffer;
 
     ucp_request_send_state_init(req, ucp_dt_make_contig(1),
@@ -1009,6 +1012,7 @@ ucp_proto_rma_ppln_request_create(ucp_worker_h worker, ucp_rts_ppln_t *rts_ppln)
     dt_iter->type.contig.buffer = rts_ppln->get.buffer;
     dt_iter->length             = rts_ppln->get.length;
     dt_iter->dt_class           = UCP_DATATYPE_CONTIG;
+    dt_iter->type.contig.memh   = NULL;
 
     ucs_debug("put ppln create request req=%p from GET source_va=%p size=%zu",
               req, rts_ppln->get.buffer, rts_ppln->get.length);
