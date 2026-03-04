@@ -336,6 +336,9 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
 
     /* Forge a self-initiated response with a non-null ep_id */
     rts_ppln.ep_id  = ucp_ep_remote_id(req->send.ep);
+    if (rts_ppln.ep_id == 0) {
+        return UCS_ERR_NO_RESOURCE;
+    }
     rts_ppln.req    = req;
     rts_ppln.count  = req->frag_count;
     rts_ppln.md_map = mpriv->reg_md_map;
