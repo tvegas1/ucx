@@ -237,10 +237,15 @@ public:
     }
 
     void UCS_F_ALWAYS_INLINE progress() {
+        int i;
         if (ucs_unlikely(UCX_PERF_WAIT_MODE_SLEEP == m_perf.params.wait_mode)) {
             blocking_progress();
         } else {
-            ucp_worker_progress(m_perf.ucp.worker);
+            for (i = 0; i < 10; i++) {
+                if (ucp_worker_progress(m_perf.ucp.worker) < 1) {
+                    break;
+                }
+            }
         }
     }
 
@@ -515,7 +520,6 @@ public:
     {
         void *request;
         void *ptr;
-        int i;
 
         /* coverity[switch_selector_expr_is_constant] */
         switch (CMD) {
@@ -566,9 +570,7 @@ public:
             /* coverity[switch_selector_expr_is_constant] */
             switch (TYPE) {
             case UCX_PERF_TEST_TYPE_STREAM_UNI:
-                for (i = 0; i < 100000; i++) {
-                    progress_responder();
-                }
+                progress_responder();
                 return UCS_OK;
             default:
                 return UCS_ERR_INVALID_PARAM;
@@ -615,6 +617,18 @@ public:
         if (CMD == UCX_PERF_CMD_PUT) {
             write_sn(buffer, m_perf.params.send_mem_type, size, LAST_ITER_SN,
                      m_perf.ucp.self_send_rkey);
+        } else if (CMD == UCX_PERF_CMD_GET) {
+            /* Client signals completion to server by PUTting LAST_ITER_SN to
+             * the sn slot at the end of server's recv buffer */
+            psn_t last_sn = LAST_ITER_SN;
+            status_p      = ucp_put_nbx(ep, &last_sn, sizeof(last_sn),
+                                        remote_addr + size - sizeof(last_sn),
+                                        rkey, &m_send_params);
+            if (UCS_PTR_IS_PTR(status_p)) {
+                send_started();
+            }
+            wait_send_window(m_max_outstanding);
+            return;
         } else if (is_atomic()) {
             atomic_value = 0;
             write_sn(&atomic_value, UCS_MEMORY_TYPE_HOST, size, LAST_ITER_SN,
@@ -651,6 +665,10 @@ public:
             atomic_param.reply_buffer  = &atomic_value;
             status_p = ucp_atomic_op_nbx(ep, m_atomic_op, buffer, 1,
                                          remote_addr, rkey, &atomic_param);
+            break;
+        case UCX_PERF_CMD_GET:
+            /* Handled above with early return */
+            status_p = NULL;
             break;
         default:
             status_p = NULL;
@@ -713,7 +731,8 @@ public:
 
     inline bool use_psn() const
     {
-        return (CMD == UCX_PERF_CMD_PUT) || is_atomic();
+        return (CMD == UCX_PERF_CMD_PUT) || (CMD == UCX_PERF_CMD_GET) ||
+               is_atomic();
     }
 
     void reset_buffers(size_t length, psn_t sn)
