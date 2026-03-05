@@ -439,10 +439,10 @@ ucp_proto_t ucp_put_offload_zcopy_proto = {
 };
 
 ucp_mem_desc_t *
-ucp_rma_mpool_get(ucp_worker_h worker)
+ucp_rma_mpool_get(ucp_worker_h worker, ucs_sys_device_t sys_dev)
 {
     return ucp_rndv_mpool_get(worker, frag_mem_type,
-        (frag_mem_type == UCS_MEMORY_TYPE_HOST?  UCS_SYS_DEVICE_ID_UNKNOWN : 0));
+        (frag_mem_type == UCS_MEMORY_TYPE_HOST?  UCS_SYS_DEVICE_ID_UNKNOWN : sys_dev));
 }
 
 size_t
@@ -832,7 +832,7 @@ ucp_proto_rma_ppln_send_rts_resp(ucp_worker_h worker, ucp_ep_h ep,
     rts_ppln_resp->rts_ppln = *rts_ppln;
     p = (void*)(rts_ppln_resp + 1);
     for (i = 0; i < rts_ppln->count; ++i) {
-        mem_desc = ucp_rma_mpool_get(worker);
+        mem_desc = ucp_rma_mpool_get(worker, rts_ppln->sys_dev);
         if (mem_desc == NULL) {
             ucs_error("rts ppln handler: rma mpool get failed");
             return UCS_ERR_NO_RESOURCE;
@@ -899,12 +899,13 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_rts_ppln,
                             return UCS_ERR_NO_ELEM; }, "rts ppln received");
 
     ucs_debug("put ppln rts ppln received am_length=%zu "
-                  "ep_id=%lx ep=%p frag_count=%d md_map=0x%lx req=%p",
+                  "ep_id=%lx ep=%p frag_count=%d sys_dev=%u md_map=0x%lx req=%p",
                   am_length, rts_ppln->ep_id, ep,
-                  rts_ppln->count, rts_ppln->md_map,
+                  rts_ppln->count, rts_ppln->sys_dev, rts_ppln->md_map,
                   rts_ppln->req);
 
     rts_ppln->ep_id = 0; /* It's not a self initiated rts_resp */
+
     return ucp_proto_rma_ppln_send_rts_resp(worker, ep, rts_ppln);
 }
 
@@ -945,10 +946,11 @@ ucp_proto_rma_ppln_request_init(ucp_request_t *req, void *buffer, size_t length)
     size_t frag_count = (length + frag_size - 1) / frag_size;
     ucp_proto_put_ppln_ctx_t *ctx;
     size_t i, offset;
+    ucs_sys_device_t sys_dev = req->send.state.dt_iter.mem_info.sys_dev;
 
     ucs_debug("put ppln req=%p for buffer=%p len=%zu frag_size=%zu frag_count=%zu "
-              "ctx=%p",
-              req, buffer, length, frag_size, frag_count, req->ctx);
+              "ctx=%p sys_dev=%u",
+              req, buffer, length, frag_size, frag_count, req->ctx, sys_dev);
 
     req->send.multi_lane_idx  = 0;
     req->frag_count           = frag_count;
@@ -964,7 +966,7 @@ ucp_proto_rma_ppln_request_init(ucp_request_t *req, void *buffer, size_t length)
         ctx[i].start_copy_in   = 0;
         ctx[i].flags           = 0;
         ctx[i].overall         = 0;
-        ctx[i].mem_desc        = ucp_rma_mpool_get(worker);
+        ctx[i].mem_desc        = ucp_rma_mpool_get(worker, sys_dev);
         ctx[i].remote_mem_desc = NULL;
         ctx[i].comp.func       = ucp_proto_put_ppln_copy_in_complete;
         ctx[i].comp.count      = 1;
@@ -1013,9 +1015,12 @@ ucp_proto_rma_ppln_request_create(ucp_worker_h worker, ucp_rts_ppln_t *rts_ppln)
     dt_iter->length             = rts_ppln->get.length;
     dt_iter->dt_class           = UCP_DATATYPE_CONTIG;
     dt_iter->type.contig.memh   = NULL;
+    dt_iter->mem_info.sys_dev   = rts_ppln->get.sys_dev;
 
-    ucs_debug("put ppln create request req=%p from GET source_va=%p size=%zu",
-              req, rts_ppln->get.buffer, rts_ppln->get.length);
+    ucs_debug("put ppln create request req=%p from GET source_va=%p size=%zu "
+              "sys_dev=%u", 
+              req, rts_ppln->get.buffer, rts_ppln->get.length,
+              rts_ppln->get.sys_dev);
 
     /* Proto selection, expect put-ppln here */
     status = ucp_proto_put_offload_zcopy_lookup(worker, ep, req,
@@ -1203,6 +1208,8 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
         rts_ppln.count  = req->frag_count;
         rts_ppln.req    = req;
         rts_ppln.md_map = ucp_proto_multi_remote_md_map_req(req);
+        rts_ppln.sys_dev = ucp_rkey_config(req->send.ep->worker,
+                                           req->send.rma.rkey)->key.sys_dev;
         req->send.lane  = ucp_ep_get_am_lane(ep);
         status          = uct_ep_am_short(ucp_ep_get_fast_lane(ep, req->send.lane),
                                           UCP_AM_ID_RTS_PPLN, 0,

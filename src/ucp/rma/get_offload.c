@@ -342,19 +342,25 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
     rts_ppln.req    = req;
     rts_ppln.count  = req->frag_count;
     rts_ppln.md_map = mpriv->reg_md_map;
+
+    rts_ppln.sys_dev = dt_iter->mem_info.sys_dev;
+
     rts_ppln.get.buffer       = (void *)req->send.rma.remote_addr;
     rts_ppln.get.mem_type     = req->send.rma.rkey->mem_type;
-    rts_ppln.get.sys_dev      = UCS_SYS_DEVICE_ID_UNKNOWN;
+    rts_ppln.get.sys_dev      = ucp_rkey_config(req->send.ep->worker,
+                                                req->send.rma.rkey)->key.sys_dev;
 
     rts_ppln.get.final_buffer = (void *)dt_iter->type.contig.buffer;
     rts_ppln.get.length       = req->send.state.dt_iter.length;
 
     ucs_debug("get ppln rts_resp get_req=%p ep=%p final_va=%p final_va_mem_type=%u "
-              "final_rva=%p length=%zu "
+              "final_va_sys_dev=%u final_rva=%p final_rva_sys_dev=%u length=%zu "
               "frag_count=%zu",
               req, req->send.ep,
               rts_ppln.get.final_buffer, rts_ppln.get.mem_type,
+              rts_ppln.sys_dev,
               (void*)req->send.rma.remote_addr,
+              rts_ppln.get.sys_dev,
               req->send.state.dt_iter.length, req->frag_count);
 
     /* Allocate the bounce buffers and trigger the message */

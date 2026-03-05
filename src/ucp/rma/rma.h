@@ -121,6 +121,7 @@ typedef struct ucp_rts_ppln {
     ucp_request_t *req;
     int           count;
     ucp_md_map_t  md_map;
+    ucs_sys_device_t sys_dev; /* Where fragments must be allocated */
 
     /* Information needed when initializing get-ppln */
     struct {
@@ -128,7 +129,7 @@ typedef struct ucp_rts_ppln {
         void      *buffer;
         size_t    length;
         unsigned  mem_type;
-        ucs_sys_device_t sys_dev;
+        ucs_sys_device_t sys_dev; /* final_buffer */
     } get;
 } ucp_rts_ppln_t;
 
