@@ -309,11 +309,8 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
     const ucp_proto_multi_priv_t *mpriv = req->send.proto_config->priv;
     ucs_status_t status                 = UCS_OK;
     ucp_datatype_iter_t *dt_iter        = &req->send.state.dt_iter;
-    size_t frag_size;
     ucp_rts_ppln_t rts_ppln;
     ucp_ep_h ep;
-
-    frag_size = ucp_rma_mpool_frag_size(req->send.ep->worker);
 
     if (!(req->flags & UCP_REQUEST_FLAG_PROTO_INITIALIZED)) {
         status = ucp_proto_request_zcopy_init(req, mpriv->reg_md_map,
@@ -326,7 +323,7 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
 
         ucp_proto_multi_request_init(req);
 
-        req->frag_count = (dt_iter->length + frag_size - 1) / frag_size;
+	req->frag_count = ucp_proto_rma_ppln_get_frag_count(req, dt_iter->length);
         req->ctx        = NULL;
 
         req->flags |= UCP_REQUEST_FLAG_PROTO_INITIALIZED;

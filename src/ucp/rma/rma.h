@@ -140,5 +140,7 @@ size_t ucp_rma_mpool_frag_size(ucp_worker_h worker);
 ucs_status_t
 ucp_proto_rma_ppln_send_rts_resp(ucp_worker_h worker, ucp_ep_h ep,
                                  ucp_rts_ppln_t *rts_ppln);
+size_t
+ucp_proto_rma_ppln_get_frag_count(ucp_request_t *req, size_t length);
 
 #endif

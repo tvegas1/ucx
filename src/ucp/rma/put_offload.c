@@ -938,12 +938,40 @@ ucp_proto_put_ppln_completion(uct_completion_t *self)
 static ucs_status_t
 ucp_proto_put_offload_zcopy_ppln_write_progress(uct_pending_req_t *self);
 
+size_t
+ucp_proto_rma_ppln_get_frag_size(ucp_request_t *req, size_t length)
+{
+    size_t min_frag = 512 * UCS_KBYTE;
+    ucp_worker_h worker = req->send.ep->worker;
+    size_t max_frag = ucp_rma_mpool_frag_size(worker);
+    const ucp_proto_multi_priv_t *mpriv = req->send.proto_config->priv;
+    size_t lane_frag;
+
+    if (frag_mem_type == UCS_MEMORY_TYPE_CUDA) {
+        lane_frag = length / mpriv->num_lanes;
+	lane_frag = ucs_roundup_pow2(lane_frag);
+
+        lane_frag = ucs_max(min_frag, lane_frag);
+        lane_frag = ucs_min(max_frag, lane_frag);
+    } else {
+        lane_frag = max_frag;
+    }
+    return lane_frag;
+}
+
+size_t
+ucp_proto_rma_ppln_get_frag_count(ucp_request_t *req, size_t length)
+{
+    size_t lane_frag = ucp_proto_rma_ppln_get_frag_size(req, length);
+    return (length + lane_frag - 1) / lane_frag;
+}
+
 static void
 ucp_proto_rma_ppln_request_init(ucp_request_t *req, void *buffer, size_t length)
 {
     ucp_worker_h worker = req->send.ep->worker;
-    size_t frag_size  = ucp_rma_mpool_frag_size(worker);
-    size_t frag_count = (length + frag_size - 1) / frag_size;
+    size_t frag_count = ucp_proto_rma_ppln_get_frag_count(req, length);
+    size_t frag_size  = ucp_proto_rma_ppln_get_frag_size(req, length);
     ucp_proto_put_ppln_ctx_t *ctx;
     size_t i, offset;
     ucs_sys_device_t sys_dev = req->send.state.dt_iter.mem_info.sys_dev;
@@ -1177,7 +1205,6 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     ucp_rts_ppln_t rts_ppln;
     ucs_status_t copy_status;
 
-    frag_size = ucp_rma_mpool_frag_size(worker);
     mpriv     = req->send.proto_config->priv;
 
     /* Lookup memtype EP and lane */
@@ -1201,6 +1228,8 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
     }
 
     ctx = req->ctx;
+
+    frag_size = ucp_proto_rma_ppln_get_frag_size(req, dt_iter->length);
 
     /* Send the RTS remote bounce buffer request */
     if (!(ctx[0].flags & UCP_PROTO_PUT_PPLN_RTS_SENT)) {
