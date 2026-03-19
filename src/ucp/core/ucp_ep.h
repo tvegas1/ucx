@@ -389,6 +389,9 @@ typedef struct {
 
     /* Copy-out global completion */
     uct_completion_t            comp;
+
+    /* Fragment size used for this transfer */
+    size_t                      frag_size;
 } ucp_ep_rma_ppln_data_entry_t;
 
 struct ucp_ep_rma_ppln_data {

@@ -341,6 +341,7 @@ static ucs_status_t ucp_proto_get_offload_zcopy_ppln_progress(uct_pending_req_t 
     rts_ppln.md_map = mpriv->reg_md_map;
 
     rts_ppln.sys_dev = dt_iter->mem_info.sys_dev;
+    rts_ppln.frag_size = ucp_proto_rma_ppln_get_frag_size(req, dt_iter->length);
 
     rts_ppln.get.buffer       = (void *)req->send.rma.remote_addr;
     rts_ppln.get.mem_type     = req->send.rma.rkey->mem_type;

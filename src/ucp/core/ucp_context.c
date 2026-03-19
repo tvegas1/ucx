@@ -2602,8 +2602,11 @@ err:
     return status;
 }
 
+extern void ucp_rma_ppln_dump_stats(void);
+
 void ucp_cleanup(ucp_context_h context)
 {
+    ucp_rma_ppln_dump_stats();
     ucs_vfs_obj_remove(context);
     ucp_mem_rcache_cleanup(context);
     ucp_free_resources(context);

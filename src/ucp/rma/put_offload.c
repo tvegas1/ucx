@@ -438,11 +438,68 @@ ucp_proto_t ucp_put_offload_zcopy_proto = {
     .reset    = ucp_proto_offload_zcopy_reset
 };
 
-ucp_mem_desc_t *
-ucp_rma_mpool_get(ucp_worker_h worker, ucs_sys_device_t sys_dev)
+typedef struct ucp_rma_ppln_stats {
+    ssize_t size;
+    ssize_t count;
+} ucp_rma_ppln_stats_t;
+
+static ucp_rma_ppln_stats_t gpus[UCS_SYS_DEVICE_ID_MAX + 1] = {};
+static ssize_t gpu_total_size = 0;
+static ssize_t gpu_total_count = 0;
+
+static ucp_rma_ppln_stats_t max_gpus[UCS_SYS_DEVICE_ID_MAX + 1] = {};
+static ssize_t gpu_max_total_size = 0;
+static ssize_t gpu_max_total_count = 0;
+
+void ucp_rma_ppln_dump_stats(void)
 {
-    return ucp_rndv_mpool_get(worker, frag_mem_type,
+    int i;
+
+    ucs_warn("Max memory usage: size=%lldMB frags=%ld",
+             gpu_max_total_size / UCS_MBYTE, gpu_max_total_count);
+    for (i = 0; i <= UCS_SYS_DEVICE_ID_MAX; i++) {
+        if (max_gpus[i].count > 0) {
+            ucs_warn("GPU%d: size=%lldMB frags=%ld",
+                      i, max_gpus[i].size / UCS_MBYTE, max_gpus[i].count);
+        }
+    }
+}
+
+ucp_mem_desc_t *
+ucp_rma_mpool_get(ucp_worker_h worker, ucs_sys_device_t sys_dev,
+                  size_t size)
+{
+    ucp_mem_desc_t *mem_desc;
+
+    mem_desc = ucp_rndv_mpool_get(worker, frag_mem_type,
         (frag_mem_type == UCS_MEMORY_TYPE_HOST?  UCS_SYS_DEVICE_ID_UNKNOWN : sys_dev));
+
+    gpus[mem_desc->memh->sys_dev].count++;
+    gpus[mem_desc->memh->sys_dev].size += size;
+    gpu_total_count++;
+    gpu_total_size += size;
+
+    if (gpu_total_size > gpu_max_total_size) {
+        gpu_max_total_size = gpu_total_size;
+        gpu_max_total_count = gpu_total_count;
+        memcpy(max_gpus, gpus, sizeof(gpus));
+
+        if (ucs_log_is_enabled(UCS_LOG_LEVEL_DIAG)) {
+            ucp_rma_ppln_dump_stats();
+        }
+    }
+
+    return mem_desc;
+}
+
+void ucp_rma_mpool_put(ucp_mem_desc_t *mem_desc, size_t size)
+{
+    gpu_total_size -= size;
+    gpu_total_count--;
+    gpus[mem_desc->memh->sys_dev].count--;
+    gpus[mem_desc->memh->sys_dev].size -= size;
+
+    ucs_mpool_put(mem_desc);
 }
 
 size_t
@@ -495,6 +552,7 @@ typedef struct ucp_atp_pppln {
     ucp_request_t  *req;        /* Pointer of the sender request */
     int            frag_id;
     int            frag_count;
+    size_t         frag_size;
 
     ucp_mem_desc_t *mem_desc;   /* Source for copy-out */
     uint64_t       address;     /* Destination for copy-out */
@@ -550,7 +608,7 @@ ucp_proto_put_ppln_send_zcopy_complete(uct_completion_t *self)
     ucs_debug("put ppln send zcopy complete ctx=%p idx=%d mem_desc=%p req=%p status=%d",
                   ctx, ctx->idx, ctx->mem_desc, ctx->req, self->status);
 
-    ucs_mpool_put(ctx->mem_desc);
+    ucp_rma_mpool_put(ctx->mem_desc, ctx->size);
     ctx->mem_desc = NULL;
     ucp_put_ppln_complete(ctx->req);
 }
@@ -661,7 +719,7 @@ ucp_proto_put_ppln_copy_out_complete(uct_completion_t *self)
     ucp_atp_ppln_final_t *atp_final;
     ucp_request_t *req;
 
-    ucs_mpool_put(entry->mem_desc);
+    ucp_rma_mpool_put(entry->mem_desc, entry->frag_size);
     entry->mem_desc = NULL;
 
     data->frag_done++;
@@ -785,6 +843,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_am_handler_atp_ppln,
     entry->comp.func   = ucp_proto_put_ppln_copy_out_complete;
     entry->comp.count  = 1;
     entry->comp.status = UCS_OK;
+    entry->frag_size   = atp_ppln->frag_size;
 
     iov[0].buffer = atp_ppln->mem_desc->ptr;
     iov[0].length = atp_ppln->length;
@@ -832,7 +891,8 @@ ucp_proto_rma_ppln_send_rts_resp(ucp_worker_h worker, ucp_ep_h ep,
     rts_ppln_resp->rts_ppln = *rts_ppln;
     p = (void*)(rts_ppln_resp + 1);
     for (i = 0; i < rts_ppln->count; ++i) {
-        mem_desc = ucp_rma_mpool_get(worker, rts_ppln->sys_dev);
+        mem_desc = ucp_rma_mpool_get(worker, rts_ppln->sys_dev,
+                                     rts_ppln->frag_size);
         if (mem_desc == NULL) {
             ucs_error("rts ppln handler: rma mpool get failed");
             return UCS_ERR_NO_RESOURCE;
@@ -949,7 +1009,7 @@ ucp_proto_rma_ppln_get_frag_size(ucp_request_t *req, size_t length)
 
     if (frag_mem_type == UCS_MEMORY_TYPE_CUDA) {
         lane_frag = length / mpriv->num_lanes;
-	lane_frag = ucs_roundup_pow2(lane_frag);
+        lane_frag = ucs_roundup_pow2(lane_frag);
 
         lane_frag = ucs_max(min_frag, lane_frag);
         lane_frag = ucs_min(max_frag, lane_frag);
@@ -994,13 +1054,13 @@ ucp_proto_rma_ppln_request_init(ucp_request_t *req, void *buffer, size_t length)
         ctx[i].start_copy_in   = 0;
         ctx[i].flags           = 0;
         ctx[i].overall         = 0;
-        ctx[i].mem_desc        = ucp_rma_mpool_get(worker, sys_dev);
         ctx[i].remote_mem_desc = NULL;
         ctx[i].comp.func       = ucp_proto_put_ppln_copy_in_complete;
         ctx[i].comp.count      = 1;
         ctx[i].comp.status     = UCS_OK;
         ctx[i].req             = req;
         ctx[i].size            = ucs_min(frag_size, length - offset);
+        ctx[i].mem_desc        = ucp_rma_mpool_get(worker, sys_dev, ctx[i].size);
         ctx[i].remote_req      = NULL;
         ctx[i].atp_sent        = 0;
     }
@@ -1237,6 +1297,7 @@ ucp_proto_put_offload_zcopy_ppln_start_progress(uct_pending_req_t *self)
         rts_ppln.count  = req->frag_count;
         rts_ppln.req    = req;
         rts_ppln.md_map = ucp_proto_multi_remote_md_map_req(req);
+        rts_ppln.frag_size = frag_size;
         rts_ppln.sys_dev = ucp_rkey_config(req->send.ep->worker,
                                            req->send.rma.rkey)->key.sys_dev;
         req->send.lane  = ucp_ep_get_am_lane(ep);
@@ -1322,6 +1383,7 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
     ucp_atp_ppln_t atp_ppln;
     ucp_proto_put_ppln_ctx_t *ctx = req->ctx;
     ucs_status_t status;
+    size_t frag_size;
 
     uct_ep = ucp_ep_get_lane(req->send.ep, ctx[i].lane_idx);
 
@@ -1329,9 +1391,16 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
     ucs_assertv_always(status == UCS_OK, "fence status=%d", status);
 
     /* What to copy from/to */
-    atp_ppln.mem_desc   = ctx[i].remote_mem_desc;
-    atp_ppln.address    = req->send.rma.remote_addr +
-        (i * ucp_rma_mpool_frag_size(req->send.ep->worker));
+    frag_size         = ucp_proto_rma_ppln_get_frag_size(req,
+                                                         req->send.state.dt_iter.length);
+    atp_ppln.mem_desc = ctx[i].remote_mem_desc;
+    atp_ppln.address  = req->send.rma.remote_addr + (i * frag_size);
+
+#if 0
+    ucs_assertv_always(frag_size == ucp_rma_mpool_frag_size(req->send.ep->worker),
+                       "frag_size=%zu mpool_frag_size=%zu",
+                       frag_size, ucp_rma_mpool_frag_size(req->send.ep->worker));
+#endif
 
     /* Where to send back the final ack to */
     if (ctx[0].remote_req == NULL) {
@@ -1346,6 +1415,7 @@ ucp_put_ppln_send_signal(ucp_request_t *req, int i)
 
     atp_ppln.frag_id    = i;
     atp_ppln.frag_count = req->frag_count;
+    atp_ppln.frag_size  = frag_size;
     atp_ppln.length     = ctx[i].size;
 
 

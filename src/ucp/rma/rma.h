@@ -122,6 +122,7 @@ typedef struct ucp_rts_ppln {
     int           count;
     ucp_md_map_t  md_map;
     ucs_sys_device_t sys_dev; /* Where fragments must be allocated */
+    size_t        frag_size;
 
     /* Information needed when initializing get-ppln */
     struct {
@@ -142,5 +143,7 @@ ucp_proto_rma_ppln_send_rts_resp(ucp_worker_h worker, ucp_ep_h ep,
                                  ucp_rts_ppln_t *rts_ppln);
 size_t
 ucp_proto_rma_ppln_get_frag_count(ucp_request_t *req, size_t length);
+size_t
+ucp_proto_rma_ppln_get_frag_size(ucp_request_t *req, size_t length);
 
 #endif
