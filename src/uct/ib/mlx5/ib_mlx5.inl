@@ -532,12 +532,11 @@ size_t uct_ib_mlx5_set_data_seg_iov(uct_ib_mlx5_txwq_t *txwq,
     return wqe_size;
 }
 
-
 static UCS_F_ALWAYS_INLINE void uct_ib_mlx5_bf_copy_bb(void * restrict dst,
                                                        void * restrict src)
 {
 #if defined(__ARM_NEON)
-    vst4q_u64(dst, vld4q_u64(src));
+    uct_ib_mlx5_copy_arm_64(dst, src);
 #else
 #if defined(__SSE4_2__)
     typedef __m128i uct_ib_mlx5_send_wqe_bb_block_t;

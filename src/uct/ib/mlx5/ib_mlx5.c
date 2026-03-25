@@ -1244,6 +1244,56 @@ void uct_ib_mlx5_txwq_validate_always(uct_ib_mlx5_txwq_t *wq, uint16_t num_bb,
 #endif
 }
 
+#if defined(__ARM_NEON)
+extern char uct_ib_mlx5_arm_aux_start[];
+extern char uct_ib_mlx5_arm_aux_end[];
+
+__attribute__((noinline))
+void uct_ib_mlx5_copy_arm_64(void * restrict dst, void * restrict src)
+{
+    asm volatile (
+                  ".global uct_ib_mlx5_arm_aux_start, uct_ib_mlx5_arm_aux_end\n"
+                  "\n"
+                  "ldp     q0, q1, [%1]\n"
+                  "ldp     q2, q3, [%1, #32]\n"
+                  "stp     q0, q1, [%0]\n"
+                  "stp     q2, q3, [%0, #32]\n"
+                  "ret\n"
+                  "\n"
+                  "uct_ib_mlx5_arm_aux_start:\n"
+                  "ld4 {v0.16b, v1.16b, v2.16b, v3.16b}, [%1]\n"
+                  "st4 {v0.16b, v1.16b, v2.16b, v3.16b}, [%0]\n"
+                  "ret\n"
+                  "uct_ib_mlx5_arm_aux_end:\n"
+                  :
+                  : "r" (dst), "r" (src)
+                  : "q0", "q1", "q2", "q3", "v0", "v1", "v2", "v3", "memory");
+}
+
+void uct_ib_mlx5_copy_arm_replace(void)
+{
+    void *start          = uct_ib_mlx5_arm_aux_start;
+    void *end            = uct_ib_mlx5_arm_aux_end;
+    void *page_start     = (void*)ucs_align_down((uintptr_t)start,
+                                                 ucs_get_page_size());
+    size_t length        = UCS_PTR_BYTE_DIFF(page_start, end);
+    int prot             = PROT_READ | PROT_EXEC;
+
+    if (mprotect((void *)page_start, length, prot | PROT_WRITE) != 0) {
+        ucs_fatal("arm code text set write error");
+    }
+
+    memcpy(&uct_ib_mlx5_copy_arm_64, start, UCS_PTR_BYTE_DIFF(start, end));
+    __builtin___clear_cache((char *)start, (char *)end);
+
+    if (mprotect(page_start, length, PROT_READ | PROT_EXEC) != 0) {
+        ucs_fatal("arm code text restore write error");
+    }
+}
+#endif
+
+
+
 extern uct_tl_t UCT_TL_NAME(dc_mlx5);
 extern uct_tl_t UCT_TL_NAME(rc_mlx5);
 extern uct_tl_t UCT_TL_NAME(ud_mlx5);
@@ -1253,6 +1303,9 @@ extern uct_ib_md_ops_entry_t UCT_IB_MD_OPS_NAME(dv);
 
 void UCS_F_CTOR uct_mlx5_init(void)
 {
+#if defined(__ARM_NEON)
+    uct_ib_mlx5_copy_arm_replace();
+#endif
 #if defined (HAVE_MLX5_DV)
     ucs_list_add_head(&uct_ib_ops, &UCT_IB_MD_OPS_NAME(dv).list);
 #endif

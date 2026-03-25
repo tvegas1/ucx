@@ -1325,4 +1325,7 @@ static inline const char *uct_ib_mlx5_dev_name(uct_ib_mlx5_md_t *md)
     return uct_ib_device_name(&md->super.dev);
 }
 
+#if defined(__ARM_NEON)
+void uct_ib_mlx5_copy_arm_64(void * restrict dst, void * restrict src);
+#endif
 #endif
