@@ -330,6 +330,17 @@ const char *uct_ib_device_name(const uct_ib_device_t *dev);
 
 
 /**
+ * Compare firmware AA.BB.CCCC against a minimum BB.CCCC, ignoring the
+ * device-family prefix AA.
+ *
+ * @return 1 if @a fw_ver parses and is at least
+ *         @a min_release.@a min_build, otherwise 0.
+ */
+int uct_ib_fw_ver_release_at_least(const char *fw_ver, unsigned min_release,
+                                   unsigned min_build);
+
+
+/**
  * @return whether the port is InfiniBand
  */
 int uct_ib_device_is_port_ib(uct_ib_device_t *dev, uint8_t port_num);
