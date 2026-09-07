@@ -414,11 +414,9 @@ ucp_wireup_match_p2p_lanes(ucp_ep_h ep,
         if (ep_addr_index >= address->num_ep_addrs) {
             /* The peer packs one ep address per own lane on that resource, so
              * this ep selected more lanes towards it than the peer provides */
-            ucp_ep_get_lane_info_str(ep, lane, &lane_strb);
-            ucs_fatal("ep %p: lane[%d] %s.%d -> addr[%u] %s: no ep address %u,"
-                      " only %u provided", ep, lane,
-                      ucs_string_buffer_cstr(&lane_strb),
-                      ucp_ep_get_path_index(ep, lane), address_index,
+            ucs_fatal(UCP_EP_LANE_FMT " -> addr[%u] %s: no ep address %u,"
+                      " only %u provided",
+                      UCP_EP_LANE_ARG(ep, lane, &lane_strb), address_index,
                       ucp_find_tl_name_by_csum(context, address->tl_name_csum),
                       ep_addr_index, address->num_ep_addrs);
         }
@@ -427,11 +425,9 @@ ucp_wireup_match_p2p_lanes(ucp_ep_h ep,
         lanes2remote[lane] = remote_lane;
 
         if (used_remote_lanes & UCS_BIT(remote_lane)) {
-            ucp_ep_get_lane_info_str(ep, lane, &lane_strb);
-            ucs_fatal("ep %p: lane[%d] %s.%d -> addr[%u]: remote lane %d is"
-                      " used more than once", ep, lane,
-                      ucs_string_buffer_cstr(&lane_strb),
-                      ucp_ep_get_path_index(ep, lane), address_index,
+            ucs_fatal(UCP_EP_LANE_FMT " -> addr[%u]: remote lane %d is"
+                      " used more than once",
+                      UCP_EP_LANE_ARG(ep, lane, &lane_strb), address_index,
                       remote_lane);
         }
 
@@ -489,11 +485,9 @@ ucp_wireup_connect_local(ucp_ep_h ep,
         status = ucp_wireup_find_remote_p2p_addr(ep, remote_lane, remote_address,
                                                  &address_entry, &ep_entry);
         if (status != UCS_OK) {
-            ucp_ep_get_lane_info_str(ep, lane, &lane_strb);
-            ucs_error("ep %p: lane[%d] %s.%d: no remote ep address for remote"
-                      " lane %d", ep, lane,
-                      ucs_string_buffer_cstr(&lane_strb),
-                      ucp_ep_get_path_index(ep, lane), remote_lane);
+            ucs_error(UCP_EP_LANE_FMT ": no remote ep address for remote"
+                      " lane %d",
+                      UCP_EP_LANE_ARG(ep, lane, &lane_strb), remote_lane);
             goto out;
         }
 
