@@ -1395,11 +1395,11 @@ protected:
     ucp_md_index_t cuda_ipc_md_index()
     {
         ucp_context_h context = sender().ucph();
-        ucp_lane_index_t lane;
-        ucp_rsc_index_t rsc_index;
 
-        for (lane = 0; lane < m_ep_config->key.num_lanes; ++lane) {
-            rsc_index = m_ep_config->key.lanes[lane].rsc_index;
+        for (ucp_lane_index_t lane = 0; lane < m_ep_config->key.num_lanes;
+             ++lane) {
+            const ucp_rsc_index_t rsc_index =
+                    m_ep_config->key.lanes[lane].rsc_index;
             if ((rsc_index != UCP_NULL_RESOURCE) &&
                 (std::string(context->tl_rscs[rsc_index].tl_rsc.tl_name) ==
                  "cuda_ipc")) {
@@ -1419,7 +1419,6 @@ protected:
         ucp_proto_select_init_protocols_t *proto_init;
         ucp_proto_select_param_t select_param;
         ucp_proto_select_elem_t *select_elem;
-        const ucp_proto_rndv_ctrl_priv_t *rpriv;
         ucp_proto_init_elem_t *proto;
 
         ucp_proto_select_param_init(&select_param, UCP_OP_ID_RNDV_RECV, 0, 0,
@@ -1443,7 +1442,7 @@ protected:
                 continue;
             }
 
-            rpriv = reinterpret_cast<const ucp_proto_rndv_ctrl_priv_t*>(
+            auto rpriv = reinterpret_cast<const ucp_proto_rndv_ctrl_priv_t*>(
                     &ucs_array_elem(&proto_init->priv_buf,
                                     proto->priv_offset));
             return rpriv->md_map;
@@ -1461,7 +1460,7 @@ private:
 UCS_TEST_P(test_ucp_proto_mock_cuda_ipc_inter_node, rtr_md_map,
            "IB_NUM_PATHS?=1")
 {
-    ucp_md_index_t md_index = cuda_ipc_md_index();
+    const ucp_md_index_t md_index = cuda_ipc_md_index();
 
     ASSERT_NE(UCP_NULL_RESOURCE, md_index) << "no cuda_ipc lane";
 

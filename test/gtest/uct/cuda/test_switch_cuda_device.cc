@@ -469,7 +469,7 @@ UCS_TEST_P(test_mem_alloc_device, host_vmm_mem_registrable,
 UCS_TEST_P(test_mem_alloc_device, legacy_cuda_no_memtype_copy_inter_node)
 {
     constexpr size_t size = 4096;
-    uct_md_mem_attr_v2_t mem_attr = {};
+    uct_md_mem_attr_v2_t mem_attr;
     CUdeviceptr dptr;
 
     ASSERT_EQ(CUDA_SUCCESS, cuMemAlloc(&dptr, size));
@@ -490,7 +490,7 @@ UCS_TEST_P(test_mem_alloc_device, fabric_cuda_memtype_copy_inter_node,
            "CUDA_COPY_ENABLE_FABRIC=y")
 {
     constexpr size_t size = 4 * UCS_MBYTE;
-    uct_md_mem_attr_v2_t mem_attr = {};
+    uct_md_mem_attr_v2_t mem_attr;
     cuda_fabric_mem_buffer buffer(size, UCS_MEMORY_TYPE_CUDA);
 
     mem_attr.field_mask = UCT_MD_MEM_ATTR_V2_FIELD_MEM_TYPE |
