@@ -918,7 +918,7 @@ uct_cuda_copy_md_is_registrable(uct_cuda_copy_md_t *md,
         local_dmabuf = uct_cuda_copy_md_get_dmabuf(mem_info->base_address,
                                                    mem_info->alloc_length,
                                                    mem_info->sys_dev);
-        dmabuf_fd = local_dmabuf.fd;
+        dmabuf_fd    = local_dmabuf.fd;
         ucs_close_fd(&local_dmabuf.fd);
     } else {
         dmabuf_fd = dmabuf->fd;

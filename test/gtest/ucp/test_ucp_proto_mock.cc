@@ -1396,8 +1396,7 @@ protected:
     {
         ucp_context_h context = sender().ucph();
 
-        for (ucp_lane_index_t lane = 0; lane < m_ep_config->key.num_lanes;
-             ++lane) {
+        for (auto lane = 0; lane < m_ep_config->key.num_lanes; ++lane) {
             const ucp_rsc_index_t rsc_index =
                     m_ep_config->key.lanes[lane].rsc_index;
             if ((rsc_index != UCP_NULL_RESOURCE) &&
