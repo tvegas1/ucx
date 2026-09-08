@@ -26,7 +26,6 @@
 #include <libgen.h>
 #include <pthread.h>
 #include <sched.h>
-#include <stdio.h>
 
 #ifdef HAVE_NETLINK_RDMA
 #include <rdma/rdma_netlink.h>
@@ -699,9 +698,10 @@ ucs_status_t uct_ib_device_init(uct_ib_device_t *dev,
     ucs_recursive_spinlock_init(&dev->ah_lock, 0);
     dev->ah_cache_ttl = UCS_TIME_INFINITY;
 
-    ucs_debug("initialized device '%s' (%s) with %d ports", uct_ib_device_name(dev),
-              ibv_node_type_str(ibv_device->node_type),
-              dev->num_ports);
+    ucs_debug("initialized device '%s' (%s) with %d ports, fw %s",
+              uct_ib_device_name(dev),
+              ibv_node_type_str(ibv_device->node_type), dev->num_ports,
+              IBV_DEV_ATTR(dev, fw_ver));
     return UCS_OK;
 
 err_release_stats:
@@ -1210,21 +1210,6 @@ int uct_ib_device_is_port_roce(uct_ib_device_t *dev, uint8_t port_num)
 const char *uct_ib_device_name(const uct_ib_device_t *dev)
 {
     return ibv_get_device_name(dev->ibv_context->device);
-}
-
-int uct_ib_fw_ver_release_at_least(const char *fw_ver, unsigned min_release,
-                                   unsigned min_build)
-{
-    unsigned release, build;
-
-    ucs_assert(fw_ver != NULL);
-
-    if (sscanf(fw_ver, "%*u.%u.%u", &release, &build) != 2) {
-        return 0;
-    }
-
-    return (release > min_release) ||
-           ((release == min_release) && (build >= min_build));
 }
 
 size_t uct_ib_mtu_value(enum ibv_mtu mtu)

@@ -31,10 +31,6 @@
      UCS_BIT(UCT_IB_DEVX_OBJ_DCT) | UCS_BIT(UCT_IB_DEVX_OBJ_DCSRQ) | \
      UCS_BIT(UCT_IB_DEVX_OBJ_DCI) | UCS_BIT(UCT_IB_DEVX_OBJ_CQ))
 
-/* Host FW 49.1014 first verified ODP with DDP, as per 4238670. */
-#define UCT_IB_MLX5_ODP_DDP_MIN_FW_RELEASE 49
-#define UCT_IB_MLX5_ODP_DDP_MIN_FW_BUILD   1014
-
 
 static uint32_t uct_ib_mlx5_flush_rkey_make()
 {
@@ -118,12 +114,10 @@ uct_ib_mlx5_md_check_odp_common(const uct_ib_mlx5_md_t *md, const char **reason_
             (md->dp_ordering_cap_devx.dc == UCT_IB_MLX5_DP_ORDERING_OOO_ALL) ||
             md->ddp_support_dv.rc || md->ddp_support_dv.dc;
 
-    /* as per 4238670 */
+    /* Host FW 49.1014 first verified ODP with DDP, as per 4238670 */
     if (ddp_supported &&
-        !uct_ib_fw_ver_release_at_least(
-                IBV_DEV_ATTR(&md->super.dev, fw_ver),
-                UCT_IB_MLX5_ODP_DDP_MIN_FW_RELEASE,
-                UCT_IB_MLX5_ODP_DDP_MIN_FW_BUILD)) {
+        !uct_ib_mlx5_fw_ver_release_at_least(
+                IBV_DEV_ATTR(&md->super.dev, fw_ver), 49, 1014)) {
         *reason_ptr = "ODP does not work with DDP";
         return 0;
     }
