@@ -26,6 +26,12 @@
 #define UCP_MAX_IOV                16UL
 
 
+/* Print an ep lane, using a caller-provided string buffer as scratch space */
+#define UCP_EP_LANE_FMT "ep %p: %s"
+#define UCP_EP_LANE_ARG(_ep, _lane, _strb) \
+    (_ep), ucp_ep_get_lane_info_str(_ep, _lane, _strb)
+
+
 /* Endpoint flags type */
 #if ENABLE_DEBUG_DATA || UCS_ENABLE_ASSERT
 typedef uint32_t                   ucp_ep_flags_t;
@@ -859,13 +865,6 @@ size_t ucp_ep_tag_offload_min_rndv_thresh(ucp_context_h context,
 
 void ucp_ep_config_rndv_zcopy_commit(ucp_lane_index_t lanes_count,
                                      ucp_ep_rndv_zcopy_config_t *rndv_zcopy);
-
-
-/* Print an ep lane, using a caller-provided string buffer as scratch space */
-#define UCP_EP_LANE_FMT "ep %p: %s"
-#define UCP_EP_LANE_ARG(_ep, _lane, _strb) \
-    (_ep), ucp_ep_get_lane_info_str(_ep, _lane, _strb)
-
 
 const char *ucp_ep_get_lane_info_str(ucp_ep_h ucp_ep, ucp_lane_index_t lane,
                                      ucs_string_buffer_t *lane_info_strb);
