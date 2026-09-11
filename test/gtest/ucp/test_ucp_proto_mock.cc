@@ -749,6 +749,19 @@ protected:
 
         return rkey->cfg_index;
     }
+
+    static ucp_proto_t *find_proto(const std::string &name)
+    {
+        for (ucp_proto_id_t id = 0; id < ucp_protocols_count(); ++id) {
+            if (name == ucp_protocols[id]->name) {
+                /* The protocols are defined as non-const objects */
+                return const_cast<ucp_proto_t*>(ucp_protocols[id]);
+            }
+        }
+
+        return nullptr;
+    }
+
 };
 
 class test_ucp_proto_mock_rcx : public test_ucp_proto_mock {
@@ -1202,6 +1215,80 @@ UCS_TEST_P(test_ucp_proto_mock_cma, am_send_1_lane)
 }
 
 UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_proto_mock_cma, mm_cma, "posix,cma")
+
+/*
+ * Test the protocol supersede rule, which is used to keep put/rndv and
+ * get/rndv out of protocol selection wherever a zcopy protocol is available.
+ * Those protocols require non-host memory, so the rule is tested here on the
+ * eager protocols selected by test_ucp_proto_mock_cma.am_send_1_lane, which
+ * uses the same mock configuration.
+ */
+class test_ucp_proto_mock_supersede : public test_ucp_proto_mock_cma {
+public:
+    test_ucp_proto_mock_supersede() :
+        m_superseded(nullptr), m_superseder(nullptr), m_superseded_by(0),
+        m_proto_class(0)
+    {
+    }
+
+    /* Protocol selection is done when the endpoint is connected, so the rule
+     * must be added before that */
+    virtual void post_ucp_init() override
+    {
+        m_superseded = find_proto("am/egr/short");
+        m_superseder = find_proto("am/egr/single/bcopy");
+        ASSERT_NE(nullptr, m_superseded);
+        ASSERT_NE(nullptr, m_superseder);
+
+        m_superseded_by             = m_superseded->superseded_by;
+        m_proto_class               = m_superseder->proto_class;
+        m_superseded->superseded_by = TEST_PROTO_CLASS;
+        m_superseder->proto_class   = TEST_PROTO_CLASS;
+
+        test_ucp_proto_mock_cma::post_ucp_init();
+    }
+
+    virtual void cleanup() override
+    {
+        test_ucp_proto_mock_cma::cleanup();
+
+        if (m_superseded != nullptr) {
+            m_superseded->superseded_by = m_superseded_by;
+        }
+
+        if (m_superseder != nullptr) {
+            m_superseder->proto_class = m_proto_class;
+        }
+    }
+
+private:
+    /* Protocol class which is not used by any protocol, so that the test does
+     * not depend on the classes declared by the RMA protocols */
+    static const unsigned TEST_PROTO_CLASS = UCS_BIT(31);
+
+    ucp_proto_t *m_superseded;
+    ucp_proto_t *m_superseder;
+    unsigned    m_superseded_by;
+    unsigned    m_proto_class;
+};
+
+UCS_TEST_P(test_ucp_proto_mock_supersede, am_send_1_lane)
+{
+    ucp_proto_select_key_t key = any_key();
+    key.param.op_id_flags      = UCP_OP_ID_AM_SEND;
+    key.param.op_attr          = 0;
+
+    /* The short protocol is superseded by the copy-in protocol, so it is not
+     * selected anymore, even though it is faster on small message sizes. The
+     * ranges which the copy-in protocol does not cover are not affected. */
+    check_ep_config(sender(), {
+        {0,    5028, "copy-in",                               "posix/memory"},
+        {5029, INF,  "rendezvous zero-copy read from remote", "cma/mock"},
+    }, key);
+}
+
+UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_proto_mock_supersede, mm_cma,
+                              "posix,cma")
 
 class test_ucp_proto_mock_tcp : public test_ucp_proto_mock {
 public:
