@@ -176,6 +176,11 @@ typedef struct uct_ib_ah_entry {
     int            refcount;      /* Includes the cache's own reference
                                     * while the entry is in ah_hash */
     ucs_time_t     creation_time;
+    /* Peer identity the AH was created for, so that endpoints holding a
+     * reference do not have to keep their own copy of it */
+    uint16_t       dlid;
+    uint8_t        is_global;
+    union ibv_gid  dgid;          /* Valid only if is_global */
 } uct_ib_ah_entry_t;
 
 

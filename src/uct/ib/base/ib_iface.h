@@ -638,6 +638,12 @@ void uct_ib_iface_ah_put(uct_ib_iface_t *iface, uct_ib_ah_entry_t *entry);
 /* Duplicate a reference already held by the caller. */
 void uct_ib_iface_ah_hold(uct_ib_iface_t *iface, uct_ib_ah_entry_t *entry);
 
+/* Whether the cached AH was created for the peer described by ib_addr. */
+int uct_ib_iface_ah_is_peer(uct_ib_iface_t *iface,
+                            const uct_ib_ah_entry_t *entry,
+                            const uct_ib_address_t *ib_addr,
+                            unsigned path_index);
+
 void uct_ib_iface_fill_ah_attr_from_gid_lid(uct_ib_iface_t *iface, uint16_t lid,
                                             const union ibv_gid *gid,
                                             uint8_t gid_index,

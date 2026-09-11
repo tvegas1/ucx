@@ -25,9 +25,6 @@ int uct_srd_ep_is_connected(const uct_ep_h tl_ep,
                                                   params->device_addr;
     const uct_srd_iface_addr_t *if_addr = (const uct_srd_iface_addr_t*)
                                                   params->iface_addr;
-    struct ibv_ah_attr ah_attr;
-    enum ibv_mtu path_mtu;
-    ucs_status_t status;
 
     UCT_EP_IS_CONNECTED_CHECK_DEV_IFACE_ADDRS(params);
 
@@ -35,17 +32,8 @@ int uct_srd_ep_is_connected(const uct_ep_h tl_ep,
         return 0;
     }
 
-    status = uct_ib_iface_fill_ah_attr_from_addr(ib_iface, ib_addr,
-                                                 ep->path_index, &ah_attr,
-                                                 &path_mtu);
-    if (status != UCS_OK) {
-        return 0;
-    }
-
-    return (ah_attr.dlid == ep->dlid) &&
-           (ah_attr.is_global == ep->is_global) &&
-           (!ah_attr.is_global ||
-            !memcmp(&ah_attr.grh.dgid, &ep->dgid, sizeof(ah_attr.grh.dgid)));
+    return uct_ib_iface_ah_is_peer(ib_iface, ep->ah_entry, ib_addr,
+                                   ep->path_index);
 }
 
 static UCS_CLASS_INIT_FUNC(uct_srd_ep_t, const uct_ep_params_t *params)
@@ -81,12 +69,6 @@ static UCS_CLASS_INIT_FUNC(uct_srd_ep_t, const uct_ep_params_t *params)
                                                  &path_mtu);
     if (status != UCS_OK) {
         goto err_arb_cleanup;
-    }
-
-    self->dlid      = ah_attr.dlid;
-    self->is_global = ah_attr.is_global;
-    if (ah_attr.is_global) {
-        self->dgid = ah_attr.grh.dgid;
     }
 
     status = uct_ib_iface_ah_get(&iface->super, &ah_attr, "SRD AH",

@@ -1450,7 +1450,8 @@ uct_ib_device_create_ah(uct_ib_device_t *dev, struct ibv_ah_attr *ah_attr,
 }
 
 static uct_ib_ah_entry_t *
-uct_ib_ah_entry_alloc(struct ibv_ah *ah, int refcount)
+uct_ib_ah_entry_alloc(const struct ibv_ah_attr *ah_attr, struct ibv_ah *ah,
+                      int refcount)
 {
     uct_ib_ah_entry_t *entry = ucs_malloc(sizeof(*entry), "uct_ib_ah_entry");
 
@@ -1461,6 +1462,12 @@ uct_ib_ah_entry_alloc(struct ibv_ah *ah, int refcount)
     entry->ah            = ah;
     entry->refcount      = refcount;
     entry->creation_time = ucs_get_time();
+    entry->dlid          = ah_attr->dlid;
+    entry->is_global     = ah_attr->is_global;
+    if (ah_attr->is_global) {
+        entry->dgid = ah_attr->grh.dgid;
+    }
+
     return entry;
 }
 
@@ -1522,7 +1529,7 @@ uct_ib_device_ah_get(uct_ib_device_t *dev, struct ibv_ah_attr *ah_attr,
         goto unlock;
     }
 
-    entry = uct_ib_ah_entry_alloc(ah, 1);
+    entry = uct_ib_ah_entry_alloc(ah_attr, ah, 1);
     if (entry == NULL) {
         ibv_destroy_ah(ah);
         status = UCS_ERR_NO_MEMORY;

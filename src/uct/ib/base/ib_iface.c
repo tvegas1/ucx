@@ -1042,6 +1042,27 @@ void uct_ib_iface_ah_hold(uct_ib_iface_t *iface, uct_ib_ah_entry_t *entry)
     uct_ib_device_ah_hold(uct_ib_iface_device(iface), entry);
 }
 
+int uct_ib_iface_ah_is_peer(uct_ib_iface_t *iface,
+                            const uct_ib_ah_entry_t *entry,
+                            const uct_ib_address_t *ib_addr,
+                            unsigned path_index)
+{
+    struct ibv_ah_attr ah_attr;
+    enum ibv_mtu path_mtu;
+    ucs_status_t status;
+
+    status = uct_ib_iface_fill_ah_attr_from_addr(iface, ib_addr, path_index,
+                                                 &ah_attr, &path_mtu);
+    if (status != UCS_OK) {
+        return 0;
+    }
+
+    return (entry->dlid == ah_attr.dlid) &&
+           (entry->is_global == ah_attr.is_global) &&
+           (!entry->is_global ||
+            !memcmp(&entry->dgid, &ah_attr.grh.dgid, sizeof(entry->dgid)));
+}
+
 void uct_ib_iface_fill_ah_attr_from_gid_lid(uct_ib_iface_t *iface, uint16_t lid,
                                             const union ibv_gid *gid,
                                             uint8_t gid_index,

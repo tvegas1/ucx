@@ -55,7 +55,7 @@ UCS_CLASS_INIT_FUNC(uct_ud_verbs_ep_t, const uct_ep_params_t *params)
 
     ucs_trace_func("");
     UCS_CLASS_CALL_SUPER_INIT(uct_ud_ep_t, &iface->super, params);
-    memset(&self->peer_address, 0, sizeof(self->peer_address));
+    self->dest_qpn = 0;
     self->ah_entry = NULL;
     return UCS_OK;
 }
@@ -75,7 +75,16 @@ static void uct_ud_verbs_ep_release_ah(uct_ud_verbs_ep_t *ep)
 
 static UCS_CLASS_CLEANUP_FUNC(uct_ud_verbs_ep_t)
 {
+    uct_ud_iface_t *iface = ucs_derived_of(self->super.super.super.iface,
+                                           uct_ud_iface_t);
+
     ucs_trace_func("");
+
+    uct_ud_enter(iface);
+    /* The connection matching key is reconstructed from the AH entry. */
+    uct_ud_iface_cep_remove_ep(iface, &self->super);
+    uct_ud_leave(iface);
+
     /* Release only here, since the ep may linger past ep_destroy() */
     uct_ud_verbs_ep_release_ah(self);
 }
@@ -110,7 +119,7 @@ uct_ud_verbs_post_send(uct_ud_verbs_iface_t *iface, uct_ud_verbs_ep_t *ep,
         ++iface->super.tx.unsignaled;
     }
 
-    wr->wr.ud.remote_qpn = ep->peer_address.dest_qpn;
+    wr->wr.ud.remote_qpn = ep->dest_qpn;
     wr->wr.ud.ah         = ep->ah_entry->ah;
 
     UCT_UD_EP_HOOK_CALL_TX(&ep->super, (uct_ud_neth_t*)iface->tx.sge[0].addr);
@@ -629,19 +638,33 @@ uct_ud_verbs_iface_unpack_peer_address(uct_ud_iface_t *iface,
     return UCS_OK;
 }
 
-static void *uct_ud_verbs_ep_get_peer_address(uct_ud_ep_t *ud_ep)
+static void
+uct_ud_verbs_ep_get_peer_address(const uct_ud_ep_t *ud_ep, void *address_p)
 {
-    uct_ud_verbs_ep_t *ep = ucs_derived_of(ud_ep, uct_ud_verbs_ep_t);
-    return &ep->peer_address;
+    const uct_ud_verbs_ep_t *ep = ucs_derived_of(ud_ep,
+                                                 uct_ud_verbs_ep_t);
+    uct_ud_verbs_ep_peer_address_t *peer_address = address_p;
+
+    ucs_assert(ep->ah_entry != NULL);
+    memset(peer_address, 0, sizeof(*peer_address));
+    peer_address->dest_qpn  = ep->dest_qpn;
+    peer_address->dlid      = ep->ah_entry->dlid;
+    peer_address->is_global = ep->ah_entry->is_global;
+    if (ep->ah_entry->is_global) {
+        peer_address->dgid = ep->ah_entry->dgid;
+    }
 }
 
 static ucs_status_t
 uct_ud_verbs_ep_resolve_peer_address(uct_ud_ep_t *ud_ep,
-                                     const uct_ib_address_t *ib_addr)
+                                     const uct_ib_address_t *ib_addr,
+                                     const void *address)
 {
-    uct_ud_verbs_ep_t *ep    = ucs_derived_of(ud_ep, uct_ud_verbs_ep_t);
+    const uct_ud_verbs_ep_peer_address_t *peer_address = address;
+    uct_ud_verbs_ep_t *ep = ucs_derived_of(ud_ep, uct_ud_verbs_ep_t);
     uct_ib_iface_t *ib_iface = ucs_derived_of(ud_ep->super.super.iface,
                                               uct_ib_iface_t);
+    uct_ib_ah_entry_t *ah_entry;
     struct ibv_ah_attr ah_attr;
     enum ibv_mtu path_mtu;
     ucs_status_t status;
@@ -653,10 +676,16 @@ uct_ud_verbs_ep_resolve_peer_address(uct_ud_ep_t *ud_ep,
         return status;
     }
 
-    uct_ud_verbs_ep_release_ah(ep);
+    status = uct_ib_iface_ah_get(ib_iface, &ah_attr, "UD verbs connect",
+                                 &ah_entry);
+    if (status != UCS_OK) {
+        return status;
+    }
 
-    return uct_ib_iface_ah_get(ib_iface, &ah_attr, "UD verbs connect",
-                               &ep->ah_entry);
+    uct_ud_verbs_ep_release_ah(ep);
+    ep->ah_entry = ah_entry;
+    ep->dest_qpn = peer_address->dest_qpn;
+    return UCS_OK;
 }
 
 int uct_ud_verbs_ep_is_connected(const uct_ep_h tl_ep,
@@ -666,27 +695,13 @@ int uct_ud_verbs_ep_is_connected(const uct_ep_h tl_ep,
     uct_ib_iface_t *ib_iface  = ucs_derived_of(ep->super.super.super.iface,
                                                uct_ib_iface_t);
     uct_ib_address_t *ib_addr = (uct_ib_address_t*)params->device_addr;
-    struct ibv_ah_attr ah_attr;
-    enum ibv_mtu path_mtu;
-    ucs_status_t status;
 
-    if (!uct_ud_ep_is_connected_to_addr(&ep->super, params,
-                                        ep->peer_address.dest_qpn)) {
+    if (!uct_ud_ep_is_connected_to_addr(&ep->super, params, ep->dest_qpn)) {
         return 0;
     }
 
-    status = uct_ib_iface_fill_ah_attr_from_addr(ib_iface, ib_addr,
-                                                 ep->super.path_index,
-                                                 &ah_attr, &path_mtu);
-    if (status != UCS_OK) {
-        return 0;
-    }
-
-    return (ah_attr.dlid == ep->peer_address.dlid) &&
-           (ah_attr.is_global == ep->peer_address.is_global) &&
-           (!ah_attr.is_global ||
-            !memcmp(&ah_attr.grh.dgid, &ep->peer_address.dgid,
-                    sizeof(ah_attr.grh.dgid)));
+    return uct_ib_iface_ah_is_peer(ib_iface, ep->ah_entry, ib_addr,
+                                   ep->super.path_index);
 }
 
 static size_t uct_ud_verbs_get_peer_address_length()
