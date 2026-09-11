@@ -762,6 +762,20 @@ protected:
         return nullptr;
     }
 
+    void test_cuda_rma(ucp_operation_id_t op_id,
+                       const proto_select_data_vec_t &data_vec)
+    {
+        auto rkey_cfg_index = send_recv_rma(UCS_MBYTE, op_id,
+                                            UCS_MEMORY_TYPE_CUDA);
+        ASSERT_NE(rkey_cfg_index, UCP_WORKER_CFG_INDEX_NULL);
+
+        ucp_proto_select_key_t key = any_key();
+        key.param.op_id_flags      = op_id;
+        key.param.op_attr          = 0;
+        key.param.mem_type         = UCS_MEMORY_TYPE_CUDA;
+
+        check_rkey_config(sender(), data_vec, key, rkey_cfg_index);
+    }
 };
 
 class test_ucp_proto_mock_rcx : public test_ucp_proto_mock {
@@ -1002,6 +1016,61 @@ UCS_TEST_P(test_ucp_proto_mock_rcx3, single_lane_no_zcopy,
 }
 
 UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_proto_mock_rcx3, rcx, "rc_x")
+
+/* Device which reads from remote memory much slower than it writes to it, like
+ * a GPU with no direct read data path to the peer memory */
+class test_ucp_proto_mock_rcx_slow_get : public test_ucp_proto_mock {
+public:
+    test_ucp_proto_mock_rcx_slow_get()
+    {
+        mock_transport("rc_mlx5");
+    }
+
+    virtual void init() override
+    {
+        if (!mem_buffer::is_mem_type_supported(UCS_MEMORY_TYPE_CUDA)) {
+            UCS_TEST_SKIP_R("CUDA memory is not supported");
+        }
+
+        add_mock_iface("mock", [](uct_iface_attr_t &iface_attr) {
+            iface_attr.bandwidth.shared  = 28e9;
+            iface_attr.latency.c         = 500e-9;
+            iface_attr.latency.m         = 1e-9;
+            /* Keep get_zcopy available on all message sizes */
+            iface_attr.cap.get.min_zcopy = 0;
+        }, [](uct_perf_attr_t &perf_attr) {
+            if (!(perf_attr.field_mask & UCT_PERF_ATTR_FIELD_OPERATION) ||
+                (perf_attr.operation != UCT_EP_OP_GET_ZCOPY)) {
+                return;
+            }
+
+            if (perf_attr.field_mask & UCT_PERF_ATTR_FIELD_BANDWIDTH) {
+                perf_attr.bandwidth.dedicated = 0;
+                perf_attr.bandwidth.shared    = UCS_MBYTE;
+            }
+
+            if (perf_attr.field_mask & UCT_PERF_ATTR_FIELD_PATH_BANDWIDTH) {
+                perf_attr.path_bandwidth.dedicated = 0;
+                perf_attr.path_bandwidth.shared    = UCS_MBYTE;
+            }
+        });
+        test_ucp_proto_mock::init();
+    }
+};
+
+UCS_TEST_P(test_ucp_proto_mock_rcx_slow_get, get, "IB_NUM_PATHS?=1")
+{
+    /* On message sizes larger than about 1KB, get/rndv is cheaper than
+     * get/zcopy, since it makes the remote side write the data by the fast data
+     * path. It is not selected on any message size, because it is superseded by
+     * get/zcopy. */
+    test_cuda_rma(UCP_OP_ID_GET, {
+        {1, INF, "zero-copy", "rc_mlx5/mock"},
+    });
+}
+
+UCP_INSTANTIATE_TEST_CASE_TLS(test_ucp_proto_mock_rcx_slow_get, rcx_gpu,
+                              "rc_x,cuda,rocm")
 
 class test_ucp_proto_mock_rcx_numa : public test_ucp_proto_mock {
 public:
@@ -1434,21 +1503,6 @@ public:
     {
         mock_cuda_ipc_remote_pid(sender().worker());
         mock_cuda_ipc_remote_pid(receiver().worker());
-    }
-
-    void test_cuda_rma(ucp_operation_id_t op_id,
-                       const proto_select_data_vec_t &data_vec)
-    {
-        auto rkey_cfg_index = send_recv_rma(UCS_MBYTE, op_id,
-                                            UCS_MEMORY_TYPE_CUDA);
-        ASSERT_NE(rkey_cfg_index, UCP_WORKER_CFG_INDEX_NULL);
-
-        ucp_proto_select_key_t key = any_key();
-        key.param.op_id_flags      = op_id;
-        key.param.op_attr          = 0;
-        key.param.mem_type         = UCS_MEMORY_TYPE_CUDA;
-
-        check_rkey_config(sender(), data_vec, key, rkey_cfg_index);
     }
 };
 
